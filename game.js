@@ -45,7 +45,7 @@ addEventListener('mouseup', e => { if (e.button === 0) mouse.l = false; if (e.bu
 addEventListener('contextmenu', e => e.preventDefault());
 addEventListener('blur', () => { for (const k in keys) keys[k] = false; mouse.l = mouse.r = false; });
 const mouseWorld = () => ({ x: cam.x + mouse.x / zoom, y: cam.y + mouse.y / zoom });
-const touchU = () => clamp(H / 400, 0.8, 1.25);
+const touchU = () => clamp(Math.min(W, H) / 400, 0.8, 1.25);
 function touchButtons() {
   const u = touchU();
   return [{ id: 'skill', key: 'e', x: W - 205 * u, y: H - 62 * u, r: 30 * u }, { id: 'dash', key: ' ', x: W - 190 * u, y: H - 140 * u, r: 30 * u },
@@ -605,6 +605,7 @@ function applyPick(p, i) {
 
 // ---------- netcode ----------
 const PEER_PREFIX = 'duskbound-v1-';
+const noNetMsg = () => window.DUSK_NO_NET ? 'Online co-op is not available on this page. Solo works here; for co-op, open the downloaded duskbound.html file or a copy on your own website.' : 'Online play needs an internet connection (the networking library did not load).';
 function wrapConn(c) {
   const w = { send: d => { try { c.send(d); } catch (e) { } }, onData: null, onClose: null, close: () => { try { c.close(); } catch (e) { } } };
   c.on('data', d => w.onData && w.onData(d)); c.on('close', () => w.onClose && w.onClose()); c.on('error', () => w.onClose && w.onClose());
@@ -612,7 +613,7 @@ function wrapConn(c) {
 }
 // Transport: WebRTC data channels brokered by the public PeerJS signalling server. Replaceable for tests.
 let NetT = {
-  ok: () => typeof Peer !== 'undefined',
+  ok: () => typeof Peer !== 'undefined' && !window.DUSK_NO_NET,
   host(code, h) {
     const peer = new Peer(PEER_PREFIX + code);
     peer.on('open', () => h.open()); peer.on('connection', c => c.on('open', () => h.conn(wrapConn(c)))); peer.on('error', e => h.error(e.type || 'error'));
@@ -633,7 +634,7 @@ function leaveNet() {
 function netFail(msg) { leaveNet(); showMenu(msg); }
 const cleanName = (s, i) => (String(s || '').replace(/[^\w \-'.]/g, '').trim().slice(0, 14)) || ('Wanderer ' + i);
 function hostGame() {
-  if (!NetT.ok()) return showMenu('Online play needs an internet connection (the networking library did not load).');
+  if (!NetT.ok()) return showMenu(noNetMsg());
   initAudio(); leaveNet();
   net.mode = 'host'; net.code = genCode(); net.myId = 1; net.nextPid = 2; net.lobby = [{ id: 1, name: cleanName(net.name, 1), hero: net.hero }];
   const handle = net.handle = NetT.host(net.code, {
@@ -718,7 +719,7 @@ function startTicker() {
 function joinGame(code) {
   code = String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
   if (code.length !== 5) return showMenu('Enter the 5-character room code from your host.');
-  if (!NetT.ok()) return showMenu('Online play needs an internet connection (the networking library did not load).');
+  if (!NetT.ok()) return showMenu(noNetMsg());
   initAudio(); leaveNet(); net.mode = 'client'; net.code = code; game.state = 'lobby';
   show('<h2>Joining ' + esc(code) + '…</h2><div class="sub">Reaching the host.</div><button id="cancel">Cancel</button>'); $('cancel').onclick = () => netFail('');
   const handle = net.handle = NetT.join(code, {
@@ -874,7 +875,7 @@ function drawHUD() {
   const hs = T ? clamp(Math.min(innerWidth / 900, innerHeight / 480), 0.7, 1) : 1, W = innerWidth / hs, H = innerHeight / hs;
   c.save(); c.scale(hs, hs);
   c.textAlign = 'left'; c.textBaseline = 'alphabetic';
-  const bx = 24, by = T ? 88 : H - 74, bw = T ? 220 : 300;
+  const bx = 24, by = T ? (W < 760 ? 132 : 88) : H - 74, bw = T ? 220 : 300;
   c.fillStyle = 'rgba(8,8,16,.75)'; rr(c, bx - 8, by - 30, bw + 16, 88, 8); c.fill();
   c.font = '15px Georgia'; c.fillStyle = H2.color; c.fillText(H2.name + ' · Lv ' + p.level, bx, by - 10);
   c.textAlign = 'right'; c.fillStyle = '#f3c84a'; c.fillText('◈ ' + p.gold + '   ✦ ' + p.embers, bx + bw, by - 10); c.textAlign = 'left';
@@ -901,7 +902,7 @@ function drawHUD() {
   else { c.fillStyle = isN ? '#b6b6ff' : '#f3d48a'; c.fillText((isN ? 'Night ' : 'Day ') + (dayIdx() + 1) + ' · ' + (isN ? 'dawn in ' + fmtTime(CYCLE - ct) : 'dusk in ' + fmtTime(DAY - ct)) + '   —   the Stag wakes in ' + fmtTime(TOTAL - game.time), W / 2, cy + 36); }
   c.textAlign = 'left'; c.font = '13px Georgia'; c.fillStyle = '#a9a3c4'; c.fillText('Chapter ' + game.chapter + ' · ' + world.pal.name, 20, 28); c.fillText('Slain: ' + p.kills, 20, 46);
   // party
-  let py = T ? 176 : 70;
+  let py = T ? (W < 760 ? 220 : 176) : 70;
   for (const q of players) {
     if (q === p) continue;
     c.fillStyle = 'rgba(8,8,16,.7)'; rr(c, 14, py - 14, 190, 34, 6); c.fill();
@@ -910,7 +911,7 @@ function drawHUD() {
     if (q.down) { c.fillStyle = '#ff8a8a'; c.textAlign = 'right'; c.fillText('DOWN', 196, py); c.textAlign = 'left'; }
     py += 42;
   }
-  if (game.boss) { const e = game.boss, w = Math.min(620, W - (T ? 560 : 80)), x = W / 2 - w / 2, y = 92; c.fillStyle = 'rgba(8,8,16,.8)'; rr(c, x - 4, y - 4, w + 8, 22, 5); c.fill(); c.fillStyle = e.hp < e.maxHp * 0.5 ? '#ff5ad6' : '#a66bff'; rr(c, x, y, Math.max(6, w * clamp(e.hp / e.maxHp, 0, 1)), 14, 4); c.fill(); }
+  if (game.boss) { const e = game.boss, w = Math.max(150, Math.min(620, W - (T ? 560 : 80))), x = W / 2 - w / 2, y = T && W < 700 ? 140 : 92; c.fillStyle = 'rgba(8,8,16,.8)'; rr(c, x - 4, y - 4, w + 8, 22, 5); c.fill(); c.fillStyle = e.hp < e.maxHp * 0.5 ? '#ff5ad6' : '#a66bff'; rr(c, x, y, Math.max(6, w * clamp(e.hp / e.maxHp, 0, 1)), 14, 4); c.fill(); }
   const ms = T ? 112 : 160, mx = W - ms - 18, my = 18, k = ms / world.S;
   c.fillStyle = 'rgba(8,8,16,.75)'; rr(c, mx - 4, my - 4, ms + 8, ms + 8, 6); c.fill(); c.fillStyle = world.pal.base; c.globalAlpha = 0.6; c.fillRect(mx, my, ms, ms); c.globalAlpha = 1;
   const colr = { altar: '#c27bff', spring: '#4fb6e8', chest: '#f3c84a', shrine: '#e8e2d0', merchant: '#ff8a8a', camp: '#ff8a3a' };
@@ -920,7 +921,7 @@ function drawHUD() {
   for (const q of players) if (q !== p) circ(c, mx + q.x * k, my + q.y * k, 3.5, HEROES[q.hero].color);
   circ(c, mx + p.x * k, my + p.y * k, 3.5, '#fff');
   c.font = '11px Georgia'; c.fillStyle = '#8e88ab'; c.textAlign = 'right'; c.fillText(T ? (net.mode === 'solo' ? '' : 'Room ' + net.code) : 'F interact · ' + (net.mode === 'solo' ? 'P pause · ' : 'Room ' + net.code + ' · ') + 'M mute', W - 18, my + ms + 22);
-  if (game.banner) { const b = game.banner, a = clamp(Math.min(b.t, b.max - b.t) / 0.4, 0, 1); c.globalAlpha = a; c.textAlign = 'center'; c.font = 'bold 44px Georgia'; c.fillStyle = 'rgba(0,0,0,.6)'; c.fillText(b.text, W / 2 + 2, H * 0.27 + 2); c.fillStyle = '#f3d48a'; c.fillText(b.text, W / 2, H * 0.27); c.font = 'italic 18px Georgia'; c.fillStyle = '#d8d2ee'; c.fillText(b.sub, W / 2, H * 0.27 + 30); c.globalAlpha = 1; }
+  if (game.banner) { const b = game.banner, a = clamp(Math.min(b.t, b.max - b.t) / 0.4, 0, 1); c.globalAlpha = a; c.textAlign = 'center'; c.font = 'bold ' + Math.round(Math.min(44, W / 13)) + 'px Georgia'; c.fillStyle = 'rgba(0,0,0,.6)'; c.fillText(b.text, W / 2 + 2, H * 0.27 + 2); c.fillStyle = '#f3d48a'; c.fillText(b.text, W / 2, H * 0.27); c.font = 'italic 18px Georgia'; c.fillStyle = '#d8d2ee'; c.fillText(b.sub, W / 2, H * 0.27 + 30); c.globalAlpha = 1; }
   if (!p.down && p.hp < p.maxHp * 0.3) { const g = c.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, H * 0.8); g.addColorStop(0, 'rgba(160,0,0,0)'); g.addColorStop(1, 'rgba(160,0,0,' + (0.3 + Math.sin(game.t * 5) * 0.1) + ')'); c.fillStyle = g; c.fillRect(0, 0, W, H); }
   c.restore();
   if (T) drawTouchUI();
@@ -1056,7 +1057,7 @@ function onKey(k) {
 // ---------- loop ----------
 let last = 0;
 function tick(ts) {
-  const dt = Math.min(0.05, (ts - last) / 1000 || 0); last = ts;
+  const dt = clamp((ts - last) / 1000 || 0, 0, 0.05); last = Math.max(last, ts);
   if (game.state === 'play' && me) {
     if (net.mode === 'client') clientUpdate(dt);
     else if (game.over) updFx(dt);

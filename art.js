@@ -107,7 +107,7 @@ function drawPoi(o) {
       break;
     }
     case 'spring':
-      ell(c, 0, 6, 30, 14, '#6b7078'); ell(c, 0, 4, 24, 10, o.used ? '#39424a' : '#4fb6e8'); if (!o.used) { c.strokeStyle = 'rgba(220,245,255,.7)'; c.lineWidth = 1.5; c.beginPath(); c.ellipse(0, 4, 10 + (t * 8 % 12), 4 + (t * 3 % 5), 0, 0, TAU); c.stroke(); }
+      ell(c, 0, 6, 30, 14, '#6b7078'); ell(c, 0, 4, 24, 10, o.used ? '#39424a' : '#4fb6e8'); if (!o.used) { c.strokeStyle = 'rgba(220,245,255,.7)'; c.lineWidth = 1.5; c.beginPath(); c.ellipse(0, 4, 10 + Math.abs(t * 8 % 12), 4 + Math.abs(t * 3 % 5), 0, 0, TAU); c.stroke(); }
       break;
     case 'chest':
       c.fillStyle = '#6b4a2b'; rr(c, -15, -10, 30, 22, 3); c.fill(); c.fillStyle = o.used ? '#2a2018' : '#8a6238'; rr(c, -15, o.used ? -20 : -14, 30, 10, 4); c.fill(); c.fillStyle = '#f3d48a'; c.fillRect(-15, -2, 30, 2.5); if (!o.used) c.fillRect(-3, -6, 6, 8);
