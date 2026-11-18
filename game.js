@@ -647,12 +647,146 @@ let NetT = {
     return { close: () => peer.destroy() };
   }
 };
+// Transport 2: claude.ai's live room, for the claude.ai build where WebRTC is blocked.
+// Host -> guest: room events addressed to that guest (the host must be the page's owner, an Editor or a Contributor).
+// Guest -> host: the guest's presence object, which every signed-in viewer may set, so guests need only view access.
+// Payloads are deflated, base64'd and split to fit the 4 KiB message limit. Reliable messages carry sequence numbers
+// and are resent until acknowledged; snapshots and plain input are latest-wins and may drop.
+function makeRoomNet() {
+  let ns; const nsP = window.claude.use('room').then(r => (ns = r), () => (ns = null));
+  const CH = 3000, sleep = ms => new Promise(r => setTimeout(r, ms)), roomName = code => 'duskbound-' + code.toLowerCase();
+  const canZ = typeof CompressionStream !== 'undefined' && typeof DecompressionStream !== 'undefined';
+  const b64 = u8 => { let s = ''; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); };
+  const stream = (bytes, t) => new Response(new Blob([bytes]).stream().pipeThrough(t)).arrayBuffer().then(b => new Uint8Array(b));
+  async function pack(obj) {
+    const raw = new TextEncoder().encode(JSON.stringify(obj));
+    if (canZ && raw.length > 500) try { return { z: 1, s: b64(await stream(raw, new CompressionStream('deflate'))) }; } catch (e) { }
+    return { z: 0, s: b64(raw) };
+  }
+  async function unpack(z, s) {
+    let u8 = Uint8Array.from(atob(s), c => c.charCodeAt(0));
+    if (z) u8 = await stream(u8, new DecompressionStream('deflate'));
+    return JSON.parse(new TextDecoder().decode(u8));
+  }
+  // Collects the parts of one message; resolves the decoded payload once all have arrived.
+  function gather(bufs, d) {
+    let b = bufs.get(d.s); if (!b) { b = { n: d.n, z: d.z, parts: [], got: 0 }; bufs.set(d.s, b); }
+    if (typeof d.d !== 'string' || d.i < 0 || d.i >= b.n || b.parts[d.i] != null) return null;
+    b.parts[d.i] = d.d; if (++b.got < b.n) return null;
+    bufs.delete(d.s); return unpack(b.z, b.parts.join(''));
+  }
+  const code = e => (e && e.code) || 'error';
+  async function open(name, fail) {
+    await nsP; if (!ns) { fail('no-room'); return null; }
+    try { return await ns.join(name); } catch (e) { fail(code(e)); return null; }
+  }
+  return {
+    ok: () => true,
+    snapIv: n => n <= 1 ? 1 / 15 : n === 2 ? 0.1 : 0.13,
+    inIv: 1 / 20,
+    host(gameCode, h) {
+      let room = null, closed = false, iv = 0; const guests = new Map(), refused = new Set();
+      const emit = m => room.emit('m', m).catch(e => { if (code(e) === 'not_permitted' && !closed) { handle.close(); h.error('not-allowed-to-host'); } });
+      const handle = { close() { closed = true; clearInterval(iv); for (const g of guests.values()) g.closed = true; guests.clear(); if (room) room.leave().catch(() => { }); } };
+      function out(g, d, rel) {
+        if (g.closed) return;
+        const id = rel ? ++g.outSeq : ++g.uId, rec = { parts: null, t: Date.now() };
+        if (rel) g.unacked.set(id, rec);
+        pack(d).then(pk => {
+          if (g.closed) return; const n = Math.max(1, Math.ceil(pk.s.length / CH));
+          rec.parts = []; for (let i = 0; i < n; i++) rec.parts.push({ to: g.peer, k: rel ? 'r' : 'u', s: id, i, n, z: pk.z, d: pk.s.slice(i * CH, (i + 1) * CH) });
+          for (const m of rec.parts) emit(Object.assign({ a: g.inSeq }, m));
+        });
+      }
+      function deliver(g, d) { if (!g.closed && g.conn.onData && d && typeof d === 'object') g.conn.onData(d); }
+      function fromGuest(p) {
+        if (p.sameTab || refused.has(p.peer)) return; const pr = p.presence || {};
+        if (pr.role !== 'guest' || pr.code !== gameCode) return;
+        let g = guests.get(p.peer);
+        if (!g) {
+          g = { peer: p.peer, inSeq: 0, uSeq: 0, outSeq: 0, uId: 0, unacked: new Map(), closed: false };
+          g.conn = { send: d => out(g, d, !(d && d.t === 's')), onData: null, onClose: null, close: () => { g.closed = true; guests.delete(g.peer); refused.add(g.peer); } };
+          guests.set(p.peer, g); h.conn(g.conn); if (g.closed) return;
+        }
+        const ack = num(pr.ack, 0); for (const s of g.unacked.keys()) if (s <= ack) g.unacked.delete(s);
+        let got = false;
+        if (Array.isArray(pr.out)) for (const e of pr.out.slice().sort((a, b) => a[0] - b[0])) if (Array.isArray(e) && e[0] > g.inSeq) { g.inSeq = e[0]; got = true; deliver(g, e[1]); }
+        if (got && !g.closed) emit({ to: g.peer, k: 'a', a: g.inSeq });
+        if (Array.isArray(pr.u) && pr.u[0] > g.uSeq) { g.uSeq = pr.u[0]; deliver(g, pr.u[1]); }
+      }
+      function left(peer) { refused.delete(peer); const g = guests.get(peer); if (!g) return; guests.delete(peer); g.closed = true; if (g.conn.onClose) g.conn.onClose(); }
+      function resend() {
+        const now = Date.now();
+        for (const g of guests.values()) { let k = 0; for (const [, r] of g.unacked) { if (++k > 3) break; if (r.parts && now - r.t > 700) { r.t = now; for (const m of r.parts) emit(Object.assign({ a: g.inSeq }, m)); } } }
+      }
+      (async () => {
+        room = await open(roomName(gameCode), t => !closed && h.error(t)); if (!room) return; if (closed) return room.leave().catch(() => { });
+        await sleep(1200); if (closed) return;
+        if (room.peers().some(p => !p.sameTab && p.presence && p.presence.role === 'host')) { handle.close(); return h.error('unavailable-id'); }
+        room.presence({ role: 'host', code: gameCode }).catch(() => { });
+        room.onPeers(ch => { if (closed) return; for (const p of ch.left) left(p.peer); for (const p of ch.joined.concat(ch.updated)) fromGuest(p); });
+        iv = setInterval(resend, 300); h.open();
+      })();
+      return handle;
+    },
+    join(gameCode, h) {
+      let room = null, closed = false, hostPeer = null, conn = null, outSeq = 0, uS = 0, inSeq = 0, uDone = 0, chain = Promise.resolve(), outQ = [];
+      const rBufs = new Map(), uBufs = new Map(), done = new Map();
+      const handle = { close() { closed = true; if (room) room.leave().catch(() => { }); } };
+      const myPeer = () => { const p = room.peers().find(p => p.sameTab); return p && p.peer; };
+      const findHost = () => { if (!hostPeer) { const p = room.peers().find(p => !p.sameTab && p.presence && p.presence.role === 'host' && p.presence.code === gameCode); if (p) hostPeer = p.peer; } return hostPeer; };
+      const pres = patch => room.presence(patch).catch(() => { });
+      function onMsg(m) {
+        if (closed || m.sameTab || m.peer !== hostPeer || !conn) return; const d = m.data;
+        if (!d || typeof d !== 'object' || d.to !== myPeer()) return;
+        if (typeof d.a === 'number') { const n = outQ.length; outQ = outQ.filter(e => e[0] > d.a); if (outQ.length !== n) pres({ out: outQ }); }
+        if (d.k === 'r' && d.s > inSeq && !done.has(d.s)) {
+          const p = gather(rBufs, d); if (!p) return;
+          done.set(d.s, p.catch(() => null));
+          // deliver reliable messages strictly in order
+          chain = chain.then(async () => { while (done.has(inSeq + 1)) { const v = await done.get(inSeq + 1); done.delete(++inSeq); if (!closed && v && conn.onData) conn.onData(v); } pres({ ack: inSeq }); });
+        } else if (d.k === 'r') pres({ ack: inSeq });
+        else if (d.k === 'u' && d.s > uDone) {
+          for (const s of uBufs.keys()) if (s < d.s - 4) uBufs.delete(s);
+          const p = gather(uBufs, d); if (p) p.then(v => { if (!closed && d.s > uDone && conn.onData) { uDone = d.s; conn.onData(v); } }, () => { });
+        }
+      }
+      (async () => {
+        room = await open(roomName(gameCode), t => !closed && h.error(t)); if (!room) return; if (closed) return room.leave().catch(() => { });
+        pres({ role: 'guest', code: gameCode, out: [], ack: 0 });
+        room.on('m', onMsg);
+        room.onPeers(ch => { if (closed) return; findHost(); if (hostPeer && ch.left.some(p => p.peer === hostPeer) && conn && conn.onClose) { closed = true; conn.onClose(); } });
+        const t0 = Date.now(); while (!closed && !findHost() && Date.now() - t0 < 8000) await sleep(200);
+        if (closed) return; if (!hostPeer) { handle.close(); return h.error('peer-unavailable'); }
+        conn = {
+          send(d) {
+            if (closed || !d) return;
+            if (d.t === 'i' && d.d == null && !d.q && !d.i) { pres({ u: [++uS, d] }); return; }
+            outQ.push([++outSeq, d]); while (outQ.length > 1 && JSON.stringify(outQ).length > 3000) outQ.shift();
+            pres({ out: outQ });
+          },
+          onData: null, onClose: null, close: () => handle.close()
+        };
+        h.open(conn);
+      })();
+      return handle;
+    }
+  };
+}
+if (window.DUSK_NO_NET && window.claude && typeof window.claude.use === 'function') { NetT = makeRoomNet(); NetT.hint = ' of this same page (it must be shared with them)'; }
 function genCode() { const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let s = ''; for (let i = 0; i < 5; i++) s += pick(A); return s; }
 function leaveNet() {
   if (net.handle) { try { net.handle.close(); } catch (e) { } }
   net.handle = null; net.host = null; net.conns = []; net.lobby = []; net.mode = 'solo'; net.ready = false; net.myId = 1;
 }
 function netFail(msg) { leaveNet(); showMenu(msg); }
+// Plain-language reasons for transport errors (the claude.ai room transport reports its own codes).
+const netWhy = t => ({
+  'no-room': 'Live co-op on this page needs you signed in to claude.ai and opening the page from a link shared with you (not a public link).',
+  'not-allowed-to-host': 'Only the page owner, or people given Edit or Contribute access, can host here. You can still join a room.',
+  not_permitted: 'This page is not allowed to open live rooms for you.', limit_reached: 'Too many rooms are open right now. Try again in a minute.',
+  upstream_error: 'The live connection did not answer. Try again.'
+})[t];
 const cleanName = (s, i) => (String(s || '').replace(/[^\w \-'.]/g, '').trim().slice(0, 14)) || ('Wanderer ' + i);
 function hostGame() {
   if (!NetT.ok()) return showMenu(noNetMsg());
@@ -661,7 +795,7 @@ function hostGame() {
   const handle = net.handle = NetT.host(net.code, {
     open() { if (net.handle === handle) { net.ready = true; if (game.state === 'lobby') showLobby(); } },
     conn(c) { if (net.handle === handle) onClientConn(c); else c.close(); },
-    error(t) { if (net.handle !== handle) return; if (t === 'unavailable-id') hostGame(); else if (!net.ready) netFail('Could not open a room (' + t + '). Check your connection and try again.'); }
+    error(t) { if (net.handle !== handle) return; if (t === 'unavailable-id') hostGame(); else if (!net.ready || netWhy(t)) netFail(netWhy(t) || 'Could not open a room (' + t + '). Check your connection and try again.'); }
   });
   game.state = 'lobby'; showLobby(); startTicker();
 }
@@ -749,9 +883,9 @@ function joinGame(code) {
       net.host = c; c.onData = d => { try { clientRecv(d); } catch (e) { console.error(e); } }; c.onClose = () => { if (net.handle === handle) netFail('Lost connection to the host.'); };
       c.send({ t: 'hello', name: net.name, hero: net.hero });
     },
-    error(t) { if (net.handle === handle) netFail(t === 'peer-unavailable' ? 'No room found with code ' + code + '.' : 'Connection failed (' + t + ').'); }
+    error(t) { if (net.handle === handle) netFail(t === 'peer-unavailable' ? 'No room found with code ' + code + '.' : netWhy(t) || 'Connection failed (' + t + ').'); }
   });
-  setTimeout(() => { if (net.handle === handle && !net.host) netFail('Could not reach room ' + code + '.'); }, 15000);
+  setTimeout(() => { if (net.handle === handle && !net.host) netFail('Could not reach room ' + code + '.'); }, 22000);
 }
 function clientRecv(d) {
   if (!d || net.mode !== 'client') return;
@@ -819,7 +953,7 @@ function clientUpdate(dt) {
   updFx(dt);
   net.inT -= dt;
   if (net.inT <= 0 && net.host) {
-    net.inT = 1 / 30;
+    net.inT = NetT.inIv || 1 / 30;
     net.host.send({ t: 'i', x: r1(p.x), y: r1(p.y), f: r2(p.face), m: p.moving ? 1 : 0, l: inp.l ? 1 : 0, r: o.r || (inp.skill ? 1 : 0), ax: Math.round(inp.aim.x), ay: Math.round(inp.aim.y), tp: p.tp, d: o.d, q: o.q, i: o.i });
     net.out = {};
   }
@@ -1007,7 +1141,7 @@ function showMenu(msg) {
 }
 function showLobby() {
   const host = net.mode === 'host';
-  let h = '<h2>Party</h2><div class="sub">' + (host && !net.ready ? 'Opening a room…' : 'Room code <span class="code">' + esc(net.code) + '</span>' + (host ? '<br>Share this code — friends enter it under Join on the title screen.' : '')) + '</div><div class="plist">';
+  let h = '<h2>Party</h2><div class="sub">' + (host && !net.ready ? 'Opening a room…' : 'Room code <span class="code">' + esc(net.code) + '</span>' + (host ? '<br>Share this code — friends enter it under Join on the title screen' + (NetT.hint || '') + '.' : '')) + '</div><div class="plist">';
   for (const q of net.lobby) h += '<div><span style="color:' + HEROES[q.hero].color + '">●</span> ' + esc(q.name) + (q.id === net.myId ? ' (you)' : '') + (q.id === 1 ? ' — host' : '') + ' <i>' + HEROES[q.hero].name + '</i></div>';
   h += '</div>' + heroCards(net.hero, true) + '<div class="row">' + (host ? '<button id="start">Set out' + (net.lobby.length > 1 ? ' (' + net.lobby.length + ' players)' : ' alone') + '</button>' : '<span class="wait">Waiting for the host to set out…</span>') + '<button id="leave" class="ghost">Leave</button></div>';
   show(h); bindHeroCards(selectHero);
@@ -1089,7 +1223,7 @@ function tick(ts) {
     if (net.mode === 'client') clientUpdate(dt);
     else if (game.over) updFx(dt);
     else if (!(net.mode === 'solo' && (game.paused || me.choice))) update(dt);
-    if (net.mode === 'host') { net.snapT -= dt; if (net.snapT <= 0) { net.snapT = 0.05; sendSnaps(); } }
+    if (net.mode === 'host') { net.snapT -= dt; if (net.snapT <= 0) { net.snapT = NetT.snapIv ? NetT.snapIv(net.conns.length) : 0.05; sendSnaps(); } }
   }
   for (const k in pressed) delete pressed[k];
   syncChoice();
