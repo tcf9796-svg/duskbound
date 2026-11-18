@@ -1066,7 +1066,8 @@ function makeRoomNet() {
   }
   const code = e => (e && e.code) || 'error';
   async function open(name, fail) {
-    await nsP; if (!ns) { fail('no-room'); return null; }
+    await nsP;
+    if (!ns) { let u = null; try { u = await window.claude.use('user'); } catch (e) { } fail(u ? 'no-room' : 'signed-out'); return null; }
     try { return await ns.join(name); } catch (e) { fail(code(e)); return null; }
   }
   return {
@@ -1171,7 +1172,8 @@ function leaveNet() {
 function netFail(msg) { leaveNet(); showMenu(msg); }
 // Plain-language reasons for transport errors (the claude.ai room transport reports its own codes).
 const netWhy = t => ({
-  'no-room': 'Live co-op on this page needs you signed in to claude.ai and opening the page from a link shared with you (not a public link).',
+  'signed-out': 'Co-op here needs you signed in to claude.ai. Sign in to claude.ai in this browser, then open the page link again. (Solo works without signing in.)',
+  'no-room': 'Live rooms are not available in this view. Open the page link directly in Safari or Chrome while signed in to claude.ai — not through a public share link, and not inside another app.',
   'not-allowed-to-host': 'Only the page owner, or people given Edit or Contribute access, can host here. You can still join a room.',
   not_permitted: 'This page is not allowed to open live rooms for you.', limit_reached: 'Too many rooms are open right now. Try again in a minute.',
   upstream_error: 'The live connection did not answer. Try again.'
