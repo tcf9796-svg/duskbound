@@ -1715,6 +1715,22 @@ function startHosted() {
   net.away.clear(); players = net.lobby.map(q => { const p = newPlayer(q.id, q.hero, q.name); p.remote = q.id !== 1; p.tok = q.tok || ''; return p; });
   me = players.find(p => p.id === 1); beginRun(); sendWorld(); net.snapT = 0;
 }
+// Phones only turn a tap into a click when no other finger is down, so a thumb on the move stick
+// would swallow taps on cards. Act on the touch itself (finger lifted inside the element), and keep click for mice.
+function onTap(el, fn) {
+  let id = null, last = 0;
+  const fire = () => { const n = Date.now(); if (n - last > 400) { last = n; fn(); } };
+  el.onclick = fire;
+  el.addEventListener('touchstart', e => { id = e.changedTouches[0].identifier; }, { passive: true });
+  el.addEventListener('touchend', e => {
+    for (const t of e.changedTouches) {
+      if (t.identifier !== id) continue; id = null;
+      const r = el.getBoundingClientRect();
+      if (t.clientX >= r.left && t.clientX <= r.right && t.clientY >= r.top && t.clientY <= r.bottom) { e.preventDefault(); fire(); }
+    }
+  }, { passive: false });
+  el.addEventListener('touchcancel', () => { id = null; });
+}
 let shownChoice = '';
 function syncChoice() {
   const on = me && game.state === 'play' && !game.over && me.choice && me.choice.length;
@@ -1724,7 +1740,7 @@ function syncChoice() {
   let h = '<h2>' + esc(T(me.choiceTitle || 'Choose')) + '</h2><div class="cards">';
   me.choice.forEach((t, i) => { const rk = me.talents[t.id] || 0; h += '<div class="card" data-i="' + i + '"><span class="key">' + (i + 1) + '</span><div class="tag"' + (t.hero ? ' style="color:' + HEROES[t.hero].color + '"' : '') + '>' + T(t.hero ? HEROES[t.hero].name : 'Boon') + '</div><h3>' + T(t.name) + '</h3><p>' + T(t.desc) + '</p><div class="pips">' + '●'.repeat(rk + 1) + '○'.repeat(Math.max(0, t.max - rk - 1)) + '</div></div>'; });
   choiceEl.className = net.mode === 'solo' ? 'solo' : 'coop'; choiceEl.innerHTML = h + '</div>';
-  choiceEl.querySelectorAll('.card').forEach(cd => cd.onclick = () => chooseTalent(+cd.dataset.i));
+  choiceEl.querySelectorAll('.card').forEach(cd => onTap(cd, () => chooseTalent(+cd.dataset.i)));
 }
 function chooseTalent(i) {
   if (!me || !me.choice || !me.choice[i] || game.state !== 'play') return;
