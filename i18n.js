@@ -80,8 +80,8 @@ const ZH = {
   'Only the page owner, or people given Edit or Contribute access, can host here. You can still join a room.': '只有頁面擁有者或具有編輯／貢獻權限的人能在這裡開房。你仍然可以加入房間。',
   'This page is not allowed to open live rooms for you.': '此頁面無法為你開啟即時房間。', 'Too many rooms are open right now. Try again in a minute.': '目前開啟的房間太多，請稍後再試。',
   'The live connection did not answer. Try again.': '即時連線沒有回應，請再試一次。',
-  'That party has already set out. Ask the host to return to the lobby.': '這支隊伍已經出發了。請房主回到大廳。', 'That party is full (4 players).': '這支隊伍已滿（4 人）。',
-  'Enter the 5-character room code from your host.': '請輸入房主提供的 5 碼房間代碼。', 'Lost connection to the host.': '與房主的連線中斷。',
+  'That party has already set out. Ask the host to return to the lobby.': '這支隊伍已經出發了。請房主回到大廳。', 'That party is full (4 players).': '這支隊伍已滿（4 人）。', 'You rejoined this game from another window.': '你已從另一個視窗重新加入這場遊戲。',
+  'Enter the 5-character room code from your host.': '請輸入房主提供的 5 碼房間代碼。', 'Lost connection to the host. Tap Join to rejoin the game.': '與房主的連線中斷。點「加入」即可重新加入遊戲。',
   // rotate screen
   'Turn your phone sideways': '請將手機橫放', 'Duskbound plays best in landscape.': '橫向畫面遊玩效果最佳。', 'Play upright anyway': '仍要直向遊玩'
 };
@@ -89,7 +89,8 @@ const ZH = {
 const ZH_RX = [
   [/^Day (\d+)$/, '第 $1 天'], [/^Level (\d+)$/, '等級 $1'], [/^Chapter (\d+)$/, '第 $1 章'], [/^(\d+) remaining$/, '剩餘 $1'],
   [/^Buy a boon — (\d+) gold$/, '購買祝福 — $1 金幣'], [/^(.+) has fallen$/, '$1 倒下了'], [/^(.+) is back up$/, '$1 重新站起來了'],
-  [/^(.+) left the party$/, '$1 離開了隊伍'], [/^No room found with code (.+)\.$/, '找不到代碼為 $1 的房間。'],
+  [/^(.+) left the party$/, '$1 離開了隊伍'], [/^(.+) lost connection$/, '$1 連線中斷'], [/^(.+) rejoined the party$/, '$1 重新加入了隊伍'],
+  [/^They can rejoin with room code (.+)$/, '可用房間代碼 $1 重新加入'], [/^No room found with code (.+)\.$/, '找不到代碼為 $1 的房間。'],
   [/^Could not reach room (.+)\.$/, '無法連上房間 $1。'], [/^Connection failed \((.+)\)\.$/, '連線失敗（$1）。'],
   [/^Could not open a room \((.+)\)\. Check your connection and try again\.$/, '無法開啟房間（$1）。請檢查網路後再試一次。'],
   [/^DASH (\d+)$/, '衝刺 $1'], [/^Wanderer (\d+)$/, '旅人 $1']

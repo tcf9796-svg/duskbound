@@ -114,7 +114,7 @@ const newGame = () => ({ state: 'play', chapter: 1, time: 0, boss: null, banner:
 let game = newGame(); game.state = 'menu';
 let players = [], me = null, world = null, enemies = [], projs = [], zones = [], pickups = [], parts = [], texts = [], fxs = [];
 let night = 0, cam = { x: 0, y: 0 }, groundPat = null, nextId = 1, evQ = [];
-const net = { mode: 'solo', conns: [], host: null, handle: null, lobby: [], myId: 1, nextPid: 2, name: '', hero: 'bramble', code: '', ready: false, snapT: 0, inT: 0, out: {}, pickedSeq: -1, worker: null };
+const net = { mode: 'solo', away: new Map(), conns: [], host: null, handle: null, lobby: [], myId: 1, nextPid: 2, name: '', hero: 'bramble', code: '', ready: false, snapT: 0, inT: 0, out: {}, pickedSeq: -1, worker: null };
 try { net.name = localStorage.getItem('duskbound-name') || ''; } catch (e) { }
 const ETN = ['husk', 'spitter', 'ram', 'bloat', 'wisp', 'boss'], STN = ['chase', 'wind', 'rest', 'charge', 'fuse', 'bwind', 'bcharge', 'ring', 'slam'];
 const DASH_CD = 2.2, ULT_CD = 40;
@@ -446,7 +446,7 @@ function update(dt) {
   for (const p of players) {
     const inp = p.remote ? p.in : localInput();
     updPlayer(p, inp, dt);
-    if (p.remote) { p.in.dash = p.in.ult = p.in.interact = false; }
+    if (p.remote) { p.in.dash = p.in.ult = p.in.interact = p.in.skill = false; }
     if (game.over) return;
   }
   // enemies
@@ -789,6 +789,14 @@ const netWhy = t => ({
   not_permitted: 'This page is not allowed to open live rooms for you.', limit_reached: 'Too many rooms are open right now. Try again in a minute.',
   upstream_error: 'The live connection did not answer. Try again.'
 })[t];
+// Rejoining: each device keeps a random token (never shown to other players) and the last room it joined.
+function deviceToken() {
+  let t = ''; try { t = localStorage.getItem('duskbound-tok') || ''; } catch (e) { }
+  if (!/^[a-z0-9]{16,40}$/.test(t)) { t = ''; for (let i = 0; i < 24; i++) t += 'abcdefghijklmnopqrstuvwxyz0123456789'[Math.floor(Math.random() * 36)]; try { localStorage.setItem('duskbound-tok', t); } catch (e) { } }
+  return t;
+}
+function rememberRoom(code) { try { localStorage.setItem('duskbound-room', JSON.stringify({ code, t: Date.now() })); } catch (e) { } }
+function lastRoom() { try { const r = JSON.parse(localStorage.getItem('duskbound-room') || 'null'); if (r && /^[A-Z0-9]{5}$/.test(r.code) && Date.now() - r.t < 3 * 3600e3) return r.code; } catch (e) { } return ''; }
 const cleanName = (s, i) => (String(s || '').replace(/[^\w \-'.]/g, '').trim().slice(0, 14)) || ('Wanderer ' + i);
 function hostGame() {
   if (!NetT.ok()) return showMenu(noNetMsg());
@@ -801,31 +809,63 @@ function hostGame() {
   });
   game.state = 'lobby'; showLobby(); startTicker();
 }
+// A connection says hello first; only then do we know whether it is a new player (lobby only)
+// or a teammate coming back to a run in progress (matched by the token their device keeps).
 function onClientConn(c) {
-  const refuse = why => { c.send({ t: 'no', why }); setTimeout(() => c.close(), 600); };
-  if (game.state !== 'lobby') return refuse('That party has already set out. Ask the host to return to the lobby.');
-  if (net.conns.length >= 3) return refuse('That party is full (4 players).');
-  c.pid = net.nextPid++; c.inGame = false; net.conns.push(c);
+  c.refuse = why => { c.pending = false; c.send({ t: 'no', why }); setTimeout(() => c.close(), 600); };
+  c.pending = true; c.pid = 0; c.inGame = false;
   c.onData = d => { try { hostRecv(c, d); } catch (e) { console.error(e); } }; c.onClose = () => dropClient(c);
+  setTimeout(() => { if (c.pending) { c.pending = false; c.close(); } }, 15000);
 }
+function greetClient(c, d) {
+  c.pending = false;
+  const tok = typeof d.tok === 'string' ? d.tok.slice(0, 40) : '', name = cleanName(d.name, net.nextPid), hero = HEROES[d.hero] ? d.hero : 'bramble';
+  if (game.state === 'lobby') {
+    if (net.conns.length >= 3) return c.refuse('That party is full (4 players).');
+    c.pid = net.nextPid++; net.conns.push(c); net.lobby.push({ id: c.pid, name, hero, tok }); sendLobby(); showLobby(); return;
+  }
+  if (tok && game.state === 'play' && !game.over) {
+    // their old connection may not have timed out yet (e.g. the app crashed a moment ago): retire it first
+    const live = players.find(p => p.remote && p.tok === tok), old = live && net.conns.find(q => q.pid === live.id);
+    if (old) { dropClient(old); old.send({ t: 'no', why: 'You rejoined this game from another window.' }); setTimeout(() => old.close(), 600); }
+    const p = net.away.get(tok); if (p) return rejoinClient(c, p);
+  }
+  c.refuse('That party has already set out. Ask the host to return to the lobby.');
+}
+function rejoinClient(c, p) {
+  net.away.delete(p.tok); c.pid = p.id; c.inGame = true; net.conns.push(c);
+  net.lobby.push({ id: p.id, name: p.name, hero: p.hero, tok: p.tok });
+  const mate = players.find(q => !q.down) || players[0];
+  if (mate) { p.x = p.tx = clamp(mate.x + rand(-50, 50), 30, world.S - 30); p.y = p.ty = clamp(mate.y + rand(-50, 50), 30, world.S - 30); }
+  p.tp++; p.dashT = 0; p.flurry = null; p.in = newPlayer(0, p.hero, '').in; p.iT = Math.max(p.iT, 2);
+  players.push(p);
+  c.send(worldMsg(p.id));
+  for (const q of net.conns) if (q !== c && q.inGame) q.send({ t: 'roster', players: roster() });
+  banner(p.name + ' rejoined the party', '', 2.5);
+}
+const roster = () => players.map(p => ({ id: p.id, name: p.name, hero: p.hero, x: p.x, y: p.y, tp: p.tp }));
 function dropClient(c) {
   const i = net.conns.indexOf(c); if (i < 0) return; net.conns.splice(i, 1);
   const entry = net.lobby.find(q => q.id === c.pid); net.lobby = net.lobby.filter(q => q.id !== c.pid);
   if (game.state === 'lobby') { sendLobby(); showLobby(); }
   else if (game.state === 'play') {
-    players = players.filter(p => p.id !== c.pid); if (entry) banner(entry.name + ' left the party', '', 2.5);
+    const p = players.find(q => q.id === c.pid); players = players.filter(q => q.id !== c.pid);
+    // keep the hero (level, boons, gold) so they can come back to this run
+    if (p && p.tok && !game.over) { net.away.set(p.tok, p); banner(p.name + ' lost connection', 'They can rejoin with room code ' + net.code, 3.5); }
+    else if (entry) banner(entry.name + ' left the party', '', 2.5);
     if (!game.over && players.every(q => q.down)) { game.over = 'dead'; showEnd(); }
   }
 }
-function sendLobby() { for (const c of net.conns) c.send({ t: 'lobby', you: c.pid, code: net.code, players: net.lobby }); }
+function sendLobby() { const pl = net.lobby.map(q => ({ id: q.id, name: q.name, hero: q.hero })); for (const c of net.conns) c.send({ t: 'lobby', you: c.pid, code: net.code, players: pl }); }
 function hostRecv(c, d) {
   if (!d || typeof d !== 'object') return;
-  if (d.t === 'hello') { if (net.lobby.some(q => q.id === c.pid)) return; net.lobby.push({ id: c.pid, name: cleanName(d.name, c.pid), hero: HEROES[d.hero] ? d.hero : 'bramble' }); sendLobby(); if (game.state === 'lobby') showLobby(); }
-  else if (d.t === 'hero') { const q = net.lobby.find(q => q.id === c.pid); if (q && HEROES[d.hero] && game.state === 'lobby') { q.hero = d.hero; sendLobby(); showLobby(); } }
+  if (c.pending) { if (d.t === 'hello') greetClient(c, d); return; }
+  if (!net.conns.includes(c)) return;
+  if (d.t === 'hero') { const q = net.lobby.find(q => q.id === c.pid); if (q && HEROES[d.hero] && game.state === 'lobby') { q.hero = d.hero; sendLobby(); showLobby(); } }
   else if (d.t === 'i' || d.t === 'pick') {
     const p = players.find(q => q.id === c.pid); if (!p || game.state !== 'play') return;
     if (d.t === 'pick') { if (d.q === p.choiceSeq) applyPick(p, d.i | 0); return; }
-    const I = p.in; I.l = !!d.l; I.skill = !!d.r; I.aim = { x: num(d.ax), y: num(d.ay) };
+    const I = p.in; I.l = !!d.l; if (d.r) I.skill = true; I.aim = { x: num(d.ax), y: num(d.ay) };
     if (d.tp === p.tp && !p.down) { p.tx = clamp(num(d.x, p.x), 30, world.S - 30); p.ty = clamp(num(d.y, p.y), 30, world.S - 30); p.face = num(d.f); p.moving = !!d.m; }
     if (d.d != null) { I.dash = true; I.dashA = num(d.d); }
     if (d.q) I.ult = true; if (d.i) I.interact = true;
@@ -882,8 +922,8 @@ function joinGame(code) {
   const handle = net.handle = NetT.join(code, {
     open(c) {
       if (net.handle !== handle) return c.close();
-      net.host = c; c.onData = d => { try { clientRecv(d); } catch (e) { console.error(e); } }; c.onClose = () => { if (net.handle === handle) netFail('Lost connection to the host.'); };
-      c.send({ t: 'hello', name: net.name, hero: net.hero });
+      net.host = c; c.onData = d => { try { clientRecv(d); } catch (e) { console.error(e); } }; c.onClose = () => { if (net.handle === handle) netFail('Lost connection to the host. Tap Join to rejoin the game.'); };
+      c.send({ t: 'hello', name: net.name, hero: net.hero, tok: deviceToken() }); rememberRoom(code);
     },
     error(t) { if (net.handle === handle) netFail(t === 'peer-unavailable' ? 'No room found with code ' + code + '.' : netWhy(t) || 'Connection failed (' + t + ').'); }
   });
@@ -899,6 +939,9 @@ function clientRecv(d) {
     groundPat = makeGround(world.pal);
     players = d.players.map(q => { const p = newPlayer(q.id, q.hero, q.name); p.x = p.tx = q.x; p.y = p.ty = q.y; p.tp = q.tp; return p; });
     me = players.find(p => p.id === d.you); hide(); banner(world.pal.name, 'Chapter ' + d.ch, 4);
+  }
+  else if (d.t === 'roster' && world && me && Array.isArray(d.players)) {
+    for (const q of d.players) if (q && HEROES[q.hero] && !players.some(p => p.id === q.id)) { const p = newPlayer(q.id, q.hero, cleanName(q.name, q.id)); p.x = p.tx = num(q.x); p.y = p.ty = num(q.y); p.tp = q.tp; players.push(p); }
   }
   else if (d.t === 's' && world && me) applySnap(d);
 }
@@ -941,7 +984,7 @@ function clientUpdate(dt) {
       if (p.dashT > 0) { p.dashT -= dt; p.x += Math.cos(p.dashA) * 920 * dt; p.y += Math.sin(p.dashA) * 920 * dt; trail(p); } else walk(p, inp, dt);
       collideWorld(p, p.r);
     }
-    if (inp.skill) o.r = 1; if (inp.ult) o.q = 1; if (inp.interact) o.i = 1;
+    if (inp.skill) { o.r = 1; net.skillHold = 0.2; } if (inp.ult) o.q = 1; if (inp.interact) o.i = 1;
   }
   const k = Math.min(1, dt * 14);
   for (const q of players) if (q !== p) { q.x += (q.tx - q.x) * k; q.y += (q.ty - q.y) * k; if (q.moving) q.walk += dt; if (q.dashT > 0) trail(q); }
@@ -953,10 +996,10 @@ function clientUpdate(dt) {
   }
   for (const q of pickups) { q.x += (q.tx - q.x) * k; q.y += (q.ty - q.y) * k; q.t += dt; }
   updFx(dt);
-  net.inT -= dt;
+  net.inT -= dt; net.skillHold = (net.skillHold || 0) - dt;
   if (net.inT <= 0 && net.host) {
     net.inT = NetT.inIv || 1 / 30;
-    net.host.send({ t: 'i', x: r1(p.x), y: r1(p.y), f: r2(p.face), m: p.moving ? 1 : 0, l: inp.l ? 1 : 0, r: o.r || (inp.skill ? 1 : 0), ax: Math.round(inp.aim.x), ay: Math.round(inp.aim.y), tp: p.tp, d: o.d, q: o.q, i: o.i });
+    net.host.send({ t: 'i', x: r1(p.x), y: r1(p.y), f: r2(p.face), m: p.moving ? 1 : 0, l: inp.l ? 1 : 0, r: o.r || (inp.skill || net.skillHold > 0 ? 1 : 0), ax: Math.round(inp.aim.x), ay: Math.round(inp.aim.y), tp: p.tp, d: o.d, q: o.q, i: o.i });
     net.out = {};
   }
 }
@@ -1136,7 +1179,7 @@ function saveName() { const el = $('nm'); if (el) { net.name = el.value.trim().s
 function showMenu(msg) {
   game.state = 'menu'; game.over = null; me = null; players = [];
   show('<h1>DUSKBOUND</h1><div class="sub">' + L('Three days. Three nights. Then the Gloam Stag wakes.<br>Roam the wood alone or with up to three friends, and be ready when it comes for you.', '三個白晝，三個黑夜，然後幽暮雄鹿將會甦醒。<br>獨自或與最多三位朋友一同漫遊森林，在它找上你之前做好準備。') + '</div>' + heroCards(net.hero) +
-    '<div class="row"><input id="nm" maxlength="14" placeholder="' + L('Your name', '你的名字') + '" value="' + esc(net.name) + '"><button id="solo">' + L('Play solo', '單人遊玩') + '</button><button id="hostb">' + L('Host co-op', '開設合作房') + '</button><span class="sep"></span><input id="code" maxlength="5" placeholder="' + L('CODE', '代碼') + '" autocomplete="off"><button id="joinb">' + L('Join', '加入') + '</button></div>' +
+    '<div class="row"><input id="nm" maxlength="14" placeholder="' + L('Your name', '你的名字') + '" value="' + esc(net.name) + '"><button id="solo">' + L('Play solo', '單人遊玩') + '</button><button id="hostb">' + L('Host co-op', '開設合作房') + '</button><span class="sep"></span><input id="code" maxlength="5" placeholder="' + L('CODE', '代碼') + '" autocomplete="off" value="' + esc(lastRoom()) + '"><button id="joinb">' + L('Join', '加入') + '</button></div>' +
     '<div id="msg">' + esc(T(msg) || '') + '</div>' + controlsHtml() + '<button id="lang" class="ghost langbtn">' + (LANG === 'zh' ? '🌐 English' : '🌐 繁體中文') + '</button>');
   $('lang').onclick = () => { saveName(); setLang(LANG === 'zh' ? 'en' : 'zh'); showMenu(msg); };
   bindHeroCards(selectHero);
@@ -1162,7 +1205,7 @@ function startSolo() {
   initAudio(); leaveNet(); players = [newPlayer(1, net.hero, cleanName(net.name, 1))]; me = players[0]; beginRun();
 }
 function startHosted() {
-  players = net.lobby.map(q => { const p = newPlayer(q.id, q.hero, q.name); p.remote = q.id !== 1; return p; });
+  net.away.clear(); players = net.lobby.map(q => { const p = newPlayer(q.id, q.hero, q.name); p.remote = q.id !== 1; p.tok = q.tok || ''; return p; });
   me = players.find(p => p.id === 1); beginRun(); sendWorld(); net.snapT = 0;
 }
 let shownChoice = '';
@@ -1194,7 +1237,7 @@ function showEnd() {
   if ($('leave')) $('leave').onclick = () => { leaveNet(); showMenu(); };
 }
 function endRun() {
-  if (net.mode === 'host') { game.state = 'lobby'; game.over = null; me = null; players = []; for (const c of net.conns) c.inGame = false; sendLobby(); showLobby(); }
+  if (net.mode === 'host') { net.away.clear(); game.state = 'lobby'; game.over = null; me = null; players = []; for (const c of net.conns) c.inGame = false; sendLobby(); showLobby(); }
   else showMenu();
 }
 function nextChapter() {
