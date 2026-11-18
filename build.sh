@@ -17,8 +17,8 @@ inline() {
       if (extra != "") { print "<script>"; while ((getline l < extra) > 0) print l; close(extra); print "</script>" }
       next
     }
-    /<script src="[a-z]+\.js"><\/script>/ {
-      match($0, /"[a-z]+\.js"/); f = substr($0, RSTART + 1, RLENGTH - 2)
+    /<script src="[a-z0-9]+\.js"><\/script>/ {
+      match($0, /"[a-z0-9]+\.js"/); f = substr($0, RSTART + 1, RLENGTH - 2)
       print "<script>"; while ((getline l < f) > 0) print l; close(f); print "</script>"
       next
     }

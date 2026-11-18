@@ -878,7 +878,7 @@ function joinGame(code) {
   if (code.length !== 5) return showMenu('Enter the 5-character room code from your host.');
   if (!NetT.ok()) return showMenu(noNetMsg());
   initAudio(); leaveNet(); net.mode = 'client'; net.code = code; game.state = 'lobby';
-  show('<h2>Joining ' + esc(code) + '…</h2><div class="sub">Reaching the host.</div><button id="cancel">Cancel</button>'); $('cancel').onclick = () => netFail('');
+  show('<h2>' + L('Joining ', '正在加入 ') + esc(code) + '…</h2><div class="sub">' + L('Reaching the host.', '正在連線至房主。') + '</div><button id="cancel">' + L('Cancel', '取消') + '</button>'); $('cancel').onclick = () => netFail('');
   const handle = net.handle = NetT.join(code, {
     open(c) {
       if (net.handle !== handle) return c.close();
@@ -1020,32 +1020,32 @@ function render() {
     c.fillStyle = g; c.fillRect(cam.x - 40, cam.y - 40, VW + 80, VH + 80);
   }
   c.textAlign = 'center';
-  for (const q of texts) { c.globalAlpha = clamp(q.life / 0.4, 0, 1); c.font = 'bold ' + q.size + 'px Georgia'; c.fillStyle = 'rgba(0,0,0,.7)'; c.fillText(q.s, q.x + 1, q.y + 1); c.fillStyle = q.color; c.fillText(q.s, q.x, q.y); } c.globalAlpha = 1;
-  const np = !p.down && nearPoi(p), pr = np && poiPrompt(np);
-  if (pr) { c.font = '15px Georgia'; const w = c.measureText(pr).width + 50; c.fillStyle = 'rgba(10,10,20,.8)'; rr(c, np.x - w / 2, np.y - 78, w, 26, 6); c.fill(); c.fillStyle = '#f3d48a'; c.fillText('[F]  ' + pr, np.x, np.y - 60); }
+  for (const q of texts) { c.globalAlpha = clamp(q.life / 0.4, 0, 1); c.font = 'bold ' + q.size + 'px Georgia'; c.fillStyle = 'rgba(0,0,0,.7)'; const qs = T(q.s); c.fillText(qs, q.x + 1, q.y + 1); c.fillStyle = q.color; c.fillText(qs, q.x, q.y); } c.globalAlpha = 1;
+  const np = !p.down && nearPoi(p), pr = np && T(poiPrompt(np));
+  if (pr) { c.font = '15px Georgia'; const w = c.measureText(pr).width + 50; c.fillStyle = 'rgba(10,10,20,.8)'; rr(c, np.x - w / 2, np.y - 78, w, 26, 6); c.fill(); c.fillStyle = '#f3d48a'; c.fillText((touch.on ? '' : '[F]  ') + pr, np.x, np.y - 60); }
   c.restore();
   drawHUD();
 }
 function drawHUD() {
-  const c = ctx, p = me, H2 = HEROES[p.hero], T = touch.on;
+  const c = ctx, p = me, H2 = HEROES[p.hero], TU = touch.on;
   // On phones the HUD is scaled down, the health panel moves to the top-left and the key hints give way to touch buttons.
   const hs = hudScale(), W = (innerWidth - SA.l - SA.r) / hs, H = (innerHeight - SA.t - SA.b) / hs;
   c.save(); c.translate(SA.l, SA.t); c.scale(hs, hs);
   c.textAlign = 'left'; c.textBaseline = 'alphabetic';
-  const bx = 24, by = T ? (W < 760 ? 132 : 88) : H - 74, bw = T ? 220 : 300;
+  const bx = 24, by = TU ? (W < 760 ? 132 : 88) : H - 74, bw = TU ? 220 : 300;
   c.fillStyle = 'rgba(8,8,16,.75)'; rr(c, bx - 8, by - 30, bw + 16, 88, 8); c.fill();
-  c.font = '15px Georgia'; c.fillStyle = H2.color; c.fillText(H2.name + ' · Lv ' + p.level, bx, by - 10);
+  c.font = '15px Georgia'; c.fillStyle = H2.color; c.fillText(T(H2.name) + ' · ' + L('Lv ', '等級 ') + p.level, bx, by - 10);
   c.textAlign = 'right'; c.fillStyle = '#f3c84a'; c.fillText('◈ ' + p.gold + '   ✦ ' + p.embers, bx + bw, by - 10); c.textAlign = 'left';
   c.fillStyle = '#2a1c22'; rr(c, bx, by, bw, 20, 4); c.fill(); c.fillStyle = '#d64545'; rr(c, bx, by, Math.max(6, bw * clamp(p.hp / p.maxHp, 0, 1)), 20, 4); c.fill();
   c.fillStyle = '#fff'; c.font = '13px Georgia'; c.textAlign = 'center'; c.fillText(Math.ceil(p.hp) + ' / ' + p.maxHp, bx + bw / 2, by + 15);
   c.fillStyle = '#1c2430'; rr(c, bx, by + 28, bw, 9, 3); c.fill(); c.fillStyle = '#7fe0ff'; rr(c, bx, by + 28, Math.max(4, bw * clamp(p.xp / xpNeed(p.level), 0, 1)), 9, 3); c.fill();
-  const cd = p.cds, ab = [['LMB', H2.names[0], p.tAtk, cd[0], true], ['RMB', H2.names[1], p.tSkill, cd[1], true], ['SPACE', H2.names[2] + (p.dashMax > 1 ? ' ×' + p.dashes : ''), p.dashes > 0 ? 0 : p.dashRe, cd[2], true], ['Q', H2.names[3], p.tUlt, cd[3], p.level >= 3]];
+  const cd = p.cds, ab = [[T('LMB'), T(H2.names[0]), p.tAtk, cd[0], true], [T('RMB'), T(H2.names[1]), p.tSkill, cd[1], true], [T('SPACE'), T(H2.names[2]) + (p.dashMax > 1 ? ' ×' + p.dashes : ''), p.dashes > 0 ? 0 : p.dashRe, cd[2], true], ['Q', T(H2.names[3]), p.tUlt, cd[3], p.level >= 3]];
   const s = 58, gap = 12, ax = W / 2 - (s * 4 + gap * 3) / 2, ay = H - s - 30;
-  if (!T) ab.forEach((a, i) => {
+  if (!TU) ab.forEach((a, i) => {
     const x = ax + i * (s + gap); c.fillStyle = 'rgba(8,8,16,.8)'; rr(c, x, ay, s, s, 8); c.fill();
     const ready = a[2] <= 0 && a[4]; c.strokeStyle = ready ? H2.color : '#4a4370'; c.lineWidth = 2; rr(c, x, ay, s, s, 8); c.stroke();
     if (a[2] > 0 && a[3] > 0.5) { c.fillStyle = 'rgba(120,110,170,.45)'; c.beginPath(); c.moveTo(x + s / 2, ay + s / 2); c.arc(x + s / 2, ay + s / 2, s * 0.42, -Math.PI / 2, -Math.PI / 2 + TAU * clamp(a[2] / a[3], 0, 1)); c.fill(); }
-    c.textAlign = 'center'; c.font = 'bold 14px Georgia'; c.fillStyle = a[4] ? (ready ? '#fff' : '#8a84a8') : '#55506e'; c.fillText(a[4] ? a[0] : 'Lv 3', x + s / 2, ay + s / 2 + 1);
+    c.textAlign = 'center'; c.font = 'bold 14px Georgia'; c.fillStyle = a[4] ? (ready ? '#fff' : '#8a84a8') : '#55506e'; c.fillText(a[4] ? a[0] : T('Lv 3'), x + s / 2, ay + s / 2 + 1);
     if (a[2] > 0.5 && a[3] > 0.5) { c.font = '12px Georgia'; c.fillStyle = '#f3d48a'; c.fillText(a[2].toFixed(0), x + s / 2, ay + s / 2 + 17); }
     c.font = '11px Georgia'; c.fillStyle = '#b9b3d4'; c.fillText(a[1], x + s / 2, ay + s + 14);
   });
@@ -1055,21 +1055,22 @@ function drawHUD() {
   const mxp = cx + cw * clamp(game.time / TOTAL, 0, 1); c.fillStyle = '#fff'; c.beginPath(); c.moveTo(mxp, cy + 10); c.lineTo(mxp - 6, cy + 19); c.lineTo(mxp + 6, cy + 19); c.fill(); c.fillRect(mxp - 1, cy - 3, 2, 14);
   c.textAlign = 'center'; c.font = '14px Georgia';
   const ct = game.time % CYCLE, isN = ct >= DAY;
-  if (game.boss) { c.fillStyle = '#ff8ae0'; c.fillText('The Gloam Stag hunts you', W / 2, cy + 36); }
-  else { c.fillStyle = isN ? '#b6b6ff' : '#f3d48a'; c.fillText((isN ? 'Night ' : 'Day ') + (dayIdx() + 1) + ' · ' + (isN ? 'dawn in ' + fmtTime(CYCLE - ct) : 'dusk in ' + fmtTime(DAY - ct)) + '   —   the Stag wakes in ' + fmtTime(TOTAL - game.time), W / 2, cy + 36); }
-  c.textAlign = 'left'; c.font = '13px Georgia'; c.fillStyle = '#a9a3c4'; c.fillText('Chapter ' + game.chapter + ' · ' + world.pal.name, 20, 28); c.fillText('Slain: ' + p.kills, 20, 46);
+  if (game.boss) { c.fillStyle = '#ff8ae0'; c.fillText(T('The Gloam Stag hunts you'), W / 2, cy + 36); }
+  else { c.fillStyle = isN ? '#b6b6ff' : '#f3d48a'; c.fillText(LANG === 'zh' ? '第 ' + (dayIdx() + 1) + (isN ? ' 夜 · ' + fmtTime(CYCLE - ct) + ' 後黎明' : ' 天 · ' + fmtTime(DAY - ct) + ' 後入夜') + '   —   雄鹿將於 ' + fmtTime(TOTAL - game.time) + ' 後甦醒'
+    : (isN ? 'Night ' : 'Day ') + (dayIdx() + 1) + ' · ' + (isN ? 'dawn in ' + fmtTime(CYCLE - ct) : 'dusk in ' + fmtTime(DAY - ct)) + '   —   the Stag wakes in ' + fmtTime(TOTAL - game.time), W / 2, cy + 36); }
+  c.textAlign = 'left'; c.font = '13px Georgia'; c.fillStyle = '#a9a3c4'; c.fillText(T('Chapter ' + game.chapter) + ' · ' + T(world.pal.name), 20, 28); c.fillText(L('Slain: ', '擊殺：') + p.kills, 20, 46);
   // party
-  let py = T ? (W < 760 ? 220 : 176) : 70;
+  let py = TU ? (W < 760 ? 220 : 176) : 70;
   for (const q of players) {
     if (q === p) continue;
     c.fillStyle = 'rgba(8,8,16,.7)'; rr(c, 14, py - 14, 190, 34, 6); c.fill();
-    c.font = '13px Georgia'; c.fillStyle = HEROES[q.hero].color; c.fillText(q.name + ' · Lv ' + q.level, 22, py);
+    c.font = '13px Georgia'; c.fillStyle = HEROES[q.hero].color; c.fillText(q.name + ' · ' + L('Lv ', '等級 ') + q.level, 22, py);
     c.fillStyle = '#2a1c22'; c.fillRect(22, py + 6, 174, 7); c.fillStyle = q.down ? '#777' : '#d64545'; c.fillRect(22, py + 6, 174 * (q.down ? clamp(q.rev / 3, 0, 1) : clamp(q.hp / q.maxHp, 0, 1)), 7);
-    if (q.down) { c.fillStyle = '#ff8a8a'; c.textAlign = 'right'; c.fillText('DOWN', 196, py); c.textAlign = 'left'; }
+    if (q.down) { c.fillStyle = '#ff8a8a'; c.textAlign = 'right'; c.fillText(T('DOWN'), 196, py); c.textAlign = 'left'; }
     py += 42;
   }
-  if (game.boss) { const e = game.boss, w = Math.max(150, Math.min(620, W - (T ? 560 : 80))), x = W / 2 - w / 2, y = T && W < 700 ? 140 : 92; c.fillStyle = 'rgba(8,8,16,.8)'; rr(c, x - 4, y - 4, w + 8, 22, 5); c.fill(); c.fillStyle = e.hp < e.maxHp * 0.5 ? '#ff5ad6' : '#a66bff'; rr(c, x, y, Math.max(6, w * clamp(e.hp / e.maxHp, 0, 1)), 14, 4); c.fill(); }
-  const ms = T ? 112 : 160, mx = W - ms - 18, my = 18, k = ms / world.S;
+  if (game.boss) { const e = game.boss, w = Math.max(150, Math.min(620, W - (TU ? 560 : 80))), x = W / 2 - w / 2, y = TU && W < 700 ? 140 : 92; c.fillStyle = 'rgba(8,8,16,.8)'; rr(c, x - 4, y - 4, w + 8, 22, 5); c.fill(); c.fillStyle = e.hp < e.maxHp * 0.5 ? '#ff5ad6' : '#a66bff'; rr(c, x, y, Math.max(6, w * clamp(e.hp / e.maxHp, 0, 1)), 14, 4); c.fill(); }
+  const ms = TU ? 112 : 160, mx = W - ms - 18, my = 18, k = ms / world.S;
   c.fillStyle = 'rgba(8,8,16,.75)'; rr(c, mx - 4, my - 4, ms + 8, ms + 8, 6); c.fill(); c.fillStyle = world.pal.base; c.globalAlpha = 0.6; c.fillRect(mx, my, ms, ms); c.globalAlpha = 1;
   const colr = { altar: '#c27bff', spring: '#4fb6e8', chest: '#f3c84a', shrine: '#e8e2d0', merchant: '#ff8a8a', camp: '#ff8a3a' };
   for (const o of world.pois) { if (!o.seen) continue; c.globalAlpha = o.used && o.kind !== 'altar' ? 0.3 : 1; c.fillStyle = colr[o.kind]; c.fillRect(mx + o.x * k - 3, my + o.y * k - 3, 6, 6); } c.globalAlpha = 1;
@@ -1077,11 +1078,11 @@ function drawHUD() {
   if (game.boss) circ(c, mx + game.boss.x * k, my + game.boss.y * k, 5, '#ff5ad6');
   for (const q of players) if (q !== p) circ(c, mx + q.x * k, my + q.y * k, 3.5, HEROES[q.hero].color);
   circ(c, mx + p.x * k, my + p.y * k, 3.5, '#fff');
-  c.font = '11px Georgia'; c.fillStyle = '#8e88ab'; c.textAlign = 'right'; c.fillText(T ? (net.mode === 'solo' ? '' : 'Room ' + net.code) : 'F interact · ' + (net.mode === 'solo' ? 'P pause · ' : 'Room ' + net.code + ' · ') + 'M mute', W - 18, my + ms + 22);
-  if (game.banner) { const b = game.banner, a = clamp(Math.min(b.t, b.max - b.t) / 0.4, 0, 1); c.globalAlpha = a; c.textAlign = 'center'; c.font = 'bold ' + Math.round(Math.min(44, W / 13)) + 'px Georgia'; c.fillStyle = 'rgba(0,0,0,.6)'; c.fillText(b.text, W / 2 + 2, H * 0.27 + 2); c.fillStyle = '#f3d48a'; c.fillText(b.text, W / 2, H * 0.27); c.font = 'italic 18px Georgia'; c.fillStyle = '#d8d2ee'; c.fillText(b.sub, W / 2, H * 0.27 + 30); c.globalAlpha = 1; }
+  c.font = '11px Georgia'; c.fillStyle = '#8e88ab'; c.textAlign = 'right'; c.fillText(TU ? (net.mode === 'solo' ? '' : L('Room ', '房間 ') + net.code) : L('F interact · ', 'F 互動 · ') + (net.mode === 'solo' ? L('P pause · ', 'P 暫停 · ') : L('Room ', '房間 ') + net.code + ' · ') + L('M mute', 'M 靜音'), W - 18, my + ms + 22);
+  if (game.banner) { const b = game.banner, a = clamp(Math.min(b.t, b.max - b.t) / 0.4, 0, 1); c.globalAlpha = a; c.textAlign = 'center'; c.font = 'bold ' + Math.round(Math.min(44, W / 13)) + 'px Georgia'; c.fillStyle = 'rgba(0,0,0,.6)'; const bt = T(b.text), bs = T(b.sub); c.fillText(bt, W / 2 + 2, H * 0.27 + 2); c.fillStyle = '#f3d48a'; c.fillText(bt, W / 2, H * 0.27); c.font = 'italic 18px Georgia'; c.fillStyle = '#d8d2ee'; c.fillText(bs, W / 2, H * 0.27 + 30); c.globalAlpha = 1; }
   if (!p.down && p.hp < p.maxHp * 0.3) { const g = c.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, H * 0.8); g.addColorStop(0, 'rgba(160,0,0,0)'); g.addColorStop(1, 'rgba(160,0,0,' + (0.3 + Math.sin(game.t * 5) * 0.1) + ')'); c.fillStyle = g; c.fillRect(0, 0, W, H); }
   c.restore();
-  if (T) drawTouchUI();
+  if (TU) drawTouchUI();
 }
 function drawTouchUI() {
   const c = ctx, p = me, u = touchU(), col = HEROES[p.hero].color;
@@ -1099,22 +1100,24 @@ function drawTouchUI() {
     c.globalAlpha = on ? 0.9 : 0.35; circ(c, b.x, b.y, b.r, 'rgba(8,8,16,.62)');
     if (t > 0 && cd > 0.5) { c.fillStyle = 'rgba(120,110,170,.5)'; c.beginPath(); c.moveTo(b.x, b.y); c.arc(b.x, b.y, b.r, -Math.PI / 2, -Math.PI / 2 + TAU * clamp(t / cd, 0, 1)); c.fill(); }
     c.strokeStyle = ready ? (b.id === 'f' ? '#f3d48a' : col) : '#4a4370'; c.lineWidth = 2.5; c.beginPath(); c.arc(b.x, b.y, b.r, 0, TAU); c.stroke();
-    c.font = 'bold ' + Math.round(11 * u) + 'px Georgia'; c.fillStyle = ready ? '#fff' : '#8a84a8'; c.fillText(t > 0.5 && cd > 0.5 ? Math.ceil(t) : label, b.x, b.y);
+    c.font = 'bold ' + Math.round(11 * u) + 'px Georgia'; c.fillStyle = ready ? '#fff' : '#8a84a8'; c.fillText(t > 0.5 && cd > 0.5 ? Math.ceil(t) : T(label), b.x, b.y);
   }
   c.globalAlpha = 1; c.textBaseline = 'alphabetic';
 }
 
 // ---------- screens ----------
 const controlsHtml = () => touch.on
-  ? '<div class="controls"><b>Left thumb</b> move · <b>Right thumb</b> drag to aim and attack, or hold to auto-target · <b>Buttons</b> skill, dash, ultimate (Lv 3), use, <b>II</b> pause' +
-    (IOS && !STANDALONE ? '<br>For full screen on iPhone: Share → <b>Add to Home Screen</b>, then open it from there.' : '') + '</div>'
-  : '<div class="controls"><b>WASD</b> move · <b>Mouse</b> aim · <b>LMB</b> attack · <b>RMB</b>/<b>E</b> skill · <b>Space</b> dash · <b>Q</b> ultimate (Lv 3) · <b>F</b> interact · <b>1</b>-<b>3</b> pick boon · <b>M</b> mute</div>';
+  ? L('<div class="controls"><b>Left thumb</b> move · <b>Right thumb</b> drag to aim and attack, or hold to auto-target · <b>Buttons</b> skill, dash, ultimate (Lv 3), use, <b>II</b> pause',
+      '<div class="controls"><b>左手拇指</b> 移動 · <b>右手拇指</b> 拖曳瞄準並攻擊，或按住自動鎖定 · <b>按鈕</b> 技能、衝刺、絕招（3 級）、使用、<b>II</b> 暫停') +
+    (IOS && !STANDALONE ? L('<br>For full screen on iPhone: Share → <b>Add to Home Screen</b>, then open it from there.', '<br>iPhone 全螢幕：分享 → <b>加入主畫面</b>，再從主畫面開啟。') : '') + '</div>'
+  : L('<div class="controls"><b>WASD</b> move · <b>Mouse</b> aim · <b>LMB</b> attack · <b>RMB</b>/<b>E</b> skill · <b>Space</b> dash · <b>Q</b> ultimate (Lv 3) · <b>F</b> interact · <b>1</b>-<b>3</b> pick boon · <b>M</b> mute</div>',
+      '<div class="controls"><b>WASD</b> 移動 · <b>滑鼠</b> 瞄準 · <b>左鍵</b> 攻擊 · <b>右鍵</b>/<b>E</b> 技能 · <b>空白鍵</b> 衝刺 · <b>Q</b> 絕招（3 級） · <b>F</b> 互動 · <b>1</b>-<b>3</b> 選擇祝福 · <b>M</b> 靜音</div>');
 const goFull = () => { try { if (touch.on && !document.fullscreenElement && document.documentElement.requestFullscreen) { const r = document.documentElement.requestFullscreen(); if (r && r.catch) r.catch(() => { }); } } catch (e) { } };
 function show(html, soft) { overlay.className = soft ? 'soft' : ''; overlay.innerHTML = html; }
 function hide() { overlay.className = 'hidden'; overlay.innerHTML = ''; }
 function heroCards(sel, compact) {
   let h = '<div class="cards">';
-  Object.keys(HEROES).forEach((id, i) => { const H2 = HEROES[id]; h += '<div class="card' + (id === sel ? ' sel' : '') + (compact ? ' compact' : '') + '" data-hero="' + id + '"><span class="key">' + (i + 1) + '</span><canvas width="170" height="' + (compact ? 96 : 120) + '" data-p="' + id + '"></canvas><div class="tag" style="color:' + H2.color + '">' + H2.title + '</div><h3>' + H2.name + '</h3>' + (compact ? '' : '<p><i>' + H2.blurb + '</i></p>') + '<ul>' + H2.kit.map(k => '<li>' + k + '</li>').join('') + '</ul></div>'; });
+  Object.keys(HEROES).forEach((id, i) => { const H2 = HEROES[id]; h += '<div class="card' + (id === sel ? ' sel' : '') + (compact ? ' compact' : '') + '" data-hero="' + id + '"><span class="key">' + (i + 1) + '</span><canvas width="170" height="' + (compact ? 96 : 120) + '" data-p="' + id + '"></canvas><div class="tag" style="color:' + H2.color + '">' + T(H2.title) + '</div><h3>' + T(H2.name) + '</h3>' + (compact ? '' : '<p><i>' + T(H2.blurb) + '</i></p>') + '<ul>' + H2.kit.map(k => '<li>' + T(k) + '</li>').join('') + '</ul></div>'; });
   return h + '</div>';
 }
 function bindHeroCards(cb) {
@@ -1132,9 +1135,10 @@ function selectHero(id) {
 function saveName() { const el = $('nm'); if (el) { net.name = el.value.trim().slice(0, 14); try { localStorage.setItem('duskbound-name', net.name); } catch (e) { } } }
 function showMenu(msg) {
   game.state = 'menu'; game.over = null; me = null; players = [];
-  show('<h1>DUSKBOUND</h1><div class="sub">Three days. Three nights. Then the Gloam Stag wakes.<br>Roam the wood alone or with up to three friends, and be ready when it comes for you.</div>' + heroCards(net.hero) +
-    '<div class="row"><input id="nm" maxlength="14" placeholder="Your name" value="' + esc(net.name) + '"><button id="solo">Play solo</button><button id="hostb">Host co-op</button><span class="sep"></span><input id="code" maxlength="5" placeholder="CODE" autocomplete="off"><button id="joinb">Join</button></div>' +
-    '<div id="msg">' + esc(msg || '') + '</div>' + controlsHtml());
+  show('<h1>DUSKBOUND</h1><div class="sub">' + L('Three days. Three nights. Then the Gloam Stag wakes.<br>Roam the wood alone or with up to three friends, and be ready when it comes for you.', '三個白晝，三個黑夜，然後幽暮雄鹿將會甦醒。<br>獨自或與最多三位朋友一同漫遊森林，在它找上你之前做好準備。') + '</div>' + heroCards(net.hero) +
+    '<div class="row"><input id="nm" maxlength="14" placeholder="' + L('Your name', '你的名字') + '" value="' + esc(net.name) + '"><button id="solo">' + L('Play solo', '單人遊玩') + '</button><button id="hostb">' + L('Host co-op', '開設合作房') + '</button><span class="sep"></span><input id="code" maxlength="5" placeholder="' + L('CODE', '代碼') + '" autocomplete="off"><button id="joinb">' + L('Join', '加入') + '</button></div>' +
+    '<div id="msg">' + esc(T(msg) || '') + '</div>' + controlsHtml() + '<div class="row"><button id="lang" class="ghost">' + (LANG === 'zh' ? 'English' : '繁體中文') + '</button></div>');
+  $('lang').onclick = () => { saveName(); setLang(LANG === 'zh' ? 'en' : 'zh'); showMenu(msg); };
   bindHeroCards(selectHero);
   $('solo').onclick = () => { saveName(); goFull(); startSolo(); };
   $('hostb').onclick = () => { saveName(); goFull(); hostGame(); };
@@ -1143,9 +1147,9 @@ function showMenu(msg) {
 }
 function showLobby() {
   const host = net.mode === 'host';
-  let h = '<h2>Party</h2><div class="sub">' + (host && !net.ready ? 'Opening a room…' : 'Room code <span class="code">' + esc(net.code) + '</span>' + (host ? '<br>Share this code — friends enter it under Join on the title screen' + (NetT.hint || '') + '.' : '')) + '</div><div class="plist">';
-  for (const q of net.lobby) h += '<div><span style="color:' + HEROES[q.hero].color + '">●</span> ' + esc(q.name) + (q.id === net.myId ? ' (you)' : '') + (q.id === 1 ? ' — host' : '') + ' <i>' + HEROES[q.hero].name + '</i></div>';
-  h += '</div>' + heroCards(net.hero, true) + '<div class="row">' + (host ? '<button id="start">Set out' + (net.lobby.length > 1 ? ' (' + net.lobby.length + ' players)' : ' alone') + '</button>' : '<span class="wait">Waiting for the host to set out…</span>') + '<button id="leave" class="ghost">Leave</button></div>';
+  let h = '<h2>' + L('Party', '隊伍') + '</h2><div class="sub">' + (host && !net.ready ? L('Opening a room…', '正在開設房間…') : L('Room code', '房間代碼') + ' <span class="code">' + esc(net.code) + '</span>' + (host ? '<br>' + L('Share this code — friends enter it under Join on the title screen' + (NetT.hint || '') + '.', '分享這組代碼 — 朋友在標題畫面的「加入」欄輸入即可' + (NetT.hint ? '（需開啟同一個頁面，且頁面已分享給他們）' : '') + '。') : '')) + '</div><div class="plist">';
+  for (const q of net.lobby) h += '<div><span style="color:' + HEROES[q.hero].color + '">●</span> ' + esc(q.name) + (q.id === net.myId ? L(' (you)', '（你）') : '') + (q.id === 1 ? L(' — host', ' — 房主') : '') + ' <i>' + T(HEROES[q.hero].name) + '</i></div>';
+  h += '</div>' + heroCards(net.hero, true) + '<div class="row">' + (host ? '<button id="start">' + (net.lobby.length > 1 ? L('Set out (' + net.lobby.length + ' players)', '出發（' + net.lobby.length + ' 人）') : L('Set out alone', '獨自出發')) + '</button>' : '<span class="wait">' + L('Waiting for the host to set out…', '等待房主出發…') + '</span>') + '<button id="leave" class="ghost">' + L('Leave', '離開') + '</button></div>';
   show(h); bindHeroCards(selectHero);
   if (host) $('start').onclick = startHosted;
   $('leave').onclick = () => { leaveNet(); showMenu(); };
@@ -1167,8 +1171,8 @@ function syncChoice() {
   const key = on ? me.choiceSeq + ':' + me.choice.map(t => t.id).join(',') : '';
   if (key === shownChoice) return; shownChoice = key;
   if (!on) { choiceEl.className = 'hidden'; choiceEl.innerHTML = ''; return; }
-  let h = '<h2>' + esc(me.choiceTitle || 'Choose') + '</h2><div class="cards">';
-  me.choice.forEach((t, i) => { const rk = me.talents[t.id] || 0; h += '<div class="card" data-i="' + i + '"><span class="key">' + (i + 1) + '</span><div class="tag"' + (t.hero ? ' style="color:' + HEROES[t.hero].color + '"' : '') + '>' + (t.hero ? HEROES[t.hero].name : 'Boon') + '</div><h3>' + t.name + '</h3><p>' + t.desc + '</p><div class="pips">' + '●'.repeat(rk + 1) + '○'.repeat(Math.max(0, t.max - rk - 1)) + '</div></div>'; });
+  let h = '<h2>' + esc(T(me.choiceTitle || 'Choose')) + '</h2><div class="cards">';
+  me.choice.forEach((t, i) => { const rk = me.talents[t.id] || 0; h += '<div class="card" data-i="' + i + '"><span class="key">' + (i + 1) + '</span><div class="tag"' + (t.hero ? ' style="color:' + HEROES[t.hero].color + '"' : '') + '>' + T(t.hero ? HEROES[t.hero].name : 'Boon') + '</div><h3>' + T(t.name) + '</h3><p>' + T(t.desc) + '</p><div class="pips">' + '●'.repeat(rk + 1) + '○'.repeat(Math.max(0, t.max - rk - 1)) + '</div></div>'; });
   choiceEl.className = net.mode === 'solo' ? 'solo' : 'coop'; choiceEl.innerHTML = h + '</div>';
   choiceEl.querySelectorAll('.card').forEach(cd => cd.onclick = () => chooseTalent(+cd.dataset.i));
 }
@@ -1180,11 +1184,11 @@ function chooseTalent(i) {
 }
 function showEnd() {
   if (!me) return;
-  const st = '<div class="stats">' + players.map(p => esc(p.name) + ' — ' + HEROES[p.hero].name + ' · Lv ' + p.level + ' · ' + p.kills + ' slain').join('<br>') + '<br>Chapter ' + game.chapter + '</div>';
-  const guest = net.mode === 'client', wait = '<div class="wait">Waiting for the host…</div><button id="leave" class="ghost">Leave party</button>';
-  if (game.over === 'dead') show('<h2>The dusk takes you</h2><div class="sub">The wood closes over another lantern.</div>' + st + (guest ? wait : '<button id="again">' + (net.mode === 'host' ? 'Back to the lobby' : 'Try again') + '</button>'), true);
-  else if (game.over === 'win') show('<h2>The Stag falls</h2><div class="sub">…but its shadow runs ahead of you, deeper in. ' + PAL[game.chapter % 3].name + ' awaits, and everything there is stronger.</div>' + st + (guest ? wait : '<button id="next">Press on</button>'), true);
-  else show('<h1>DAWN</h1><div class="sub">The last Gloam Stag is ash on the wind. For the first time in an age, morning comes and stays.</div>' + st + (guest ? wait : '<button id="again">' + (net.mode === 'host' ? 'Back to the lobby' : 'Play again') + '</button>'));
+  const st = '<div class="stats">' + players.map(p => esc(p.name) + ' — ' + T(HEROES[p.hero].name) + ' · ' + L('Lv ', '等級 ') + p.level + ' · ' + L(p.kills + ' slain', '擊殺 ' + p.kills)).join('<br>') + '<br>' + T('Chapter ' + game.chapter) + '</div>';
+  const guest = net.mode === 'client', wait = '<div class="wait">' + L('Waiting for the host…', '等待房主…') + '</div><button id="leave" class="ghost">' + L('Leave party', '離開隊伍') + '</button>';
+  if (game.over === 'dead') show('<h2>' + L('The dusk takes you', '你被暮色吞沒') + '</h2><div class="sub">' + L('The wood closes over another lantern.', '森林又吞沒了一盞燈火。') + '</div>' + st + (guest ? wait : '<button id="again">' + (net.mode === 'host' ? L('Back to the lobby', '回到大廳') : L('Try again', '再試一次')) + '</button>'), true);
+  else if (game.over === 'win') show('<h2>' + L('The Stag falls', '雄鹿倒下了') + '</h2><div class="sub">' + L('…but its shadow runs ahead of you, deeper in. ' + PAL[game.chapter % 3].name + ' awaits, and everything there is stronger.', '…但它的影子已先一步奔向更深處。' + T(PAL[game.chapter % 3].name) + '在等著你，那裡的一切都更加強大。') + '</div>' + st + (guest ? wait : '<button id="next">' + L('Press on', '繼續前進') + '</button>'), true);
+  else show('<h1>' + L('DAWN', '黎明') + '</h1><div class="sub">' + L('The last Gloam Stag is ash on the wind. For the first time in an age, morning comes and stays.', '最後一頭幽暮雄鹿化為風中灰燼。漫長歲月以來，晨光第一次降臨並且留了下來。') + '</div>' + st + (guest ? wait : '<button id="again">' + (net.mode === 'host' ? L('Back to the lobby', '回到大廳') : L('Play again', '再玩一次')) + '</button>'));
   if ($('again')) $('again').onclick = endRun;
   if ($('next')) $('next').onclick = nextChapter;
   if ($('leave')) $('leave').onclick = () => { leaveNet(); showMenu(); };
@@ -1201,6 +1205,7 @@ function nextChapter() {
   hide(); banner(world.pal.name, 'Chapter ' + game.chapter, 4); sfx('dawn');
   if (net.mode === 'host') sendWorld();
 }
+const muteLabel = () => AU.muted ? L('Unmute', '取消靜音') : L('Mute', '靜音');
 function onKey(k) {
   if (k === 'm' && AU.ctx) { AU.muted = !AU.muted; AU.master.gain.value = AU.muted ? 0 : 0.55; }
   const n = '123'.indexOf(k);
@@ -1209,9 +1214,9 @@ function onKey(k) {
   else if ((k === 'p' || k === 'escape') && game.state === 'play' && net.mode === 'solo' && !game.over && !(me && me.choice)) {
     game.paused = !game.paused;
     if (game.paused) {
-      show('<h2>Paused</h2>' + controlsHtml() + '<div class="row"><button id="res">Resume</button>' + (touch.on ? '<button id="mute" class="ghost">' + (AU.muted ? 'Unmute' : 'Mute') + '</button><button id="quit" class="ghost">Quit run</button>' : '') + '</div>', true);
+      show('<h2>' + L('Paused', '暫停') + '</h2>' + controlsHtml() + '<div class="row"><button id="res">' + L('Resume', '繼續') + '</button>' + (touch.on ? '<button id="mute" class="ghost">' + muteLabel() + '</button><button id="quit" class="ghost">' + L('Quit run', '放棄本局') + '</button>' : '') + '</div>', true);
       $('res').onclick = () => { game.paused = false; hide(); };
-      if ($('mute')) $('mute').onclick = () => { initAudio(); onKey('m'); $('mute').textContent = AU.muted ? 'Unmute' : 'Mute'; };
+      if ($('mute')) $('mute').onclick = () => { initAudio(); onKey('m'); $('mute').textContent = muteLabel(); };
       if ($('quit')) $('quit').onclick = () => { game.paused = false; showMenu(); };
     } else hide();
   }
