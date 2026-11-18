@@ -1137,7 +1137,7 @@ function showMenu(msg) {
   game.state = 'menu'; game.over = null; me = null; players = [];
   show('<h1>DUSKBOUND</h1><div class="sub">' + L('Three days. Three nights. Then the Gloam Stag wakes.<br>Roam the wood alone or with up to three friends, and be ready when it comes for you.', '三個白晝，三個黑夜，然後幽暮雄鹿將會甦醒。<br>獨自或與最多三位朋友一同漫遊森林，在它找上你之前做好準備。') + '</div>' + heroCards(net.hero) +
     '<div class="row"><input id="nm" maxlength="14" placeholder="' + L('Your name', '你的名字') + '" value="' + esc(net.name) + '"><button id="solo">' + L('Play solo', '單人遊玩') + '</button><button id="hostb">' + L('Host co-op', '開設合作房') + '</button><span class="sep"></span><input id="code" maxlength="5" placeholder="' + L('CODE', '代碼') + '" autocomplete="off"><button id="joinb">' + L('Join', '加入') + '</button></div>' +
-    '<div id="msg">' + esc(T(msg) || '') + '</div>' + controlsHtml() + '<div class="row"><button id="lang" class="ghost">' + (LANG === 'zh' ? 'English' : '繁體中文') + '</button></div>');
+    '<div id="msg">' + esc(T(msg) || '') + '</div>' + controlsHtml() + '<button id="lang" class="ghost langbtn">' + (LANG === 'zh' ? '🌐 English' : '🌐 繁體中文') + '</button>');
   $('lang').onclick = () => { saveName(); setLang(LANG === 'zh' ? 'en' : 'zh'); showMenu(msg); };
   bindHeroCards(selectHero);
   $('solo').onclick = () => { saveName(); goFull(); startSolo(); };

@@ -64,8 +64,12 @@
   .plist i{color:#8e88ab}
   .wait{color:#a9a3c4;font-style:italic;margin-top:14px}
   .stats{color:#c9c4dc;font-size:15px;line-height:1.8;margin-top:6px}
+  /* Language switch: always in the title screen's top corner. */
+  .langbtn{position:fixed;z-index:5;top:max(10px,env(safe-area-inset-top));right:max(12px,env(safe-area-inset-right));font-size:14px;padding:6px 12px;background:rgba(20,19,31,.85)}
   /* Phones in landscape: must stay after the base rules so it wins. */
   @media (max-height:540px){
+    .langbtn{font-size:12px;padding:4px 9px;top:max(6px,env(safe-area-inset-top))}
+    #overlay .cards{flex-wrap:nowrap;max-width:100%} #overlay .card{flex:0 1 190px;min-width:0;box-sizing:border-box}
     #overlay{padding-top:max(10px,env(safe-area-inset-top));padding-bottom:max(10px,env(safe-area-inset-bottom))}
     h1{font-size:30px;letter-spacing:6px} h2{font-size:20px;margin-bottom:2px}
     .sub{margin:2px 0 8px;font-size:12.5px;line-height:1.35} .cards{gap:8px}
@@ -79,7 +83,7 @@
     .controls{margin-top:6px;font-size:11px;line-height:1.5} #msg{margin-top:4px;min-height:0}
     .plist{font-size:13px;line-height:1.45;margin-bottom:6px} .code{font-size:20px;letter-spacing:5px} .stats{font-size:13px;line-height:1.5}
   }
-  @media (max-height:420px){ .card ul{display:none} .card{width:150px} h1{font-size:26px} }
+  @media (max-height:420px){ .card ul{display:none} .card{width:150px} h1{font-size:26px} #overlay .card{flex-basis:160px} }
 </style>
 <canvas id="game"></canvas>
 <div id="choice" class="hidden"></div>
@@ -1639,7 +1643,7 @@ function showMenu(msg) {
   game.state = 'menu'; game.over = null; me = null; players = [];
   show('<h1>DUSKBOUND</h1><div class="sub">' + L('Three days. Three nights. Then the Gloam Stag wakes.<br>Roam the wood alone or with up to three friends, and be ready when it comes for you.', '三個白晝，三個黑夜，然後幽暮雄鹿將會甦醒。<br>獨自或與最多三位朋友一同漫遊森林，在它找上你之前做好準備。') + '</div>' + heroCards(net.hero) +
     '<div class="row"><input id="nm" maxlength="14" placeholder="' + L('Your name', '你的名字') + '" value="' + esc(net.name) + '"><button id="solo">' + L('Play solo', '單人遊玩') + '</button><button id="hostb">' + L('Host co-op', '開設合作房') + '</button><span class="sep"></span><input id="code" maxlength="5" placeholder="' + L('CODE', '代碼') + '" autocomplete="off"><button id="joinb">' + L('Join', '加入') + '</button></div>' +
-    '<div id="msg">' + esc(T(msg) || '') + '</div>' + controlsHtml() + '<div class="row"><button id="lang" class="ghost">' + (LANG === 'zh' ? 'English' : '繁體中文') + '</button></div>');
+    '<div id="msg">' + esc(T(msg) || '') + '</div>' + controlsHtml() + '<button id="lang" class="ghost langbtn">' + (LANG === 'zh' ? '🌐 English' : '🌐 繁體中文') + '</button>');
   $('lang').onclick = () => { saveName(); setLang(LANG === 'zh' ? 'en' : 'zh'); showMenu(msg); };
   bindHeroCards(selectHero);
   $('solo').onclick = () => { saveName(); goFull(); startSolo(); };
