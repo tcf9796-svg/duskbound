@@ -614,6 +614,30 @@ function loadProfile(store) {
   const out = sanitizeProfile(p); saveProfile(store, out); return out;
 }
 function saveProfile(store, p) { try { store.setItem(PROFILE_KEY, JSON.stringify(p)); return true; } catch (e) { return false; } }
+// Online profiles: combines this device's profile with the saved online copy without ever losing progress.
+// The online copy is the base (its id is kept); rewards this device earned that the online copy hasn't seen are
+// replayed onto it by claim id, so nothing is counted twice and upgrades earned on two devices both count.
+// Everything else only grows: unlocked difficulties, characters and weapons are merged, clear counts take the higher.
+function mergeProfiles(local, remote) {
+  const a = sanitizeProfile(local); if (!remote) return a;
+  const out = sanitizeProfile(remote); if (out.id !== remote.id) return a; // unreadable online copy: keep ours
+  for (const r of a.rewards) if (r && typeof r.claim === 'string' && !out.claims[r.claim]) {
+    grantReward(out, r.claim, r.rarity, r.item, { chapter: r.chapter, diff: r.diff });
+    out.rewards[out.rewards.length - 1] = r; // keep the original record (and its time)
+  }
+  for (const k of Object.keys(a.claims)) out.claims[k] = 1;
+  out.rewards.sort((x, y) => (x.t || 0) - (y.t || 0)); out.rewards = out.rewards.slice(-60);
+  out.unlocked = DIFFICULTIES.map(d => d.id).filter(id => out.unlocked.includes(id) || a.unlocked.includes(id));
+  for (const [k, v] of Object.entries(a.cleared)) out.cleared[k] = Math.max(out.cleared[k] || 0, v);
+  out.characters = [...new Set(out.characters.concat(a.characters))];
+  out.weapons = [...new Set(out.weapons.concat(a.weapons))];
+  for (const [k, v] of Object.entries(a.talents)) out.talents[k] = Math.max(out.talents[k] || 0, v);
+  // the reward history only keeps 60 entries, so never end below what this device already had
+  for (const [k, v] of Object.entries(a.upgrades)) out.upgrades[k] = Math.max(out.upgrades[k] || 0, v);
+  for (const [h, w] of Object.entries(a.equipped)) if (!out.equipped[h]) out.equipped[h] = w;
+  out.created = Math.min(out.created, a.created);
+  return sanitizeProfile(out);
+}
 
 // Applies one awarded reward. Idempotent: a claim id that was already applied is ignored (returns false).
 function grantReward(prof, claim, rarity, item, meta = {}) {
@@ -681,9 +705,63 @@ function itemLabel(item) {
   if (k === 'c') return 'Character: ' + (typeof HEROES !== 'undefined' && HEROES[a] ? HEROES[a].name : a);
   return item;
 }
-if (typeof module !== 'undefined') module.exports = { CHAPTERS, DIFFICULTIES, PARTY_SCALE, REWARD_ODDS, REWARD_POOLS, REWARD_FALLBACK, RARITIES, UPGRADES, WEAPONS, START_TALENT_CAP,
+if (typeof module !== 'undefined') module.exports = { mergeProfiles, CHAPTERS, DIFFICULTIES, PARTY_SCALE, REWARD_ODDS, REWARD_POOLS, REWARD_FALLBACK, RARITIES, UPGRADES, WEAPONS, START_TALENT_CAP,
   checkOdds, rarityFor, rollRarity, rollReward, itemAvailable, newProfile, sanitizeProfile, loadProfile, saveProfile, grantReward, recordCampaignClear, highestUnlocked,
   loadoutOf, sanitizeLoadout, applyLoadout, exportProfile, importProfile, itemLabel, ODDS_TOTAL };
+</script>
+<script>
+'use strict';
+// Online profiles (optional). Signs in with an emailed 6-digit code and keeps the player's profile in a Supabase
+// table, so the same profile is used in every browser and in the Home Screen app. Plain fetch against Supabase's REST
+// API, no library. Setup: DESIGN.md "Online profiles" and server/supabase.sql.
+// Left empty, the feature is off and the game keeps profiles in this browser only, exactly as before.
+const CLOUD_CONFIG = { url: '', key: '' }; // e.g. { url: 'https://abcd1234.supabase.co', key: '<anon public key>' }
+
+const Cloud = {
+  SESSION_KEY: 'duskbound-cloud',
+  session: null, // { access, refresh, exp (ms), uid, email }
+  lastSync: 0, error: '', busy: false,
+  // Off without a config, and on the claude.ai page (it cannot reach other servers).
+  enabled: () => !!(CLOUD_CONFIG.url && CLOUD_CONFIG.key && typeof fetch === 'function' && !window.DUSK_NO_NET),
+  signedIn() { return !!(this.session && this.session.uid); },
+  load() {
+    try { const s = JSON.parse(localStorage.getItem(this.SESSION_KEY) || 'null'); if (s && typeof s.refresh === 'string' && typeof s.uid === 'string') this.session = s; } catch (e) { }
+  },
+  store() { try { if (this.session) localStorage.setItem(this.SESSION_KEY, JSON.stringify(this.session)); else localStorage.removeItem(this.SESSION_KEY); } catch (e) { } },
+  async call(path, opt = {}, auth = true) {
+    const h = { apikey: CLOUD_CONFIG.key, 'Content-Type': 'application/json', Authorization: 'Bearer ' + (auth && this.session ? this.session.access : CLOUD_CONFIG.key) };
+    const r = await fetch(CLOUD_CONFIG.url.replace(/\/+$/, '') + path, { method: opt.method || 'GET', headers: Object.assign(h, opt.headers || {}), body: opt.body ? JSON.stringify(opt.body) : undefined });
+    const txt = await r.text(); let data = null; try { data = txt ? JSON.parse(txt) : null; } catch (e) { }
+    if (!r.ok) { const e = new Error((data && (data.msg || data.message || data.error_description || data.error)) || ('HTTP ' + r.status)); e.status = r.status; throw e; }
+    return data;
+  },
+  setSession(d) {
+    if (!d || !d.access_token || !d.refresh_token || !d.user) throw new Error('bad session');
+    this.session = { access: d.access_token, refresh: d.refresh_token, exp: Date.now() + (d.expires_in || 3600) * 1000, uid: d.user.id, email: d.user.email || '' };
+    this.store();
+  },
+  // Step 1: email a sign-in code (an account is created on first use).
+  async sendCode(email) { await this.call('/auth/v1/otp', { method: 'POST', body: { email, create_user: true } }, false); },
+  // Step 2: the 6-digit code from that email.
+  async verify(email, code) { this.setSession(await this.call('/auth/v1/verify', { method: 'POST', body: { type: 'email', email, token: String(code).trim() } }, false)); },
+  async fresh() {
+    if (!this.session) throw new Error('signed out');
+    if (Date.now() < this.session.exp - 60000) return;
+    try { this.setSession(await this.call('/auth/v1/token?grant_type=refresh_token', { method: 'POST', body: { refresh_token: this.session.refresh } }, false)); }
+    catch (e) { if (e.status === 400 || e.status === 401) this.signOut(); throw e; }
+  },
+  signOut() { this.session = null; this.store(); },
+  async pull() {
+    await this.fresh();
+    const rows = await this.call('/rest/v1/profiles?select=data&user_id=eq.' + encodeURIComponent(this.session.uid));
+    return Array.isArray(rows) && rows[0] ? rows[0].data : null;
+  },
+  async push(data) {
+    await this.fresh();
+    await this.call('/rest/v1/profiles?on_conflict=user_id', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=minimal' }, body: [{ user_id: this.session.uid, data, updated_at: new Date().toISOString() }] });
+  }
+};
+Cloud.load();
 </script>
 <script>
 'use strict';
@@ -1650,7 +1728,28 @@ try { net.name = localStorage.getItem('duskbound-name') || ''; } catch (e) { }
 // Saved profile (meta.js): identified by a random installation id kept in this browser's storage.
 const STORE = (() => { try { localStorage.setItem('duskbound-probe', '1'); localStorage.removeItem('duskbound-probe'); return localStorage; } catch (e) { const d = {}; return { getItem: k => k in d ? d[k] : null, setItem: (k, v) => { d[k] = String(v); }, removeItem: k => { delete d[k]; } }; } })();
 let PROFILE = loadProfile(STORE);
-const saveMe = () => saveProfile(STORE, PROFILE);
+// Online profile (cloud.js): every save is also merged into the online copy, a moment later.
+let cloudT = 0, cloudAgain = false;
+const saveMe = () => { saveProfile(STORE, PROFILE); if (Cloud.enabled() && Cloud.signedIn()) { clearTimeout(cloudT); cloudT = setTimeout(cloudSync, 1500); } };
+// Pull the online copy, merge it with this device's (mergeProfiles never loses progress), save both. The profile id
+// only changes on the title or profile screens, never mid-run (reward claims and co-op use it).
+async function cloudSync() {
+  if (!Cloud.enabled() || !Cloud.signedIn()) return false;
+  if (Cloud.busy) { cloudAgain = true; return false; }
+  Cloud.busy = true; cloudAgain = false; let changed = false;
+  try {
+    const remote = await Cloud.pull(), merged = mergeProfiles(PROFILE, remote);
+    if (merged.id !== PROFILE.id && game.state !== 'menu') { cloudAgain = true; return false; }
+    changed = JSON.stringify(merged) !== JSON.stringify(PROFILE);
+    PROFILE = merged; saveProfile(STORE, PROFILE);
+    if (!PROFILE.unlocked.includes(net.diff)) setDiff('normal');
+    await Cloud.push(PROFILE); Cloud.lastSync = Date.now(); Cloud.error = '';
+  } catch (e) { Cloud.error = String(e && e.message || e); }
+  finally { Cloud.busy = false; if (cloudAgain) setTimeout(cloudSync, 3000); }
+  // show what arrived if the player is looking at the title or profile screen
+  if (game.state === 'menu') { if ($('pback')) showProfile(); else if (changed && $('solo')) { saveName(); showMenu(); } }
+  return true;
+}
 const DIFF = id => DIFFICULTIES.find(d => d.id === id) || DIFFICULTIES[0];
 // The difficulty this player wants (remembered), never above what their profile has unlocked.
 net.diff = (() => { let d = ''; try { d = localStorage.getItem('duskbound-diff') || ''; } catch (e) { } return PROFILE.unlocked.includes(d) ? d : 'normal'; })();
@@ -3188,9 +3287,46 @@ function diffSelect(id, allowed) {
     L('Difficulty: ', '難度：') + T(d.name) + (allowed(d.id) ? '' : ' 🔒') + '</option>').join('') + '</select>';
 }
 // Profile screen: unlocks, weapons (equip one per hero), upgrades, starting talents, reward history, backup code.
+// Online profile panel on the Profile screen: email -> 6-digit code -> signed in (then synced automatically).
+const cloudUI = { email: '', sent: false, msg: '' };
+function cloudHtml() {
+  if (!Cloud.enabled()) return '';
+  let h = '<div class="stats prof"><b>☁ ' + L('Online profile', '線上檔案') + '</b><br>';
+  if (Cloud.signedIn()) {
+    const t = Cloud.lastSync ? new Date(Cloud.lastSync).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+    h += L('Signed in as ', '已登入：') + esc(Cloud.session.email) + ' · ' + (Cloud.busy ? L('syncing…', '同步中…') : Cloud.error ? '<span style="color:#ff9b8a">' + L('could not sync (', '無法同步（') + esc(Cloud.error) + L(') — your progress is kept here and sent later', '）— 進度已保留在此，稍後再上傳') + '</span>' : t ? L('synced at ', '同步於 ') + t : L('not synced yet', '尚未同步')) +
+      '<div class="row"><button id="csync" class="ghost">' + L('Sync now', '立即同步') + '</button><button id="cout" class="ghost">' + L('Sign out', '登出') + '</button></div>';
+  } else if (!cloudUI.sent) {
+    h += L('Sign in to keep one profile across browsers, devices and the Home Screen app.', '登入後，不同瀏覽器、裝置和主畫面 App 都能使用同一個檔案。') +
+      '<div class="row"><input id="cem" type="email" autocomplete="email" style="width:230px" placeholder="' + L('Email', '電子郵件') + '" value="' + esc(cloudUI.email) + '"><button id="csend">' + L('Email me a code', '寄送登入碼') + '</button></div>';
+  } else {
+    h += L('We emailed a 6-digit code to ', '已寄送 6 位數登入碼到 ') + esc(cloudUI.email) + L('. Enter it here (this works in the Home Screen app too).', '。請在此輸入（主畫面 App 也適用）。') +
+      '<div class="row"><input id="ccode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" style="width:110px;letter-spacing:3px" placeholder="123456"><button id="cver">' + L('Sign in', '登入') + '</button><button id="cback" class="ghost">' + L('Different email', '換一個電子郵件') + '</button></div>';
+  }
+  return h + (cloudUI.msg ? '<div id="msg">' + esc(cloudUI.msg) + '</div>' : '') + '</div>';
+}
+function bindCloud() {
+  const msg = m => { cloudUI.msg = m; showProfile(); };
+  if ($('csend')) $('csend').onclick = async () => {
+    const em = $('cem').value.trim(); cloudUI.email = em;
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) return msg(L('Enter your email address.', '請輸入電子郵件地址。'));
+    $('csend').disabled = true;
+    try { await Cloud.sendCode(em); cloudUI.sent = true; cloudUI.msg = ''; showProfile(); } catch (e) { msg(L('Could not send the code: ', '無法寄送登入碼：') + e.message); }
+  };
+  if ($('cver')) $('cver').onclick = async () => {
+    $('cver').disabled = true;
+    try { await Cloud.verify(cloudUI.email, $('ccode').value); cloudUI.sent = false; cloudUI.msg = ''; showProfile(); await cloudSync(); }
+    catch (e) { msg(L('That code did not work: ', '登入碼無效：') + e.message); }
+  };
+  if ($('ccode')) $('ccode').onkeydown = e => { if (e.key === 'Enter') $('cver').onclick(); };
+  if ($('cback')) $('cback').onclick = () => { cloudUI.sent = false; cloudUI.msg = ''; showProfile(); };
+  if ($('csync')) $('csync').onclick = () => { cloudSync(); showProfile(); };
+  if ($('cout')) $('cout').onclick = () => { Cloud.signOut(); cloudUI.msg = L('Signed out. This browser keeps a copy of the profile.', '已登出。此瀏覽器仍保留一份檔案。'); showProfile(); };
+}
 function showProfile(extra) {
   const P = PROFILE, rar = r => r ? '<span style="color:' + RARITY_COLORS[r] + '">' + T(RARITY_NAMES[r]) + '</span>' : L('No reward', '沒有獎勵');
-  let h = '<h2>' + L('Profile', '個人檔案') + '</h2><div class="sub">' + L('Saved in this browser · ID ', '儲存在此瀏覽器 · ID ') + esc(P.id.slice(0, 10)) + '…</div><div class="stats prof">';
+  const online = Cloud.enabled() && Cloud.signedIn();
+  let h = '<h2>' + L('Profile', '個人檔案') + '</h2><div class="sub">' + (online ? L('Saved online and in this browser · ID ', '已儲存在線上及此瀏覽器 · ID ') : L('Saved in this browser · ID ', '儲存在此瀏覽器 · ID ')) + esc(P.id.slice(0, 10)) + '…</div>' + cloudHtml() + '<div class="stats prof">';
   h += '<b>' + L('Difficulties', '難度') + '</b><br>' + DIFFICULTIES.map(d => (P.unlocked.includes(d.id) ? '✓ ' : '🔒 ') + T(d.name) + (P.cleared[d.id] ? L(' (cleared ×' + P.cleared[d.id] + ')', '（通關 ×' + P.cleared[d.id] + '）') : '')).join(' · ');
   h += '<br><b>' + L('Weapons', '武器') + '</b><br>' + Object.keys(HEROES).map(hero => {
     const own = P.weapons.filter(w => WEAPONS[w].hero === hero);
@@ -3203,8 +3339,10 @@ function showProfile(extra) {
   const rec = P.rewards.slice(-6).reverse();
   h += '<br><b>' + L('Recent chapter rewards', '最近的章節獎勵') + '</b><br>' + (rec.length ? rec.map(r => T('Chapter ' + r.chapter) + ' · ' + T(DIFF(r.diff).name) + ': ' + rar(r.rarity) + (r.item ? ' — ' + T(itemLabel(r.item)) : '')).join('<br>') : '<i>' + L('none yet', '尚無') + '</i>');
   h += '</div>' + (extra || '') + '<div class="row"><button id="pback">' + L('Back', '返回') + '</button><button id="pexp" class="ghost">' + L('Backup code', '備份代碼') + '</button><button id="pimp" class="ghost">' + L('Restore', '還原') + '</button></div>' +
-    '<div class="wait">' + L('Clearing this site’s data, private browsing, another browser or the Home Screen app each start a new profile — use a backup code to move it.', '清除網站資料、私密瀏覽、換瀏覽器或使用主畫面 App 都會建立新的檔案 — 請用備份代碼搬移。') + '</div>';
-  show(h);
+    '<div class="wait">' + (online ? L('Sign in with the same email in any browser or the Home Screen app to use this profile there.', '在任何瀏覽器或主畫面 App 用同一個電子郵件登入，即可使用這個檔案。')
+      : L('Clearing this site’s data, private browsing, another browser or the Home Screen app each start a new profile — ' + (Cloud.enabled() ? 'sign in above, or ' : '') + 'use a backup code to move it.',
+        '清除網站資料、私密瀏覽、換瀏覽器或使用主畫面 App 都會建立新的檔案 — ' + (Cloud.enabled() ? '請在上方登入，或' : '請') + '用備份代碼搬移。')) + '</div>';
+  show(h); bindCloud();
   document.querySelectorAll('.wsel').forEach(s => s.onchange = () => { const hero = s.dataset.hero; if (s.value) PROFILE.equipped[hero] = s.value; else delete PROFILE.equipped[hero]; saveMe(); });
   $('pback').onclick = () => showMenu();
   $('pexp').onclick = () => { showProfile('<textarea id="pcode" readonly rows="3" class="pcode">' + exportProfile(PROFILE) + '</textarea>'); const t = $('pcode'); t.focus(); t.select(); };
@@ -3352,6 +3490,6 @@ function tick(ts) {
   syncChoice();
 }
 function frame(ts) { tick(ts); music(); render(); requestAnimationFrame(frame); }
-showMenu(); requestAnimationFrame(frame);
+showMenu(); requestAnimationFrame(frame); cloudSync();
 if (/[?&]a(=|&|$)/.test(location.search) && !STANDALONE && !window.DUSK_NO_NET) showInstall(() => showMenu());
 </script>

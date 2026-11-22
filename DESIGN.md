@@ -25,10 +25,39 @@ browser storage can still give themselves items. Making this tamper-proof needs 
   starting talents, characters, the last 60 reward results, and claim ids (so nothing is granted twice).
 - **Limitations:** a new profile starts when the player clears the site's data, uses private browsing, a different
   browser or device, or the iPhone Home Screen app (it has separate storage from Safari). Reinstalling the Home
-  Screen app also starts fresh. Use **Profile → Backup code** to copy a profile and **Restore** to load it
+  Screen app also starts fresh. Sign in under **Profile → Online profile** (see "Online profiles"), or use **Profile → Backup code** to copy a profile and **Restore** to load it
   elsewhere. Saves are repaired on load (`sanitizeProfile`), so a damaged or edited save can't break the game.
 - Three ids, three jobs: **profile id** (who you are, persistent), **rejoin secret** (per session, issued privately by
   the host, proves you may reclaim your slot), **PeerJS/room peer id** (this connection only).
+
+## Online profiles (optional)
+
+`cloud.js` keeps a signed-in player's profile in Supabase, so the same profile works in every browser, on every
+device and in the iPhone Home Screen app (which has storage separate from Safari). It is **off until configured**:
+with `CLOUD_CONFIG` empty the game behaves exactly as before. It is always off on the claude.ai page (it cannot
+reach other servers). No library: plain `fetch` against Supabase's Auth and REST APIs.
+
+- **Sign-in:** Profile → Online profile → email → a 6-digit code from the email, typed into the game. A code rather
+  than a magic link, because a link would open Safari instead of the Home Screen app.
+- **Sync:** at start-up, after every saved change (1.5 s later), on "Sync now" and right after signing in. Each sync
+  pulls the online copy, merges it with this device's profile (`mergeProfiles` in `meta.js`) and uploads the result.
+  The merge never loses progress: the online copy's id is kept; rewards it hasn't seen are replayed by claim id (so
+  upgrades earned on two devices both count and nothing counts twice); difficulties, characters and weapons are
+  combined; clears and talents take the higher value. The id only switches on the title/profile screens, never
+  mid-run. Offline, progress stays on the device and goes up at the next successful sync.
+- **Sign out** forgets the session; the device keeps its copy of the profile.
+- **Not tamper-proof yet:** players write their own row (row-level security limits them to it). Phase 2 would move
+  reward rolls into a server function and remove the client write policies.
+
+**Setup (once):**
+1. Create a project at supabase.com (free tier).
+2. SQL Editor → run `server/supabase.sql` (profiles table + row-level security).
+3. Authentication → Emails → "Magic Link" template: include the code, e.g. `Your Duskbound code: {{ .Token }}`.
+   Supabase's built-in mailer only sends a few emails per hour; for real players add custom SMTP
+   (Authentication → Emails → SMTP settings, e.g. Resend or Brevo).
+4. Project Settings → API: put the Project URL and the **anon public** key into `CLOUD_CONFIG` in `cloud.js`
+   (the anon key is meant to be public; never put the service_role key in the game).
+5. Bump `?v=N`, rebuild `dist/`, publish.
 
 ## Difficulty
 

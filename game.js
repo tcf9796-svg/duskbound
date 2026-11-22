@@ -157,7 +157,28 @@ try { net.name = localStorage.getItem('duskbound-name') || ''; } catch (e) { }
 // Saved profile (meta.js): identified by a random installation id kept in this browser's storage.
 const STORE = (() => { try { localStorage.setItem('duskbound-probe', '1'); localStorage.removeItem('duskbound-probe'); return localStorage; } catch (e) { const d = {}; return { getItem: k => k in d ? d[k] : null, setItem: (k, v) => { d[k] = String(v); }, removeItem: k => { delete d[k]; } }; } })();
 let PROFILE = loadProfile(STORE);
-const saveMe = () => saveProfile(STORE, PROFILE);
+// Online profile (cloud.js): every save is also merged into the online copy, a moment later.
+let cloudT = 0, cloudAgain = false;
+const saveMe = () => { saveProfile(STORE, PROFILE); if (Cloud.enabled() && Cloud.signedIn()) { clearTimeout(cloudT); cloudT = setTimeout(cloudSync, 1500); } };
+// Pull the online copy, merge it with this device's (mergeProfiles never loses progress), save both. The profile id
+// only changes on the title or profile screens, never mid-run (reward claims and co-op use it).
+async function cloudSync() {
+  if (!Cloud.enabled() || !Cloud.signedIn()) return false;
+  if (Cloud.busy) { cloudAgain = true; return false; }
+  Cloud.busy = true; cloudAgain = false; let changed = false;
+  try {
+    const remote = await Cloud.pull(), merged = mergeProfiles(PROFILE, remote);
+    if (merged.id !== PROFILE.id && game.state !== 'menu') { cloudAgain = true; return false; }
+    changed = JSON.stringify(merged) !== JSON.stringify(PROFILE);
+    PROFILE = merged; saveProfile(STORE, PROFILE);
+    if (!PROFILE.unlocked.includes(net.diff)) setDiff('normal');
+    await Cloud.push(PROFILE); Cloud.lastSync = Date.now(); Cloud.error = '';
+  } catch (e) { Cloud.error = String(e && e.message || e); }
+  finally { Cloud.busy = false; if (cloudAgain) setTimeout(cloudSync, 3000); }
+  // show what arrived if the player is looking at the title or profile screen
+  if (game.state === 'menu') { if ($('pback')) showProfile(); else if (changed && $('solo')) { saveName(); showMenu(); } }
+  return true;
+}
 const DIFF = id => DIFFICULTIES.find(d => d.id === id) || DIFFICULTIES[0];
 // The difficulty this player wants (remembered), never above what their profile has unlocked.
 net.diff = (() => { let d = ''; try { d = localStorage.getItem('duskbound-diff') || ''; } catch (e) { } return PROFILE.unlocked.includes(d) ? d : 'normal'; })();
@@ -1695,9 +1716,46 @@ function diffSelect(id, allowed) {
     L('Difficulty: ', '難度：') + T(d.name) + (allowed(d.id) ? '' : ' 🔒') + '</option>').join('') + '</select>';
 }
 // Profile screen: unlocks, weapons (equip one per hero), upgrades, starting talents, reward history, backup code.
+// Online profile panel on the Profile screen: email -> 6-digit code -> signed in (then synced automatically).
+const cloudUI = { email: '', sent: false, msg: '' };
+function cloudHtml() {
+  if (!Cloud.enabled()) return '';
+  let h = '<div class="stats prof"><b>☁ ' + L('Online profile', '線上檔案') + '</b><br>';
+  if (Cloud.signedIn()) {
+    const t = Cloud.lastSync ? new Date(Cloud.lastSync).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+    h += L('Signed in as ', '已登入：') + esc(Cloud.session.email) + ' · ' + (Cloud.busy ? L('syncing…', '同步中…') : Cloud.error ? '<span style="color:#ff9b8a">' + L('could not sync (', '無法同步（') + esc(Cloud.error) + L(') — your progress is kept here and sent later', '）— 進度已保留在此，稍後再上傳') + '</span>' : t ? L('synced at ', '同步於 ') + t : L('not synced yet', '尚未同步')) +
+      '<div class="row"><button id="csync" class="ghost">' + L('Sync now', '立即同步') + '</button><button id="cout" class="ghost">' + L('Sign out', '登出') + '</button></div>';
+  } else if (!cloudUI.sent) {
+    h += L('Sign in to keep one profile across browsers, devices and the Home Screen app.', '登入後，不同瀏覽器、裝置和主畫面 App 都能使用同一個檔案。') +
+      '<div class="row"><input id="cem" type="email" autocomplete="email" style="width:230px" placeholder="' + L('Email', '電子郵件') + '" value="' + esc(cloudUI.email) + '"><button id="csend">' + L('Email me a code', '寄送登入碼') + '</button></div>';
+  } else {
+    h += L('We emailed a 6-digit code to ', '已寄送 6 位數登入碼到 ') + esc(cloudUI.email) + L('. Enter it here (this works in the Home Screen app too).', '。請在此輸入（主畫面 App 也適用）。') +
+      '<div class="row"><input id="ccode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" style="width:110px;letter-spacing:3px" placeholder="123456"><button id="cver">' + L('Sign in', '登入') + '</button><button id="cback" class="ghost">' + L('Different email', '換一個電子郵件') + '</button></div>';
+  }
+  return h + (cloudUI.msg ? '<div id="msg">' + esc(cloudUI.msg) + '</div>' : '') + '</div>';
+}
+function bindCloud() {
+  const msg = m => { cloudUI.msg = m; showProfile(); };
+  if ($('csend')) $('csend').onclick = async () => {
+    const em = $('cem').value.trim(); cloudUI.email = em;
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) return msg(L('Enter your email address.', '請輸入電子郵件地址。'));
+    $('csend').disabled = true;
+    try { await Cloud.sendCode(em); cloudUI.sent = true; cloudUI.msg = ''; showProfile(); } catch (e) { msg(L('Could not send the code: ', '無法寄送登入碼：') + e.message); }
+  };
+  if ($('cver')) $('cver').onclick = async () => {
+    $('cver').disabled = true;
+    try { await Cloud.verify(cloudUI.email, $('ccode').value); cloudUI.sent = false; cloudUI.msg = ''; showProfile(); await cloudSync(); }
+    catch (e) { msg(L('That code did not work: ', '登入碼無效：') + e.message); }
+  };
+  if ($('ccode')) $('ccode').onkeydown = e => { if (e.key === 'Enter') $('cver').onclick(); };
+  if ($('cback')) $('cback').onclick = () => { cloudUI.sent = false; cloudUI.msg = ''; showProfile(); };
+  if ($('csync')) $('csync').onclick = () => { cloudSync(); showProfile(); };
+  if ($('cout')) $('cout').onclick = () => { Cloud.signOut(); cloudUI.msg = L('Signed out. This browser keeps a copy of the profile.', '已登出。此瀏覽器仍保留一份檔案。'); showProfile(); };
+}
 function showProfile(extra) {
   const P = PROFILE, rar = r => r ? '<span style="color:' + RARITY_COLORS[r] + '">' + T(RARITY_NAMES[r]) + '</span>' : L('No reward', '沒有獎勵');
-  let h = '<h2>' + L('Profile', '個人檔案') + '</h2><div class="sub">' + L('Saved in this browser · ID ', '儲存在此瀏覽器 · ID ') + esc(P.id.slice(0, 10)) + '…</div><div class="stats prof">';
+  const online = Cloud.enabled() && Cloud.signedIn();
+  let h = '<h2>' + L('Profile', '個人檔案') + '</h2><div class="sub">' + (online ? L('Saved online and in this browser · ID ', '已儲存在線上及此瀏覽器 · ID ') : L('Saved in this browser · ID ', '儲存在此瀏覽器 · ID ')) + esc(P.id.slice(0, 10)) + '…</div>' + cloudHtml() + '<div class="stats prof">';
   h += '<b>' + L('Difficulties', '難度') + '</b><br>' + DIFFICULTIES.map(d => (P.unlocked.includes(d.id) ? '✓ ' : '🔒 ') + T(d.name) + (P.cleared[d.id] ? L(' (cleared ×' + P.cleared[d.id] + ')', '（通關 ×' + P.cleared[d.id] + '）') : '')).join(' · ');
   h += '<br><b>' + L('Weapons', '武器') + '</b><br>' + Object.keys(HEROES).map(hero => {
     const own = P.weapons.filter(w => WEAPONS[w].hero === hero);
@@ -1710,8 +1768,10 @@ function showProfile(extra) {
   const rec = P.rewards.slice(-6).reverse();
   h += '<br><b>' + L('Recent chapter rewards', '最近的章節獎勵') + '</b><br>' + (rec.length ? rec.map(r => T('Chapter ' + r.chapter) + ' · ' + T(DIFF(r.diff).name) + ': ' + rar(r.rarity) + (r.item ? ' — ' + T(itemLabel(r.item)) : '')).join('<br>') : '<i>' + L('none yet', '尚無') + '</i>');
   h += '</div>' + (extra || '') + '<div class="row"><button id="pback">' + L('Back', '返回') + '</button><button id="pexp" class="ghost">' + L('Backup code', '備份代碼') + '</button><button id="pimp" class="ghost">' + L('Restore', '還原') + '</button></div>' +
-    '<div class="wait">' + L('Clearing this site’s data, private browsing, another browser or the Home Screen app each start a new profile — use a backup code to move it.', '清除網站資料、私密瀏覽、換瀏覽器或使用主畫面 App 都會建立新的檔案 — 請用備份代碼搬移。') + '</div>';
-  show(h);
+    '<div class="wait">' + (online ? L('Sign in with the same email in any browser or the Home Screen app to use this profile there.', '在任何瀏覽器或主畫面 App 用同一個電子郵件登入，即可使用這個檔案。')
+      : L('Clearing this site’s data, private browsing, another browser or the Home Screen app each start a new profile — ' + (Cloud.enabled() ? 'sign in above, or ' : '') + 'use a backup code to move it.',
+        '清除網站資料、私密瀏覽、換瀏覽器或使用主畫面 App 都會建立新的檔案 — ' + (Cloud.enabled() ? '請在上方登入，或' : '請') + '用備份代碼搬移。')) + '</div>';
+  show(h); bindCloud();
   document.querySelectorAll('.wsel').forEach(s => s.onchange = () => { const hero = s.dataset.hero; if (s.value) PROFILE.equipped[hero] = s.value; else delete PROFILE.equipped[hero]; saveMe(); });
   $('pback').onclick = () => showMenu();
   $('pexp').onclick = () => { showProfile('<textarea id="pcode" readonly rows="3" class="pcode">' + exportProfile(PROFILE) + '</textarea>'); const t = $('pcode'); t.focus(); t.select(); };
@@ -1859,5 +1919,5 @@ function tick(ts) {
   syncChoice();
 }
 function frame(ts) { tick(ts); music(); render(); requestAnimationFrame(frame); }
-showMenu(); requestAnimationFrame(frame);
+showMenu(); requestAnimationFrame(frame); cloudSync();
 if (/[?&]a(=|&|$)/.test(location.search) && !STANDALONE && !window.DUSK_NO_NET) showInstall(() => showMenu());

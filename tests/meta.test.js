@@ -73,4 +73,25 @@ ok(!M.itemAvailable('c:rowan', { ...ci(5), characters: ['rowan'] }) && !M.itemAv
 const hp = M.newProfile(); M.grantReward(hp, 'r:1:' + hp.id, 'green', 'c:rowan', { chapter: 1 });
 ok(hp.characters.includes('rowan') && M.itemLabel('c:rowan') === 'Character: Rowan', 'hero reward unlocks the character for the profile');
 ok(M.sanitizeProfile({ ...hp }).characters.includes('rowan'), 'unlocked hero survives a reload');
+// --- online profiles: merging this device's profile with the online copy never loses progress
+{
+  const A = M.newProfile(), B = M.newProfile();
+  M.grantReward(A, 'ra:1:' + A.id, 'green', 'u:hp:4', { chapter: 1 }); M.grantReward(A, 'ra:2:' + A.id, 'green', 'c:rowan', { chapter: 2 });
+  M.grantReward(B, 'rb:1:' + B.id, 'green', 'u:hp:4', { chapter: 1 }); M.grantReward(B, 'rb:2:' + B.id, 'purple', 'w:thornmaul', { chapter: 2 });
+  M.recordCampaignClear(B, 'normal', 'runB');
+  const m = M.mergeProfiles(A, B);
+  ok(m.id === B.id, 'merge keeps the id of the online copy');
+  ok(m.upgrades.hp === 8, 'upgrades earned on two devices both count (' + m.upgrades.hp + ')');
+  ok(m.characters.includes('rowan') && m.weapons.includes('thornmaul') && m.unlocked.includes('nightmare') && m.cleared.normal === 1, 'characters, weapons, difficulties and clears combine');
+  ok(m.rewards.length === 4 && ['ra:1:' + A.id, 'ra:2:' + A.id, 'rb:1:' + B.id, 'rb:2:' + B.id].every(c => m.claims[c]), 'reward history and claims combine');
+  const again = M.mergeProfiles(m, m);
+  ok(again.upgrades.hp === 8 && again.rewards.length === 4, 'merging an already merged profile changes nothing (no double counting)');
+  const m2 = M.mergeProfiles(A, m);
+  ok(m2.upgrades.hp === 8 && m2.characters.includes('rowan'), 'syncing the first device again adds nothing twice');
+  ok(M.mergeProfiles(A, null).id === A.id && M.mergeProfiles(A, { junk: 1 }).id === A.id, 'no or unreadable online copy: keep the profile on this device');
+  const capped = M.newProfile(); capped.upgrades.hp = 60; const c2 = M.newProfile(); M.grantReward(c2, 'x:1:' + c2.id, 'red', 'u:hp:20', { chapter: 1 });
+  ok(M.mergeProfiles(c2, capped).upgrades.hp === 60, 'merged upgrades stay within their cap');
+  const old = M.newProfile(); old.upgrades.dmg = 10; // earned long ago, no longer in the 60-entry history
+  ok(M.mergeProfiles(old, M.newProfile()).upgrades.dmg === 10, 'upgrades older than the reward history are not lost');
+}
 console.log((fails ? 'FAILED ' + fails : 'all passed') + ' (' + n + ' checks)'); process.exit(fails ? 1 : 0);
