@@ -539,9 +539,9 @@ function doUlt(p) {
   else if (H === 'rowan') { p.ultT = 8; p.pulse = 0; ring(p.x, p.y, 220, '#a9c46c'); burst(p.x, p.y, '#cfe89a', 30, 300, 5); banner('Ancient Sentinel', 'The wood rallies to you.', 2, p.id); }
   else if (H === 'mira') { p.ultT = 7; ring(p.x, p.y, 90, '#9ee7f2'); for (const s of mirrorSpots(p)) burst(s.x, s.y, '#e8fbff', 12, 180); sfx('shatter', p); }
   else if (H === 'vespera') {
-    // Midnight Procession: a march of spirits walks the path toward the aim point.
+    // Midnight Procession: a march of spirits, launched toward the aim point, that then hunts the nearest foes.
     const a = angTo(p, m), sp = 260;
-    zones.push({ kind: 'proc', friendly: true, owner: p, x: p.x, y: p.y, r: 80, delay: 0, life: 2.6, max: 2.6, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, tickT: 0, color: '#86f0cf' });
+    zones.push({ kind: 'proc', friendly: true, owner: p, x: p.x, y: p.y, r: 80, delay: 0, life: 3.2, max: 3.2, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, tickT: 0, color: '#86f0cf' });
   }
   else if (H === 'wick') {
     for (let i = 0; i < 12; i++) { const a = rand(TAU), d = i === 0 ? 0 : rand(40, 210); zones.push({ kind: 'blast', friendly: true, owner: p, x: m.x + Math.cos(a) * d, y: m.y + Math.sin(a) * d, r: 88, delay: 0.5 + i * 0.2, max: 0.5 + i * 0.2, dmg: p.dmg * 4.2, color: '#ff7a2f' }); }
@@ -707,6 +707,10 @@ function update(dt) {
       if (z.tickT <= 0) { z.tickT = 0.25; for (const e of enemies) if (!e.dead && dist(e, z) < z.r + e.r) hitEnemy(z.owner, e, z.dmg * 0.25, { proc: true, color: '#ffb347', quiet: true }); }
     } else if (z.kind === 'shelter' || z.kind === 'decoy') z.life -= dt;
     else if (z.kind === 'proc') {
+      // Guided: locks on to the nearest foe (within 700) and turns toward it, picking the next one when it falls.
+      // With nothing to chase it keeps flying straight. Guests just follow the velocity in the snapshots.
+      if (!z.tgt || !targetable(z.tgt)) { let b = null, bd = 700; for (const e of enemies) { if (!targetable(e)) continue; const d = dist(e, z); if (d < bd) { bd = d; b = e; } } z.tgt = b; }
+      if (z.tgt) { const sp = Math.hypot(z.vx, z.vy) || 260, cur = Math.atan2(z.vy, z.vx), na = cur + clamp(angDiff(angTo(z, z.tgt), cur), -4.5 * dt, 4.5 * dt); z.vx = Math.cos(na) * sp; z.vy = Math.sin(na) * sp; }
       z.life -= dt; z.tickT -= dt; z.x += z.vx * dt; z.y += z.vy * dt;
       if (z.tickT <= 0) {
         z.tickT = 0.3; const o = z.owner;

@@ -36,7 +36,7 @@ const HEROES = {
   vespera: {
     name: 'Vespera', title: 'The Lanternkeeper', color: '#86f0cf', hp: 100, spd: 225, dmg: 12, atkCd: 0.38, skillCd: 10, dashes: 1, dashCd: 12, alt: true, rarity: 'purple',
     blurb: 'A cloaked traveller swinging a haunted lantern on a chain. The lost follow her light; so does everything else.',
-    kit: ['<b>Attack</b> — Ghostlight: a spectral bolt', '<b>Skill</b> — Guiding Wisp: shield the ally nearest your aim (yourself when solo). 30 energy', '<b>Space</b> — Soul Tether: link up to 4 foes; 40% of direct damage to one spreads to the rest. 30 energy', '<b>Ultimate</b> — Midnight Procession: spirits march toward your aim, harming foes and healing allies', '<b>Trait</b> — Lingering Light: the fallen leave embers that restore lantern energy'],
+    kit: ['<b>Attack</b> — Ghostlight: a spectral bolt', '<b>Skill</b> — Guiding Wisp: shield the ally nearest your aim (yourself when solo). 30 energy', '<b>Space</b> — Soul Tether: link up to 4 foes; 40% of direct damage to one spreads to the rest. 30 energy', '<b>Ultimate</b> — Midnight Procession: spirits set out toward your aim and hunt down the nearest foes, harming them and healing allies they pass', '<b>Trait</b> — Lingering Light: the fallen leave embers that restore lantern energy'],
     names: ['Ghostlight', 'Guiding Wisp', 'Soul Tether', 'Midnight Procession']
   }
 };
