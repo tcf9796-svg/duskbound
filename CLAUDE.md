@@ -34,6 +34,7 @@ node tests/e2e/mic.test.js
 node tests/e2e/fullscreen.test.js
 node tests/e2e/heroes.test.js
 node tests/e2e/auto.test.js
+node tests/e2e/unseal.test.js
 ```
 
 When changing any `.js` file: bump `?v=N` on every script tag in `index.html`, rebuild `dist/`, run the tests.
@@ -55,7 +56,9 @@ page by republishing `dist/artifact.html` to the URL above.
   (Purple). They are character rewards inside the one chapter roll (`c:<id>` in `REWARD_POOLS`), winnable from
   Chapter 1 / 2 / 3; there is no separate character roll. Unlocks live in the profile (`PROFILE.characters`); the
   host only lets a guest play a hero their profile owns. Rowan and Vespera cast a second skill from the dash slot.
-- Network messages changed: `PEER_PREFIX` is `duskbound-v3-`. Bump it whenever messages change.
+- The boss is unsealed early by standing in the altar ring for `UNSEAL_TIME` (5 s, `data.js`), not by pressing F;
+  any living player counts, the host keeps the time, progress drains when the ring is empty.
+- Network messages changed: `PEER_PREFIX` is `duskbound-v4-`. Bump it whenever messages change.
 - Work happens on a branch, then a pull request into `main`. Pull before starting, so PC and phone sessions don't
   drift apart again.
 - Every user-facing string needs a Traditional Chinese version.

@@ -609,6 +609,14 @@ function update(dt) {
   if (!isNight && game.wasNight) { banner('Day ' + (dayIdx() + 1), 'A little light. Use it.', 3); sfx('dawn'); }
   game.wasNight = isNight;
   if (!game.boss && game.winT <= 0 && game.time >= TOTAL) spawnBoss();
+  // boss altar: stand in the ring to unseal the Gloam Stag early
+  const alt = world.pois[0];
+  if (alt && alt.kind === 'altar' && !alt.used && !game.boss && game.winT <= 0) {
+    const before = alt.unseal || 0, on = players.some(p => !p.down && dist(p, alt) < UNSEAL_RADIUS);
+    alt.unseal = on ? before + dt : Math.max(0, before - dt * UNSEAL_DRAIN);
+    if (on && Math.floor(alt.unseal) > Math.floor(before)) sfx('warn', alt); // a tick each second
+    if (alt.unseal >= UNSEAL_TIME) { alt.unseal = 0; spawnBoss(); }
+  }
   if (isNight && !game.boss && game.winT <= 0) {
     game.ambT -= dt;
     if (game.ambT <= 0) {
@@ -785,7 +793,7 @@ function nearPoi(p) { let best = null, bd = 80; for (const o of world.pois) { if
 const merchCost = o => 40 + 30 * o.uses;
 function poiPrompt(o) {
   switch (o.kind) {
-    case 'altar': return o.used ? null : 'Wake the Gloam Stag early';
+    case 'altar': return o.used ? null : 'Stand in the ring for ' + UNSEAL_TIME + ' s to unseal the Gloam Stag';
     case 'spring': return o.used ? null : 'Drink from the spring';
     case 'chest': return o.used ? null : 'Open cache';
     case 'shrine': return o.used ? null : 'Pray at the wayshrine';
@@ -793,9 +801,8 @@ function poiPrompt(o) {
   }
 }
 function interact(p) {
-  const o = nearPoi(p); if (!o || !poiPrompt(o)) return;
-  if (o.kind === 'altar') spawnBoss();
-  else if (o.kind === 'spring') { o.used = true; for (const q of players) heal(q, q.maxHp * 0.6); sfx('heal'); ring(o.x, o.y, 90, '#7fd6ff'); }
+  const o = nearPoi(p); if (!o || !poiPrompt(o) || o.kind === 'altar') return;
+  if (o.kind === 'spring') { o.used = true; for (const q of players) heal(q, q.maxHp * 0.6); sfx('heal'); ring(o.x, o.y, 90, '#7fd6ff'); }
   else if (o.kind === 'chest') { o.used = true; sfx('pick', o); for (let i = 0; i < 6; i++) drop('gold', o.x, o.y, randi(3, 6)); for (let i = 0; i < 5; i++) drop('xp', o.x, o.y, 4 + game.chapter * 2); if (Math.random() < 0.3) drop('heart', o.x, o.y, 20); }
   else if (o.kind === 'shrine') {
     o.used = true; sfx('pick'); ring(o.x, o.y, 90, '#f3d48a'); const r = randi(0, 2);
@@ -874,7 +881,7 @@ function expireAway() {
 }
 
 // ---------- netcode ----------
-const PEER_PREFIX = 'duskbound-v3-'; // bump whenever messages change, so mismatched versions never meet
+const PEER_PREFIX = 'duskbound-v4-'; // bump whenever messages change, so mismatched versions never meet
 const noNetMsg = () => window.DUSK_NO_NET ? 'Online co-op is not available on this page. Solo works here; for co-op, open the downloaded duskbound.html file or a copy on your own website.' : 'Online play needs an internet connection (the networking library did not load).';
 function wrapConn(c) {
   const w = { peerId: c.peer, send: d => { try { c.send(d); } catch (e) { } }, onData: null, onClose: null, close: () => { try { c.close(); } catch (e) { } } };
@@ -1168,7 +1175,7 @@ function snapPlayer(p) {
 function sendSnaps() {
   if (!net.conns.length || !world) return;
   const b = game.boss, g = [r1(game.time), game.chapter, game.wasNight ? 1 : 0, b ? [b.x | 0, b.y | 0, r3(b.hp / b.maxHp)] : 0, game.over || 0];
-  const P = players.map(snapPlayer), O = world.pois.map(o => [o.used ? 1 : 0, o.uses || 0]);
+  const P = players.map(snapPlayer), O = world.pois.map(o => [o.used ? 1 : 0, o.uses || 0, r2(o.unseal || 0)]);
   for (const c of net.conns) {
     const cp = players.find(p => p.id === c.pid); if (!cp || !c.inGame) continue;
     const nr = o => Math.abs(o.x - cp.x) < 1150 && Math.abs(o.y - cp.y) < 850;
@@ -1240,7 +1247,7 @@ function applySnap(s) {
     if (p === me) { if (q.tp !== p.tp) { p.x = q.x; p.y = q.y; p.tp = q.tp; p.dashT = 0; } }
     else { p.tx = q.x; p.ty = q.y; p.face = q.f; p.moving = !!q.mv; p.dashT = q.dt ? 0.05 : 0; if (dist(p, { x: q.x, y: q.y }) > 300) { p.x = q.x; p.y = q.y; } }
   }
-  s.O.forEach((o, i) => { const w = world.pois[i]; if (w) { w.used = !!o[0]; w.uses = o[1]; } });
+  s.O.forEach((o, i) => { const w = world.pois[i]; if (w) { w.used = !!o[0]; w.uses = o[1]; w.unseal = num(o[2]); } });
   const old = new Map(enemies.map(e => [e.id, e]));
   enemies = s.E.map(a => {
     const e = old.get(a[0]) || { id: a[0], x: a[2], y: a[3], ph: (a[0] * 1.7) % TAU, flash: 0, near: true };
@@ -1377,8 +1384,8 @@ function render() {
   }
   c.textAlign = 'center';
   for (const q of texts) { c.globalAlpha = clamp(q.life / 0.4, 0, 1); c.font = 'bold ' + q.size + 'px Georgia'; c.fillStyle = 'rgba(0,0,0,.7)'; const qs = T(q.s); c.fillText(qs, q.x + 1, q.y + 1); c.fillStyle = q.color; c.fillText(qs, q.x, q.y); } c.globalAlpha = 1;
-  const np = !p.down && nearPoi(p), pr = np && T(poiPrompt(np));
-  if (pr) { c.font = '15px Georgia'; const w = c.measureText(pr).width + 50; c.fillStyle = 'rgba(10,10,20,.8)'; rr(c, np.x - w / 2, np.y - 78, w, 26, 6); c.fill(); c.fillStyle = '#f3d48a'; c.fillText((touch.on ? '' : '[F]  ') + pr, np.x, np.y - 60); }
+  const np = !p.down && nearPoi(p), pr = np && !(np.kind === 'altar' && np.unseal > 0) && T(poiPrompt(np)); // while unsealing, the countdown replaces the hint
+  if (pr) { c.font = '15px Georgia'; const w = c.measureText(pr).width + 50; c.fillStyle = 'rgba(10,10,20,.8)'; rr(c, np.x - w / 2, np.y - 78, w, 26, 6); c.fill(); c.fillStyle = '#f3d48a'; c.fillText((touch.on || np.kind === 'altar' ? '' : '[F]  ') + pr, np.x, np.y - 60); }
   c.restore();
   drawHUD();
 }
@@ -1464,7 +1471,7 @@ function drawTouchUI() {
     c.globalAlpha = s ? 0.55 : 0.25; c.strokeStyle = '#e8e2d0'; c.lineWidth = 2; c.beginPath(); c.arc(x, y, 52 * u, 0, TAU); c.stroke(); circ(c, kx, ky, 22 * u, '#e8e2d0'); c.globalAlpha = 1;
   };
   const B = H - Math.max(SA.b - 8, 0); stick(touch.move, SA.l + 100 * u, B - 95 * u); stick(touch.aim, W - SA.r - 100 * u, B - 90 * u);
-  const np = !p.down && nearPoi(p), use = !!(np && poiPrompt(np));
+  const np = !p.down && nearPoi(p), use = !!(np && np.kind !== 'altar' && poiPrompt(np));
   const b1 = slotBlock(p, 1), alt = HEROES[p.hero].alt, b2 = alt ? slotBlock(p, 2) : null;
   const info = { skill: [b1 || 'SKILL', p.tSkill, p.cds[1], !b1], dash: [b2 || (alt ? 'SKILL 2' : 'DASH') + (p.dashMax > 1 ? ' ' + p.dashes : ''), p.dashes > 0 ? 0 : p.dashRe, p.cds[2], !b2], ult: [p.level >= 3 ? 'ULT' : 'Lv 3', p.tUlt, p.cds[3], p.level >= 3], f: ['USE', 0, 0, use],
     menu: [net.mode === 'solo' ? 'II' : '🎙', 0, 0, true], fs: ['⛶', 0, 0, true], auto: [autoAtk ? 'AUTO ✓' : 'AUTO', 0, 0, autoAtk], talk: [Voice.transmitting() ? '● ' + T('TALK') : T('TALK'), 0, 0, true] };

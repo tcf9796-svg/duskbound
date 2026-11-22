@@ -240,6 +240,9 @@ const PAL = [
   { name: 'The Hollow Crown', placeholder: true, base: '#3a2c40', spk: ['#4a3852', '#2a2030', '#5c4466'], tree: ['#22172a', '#3c2848', '#5a3a6a'], rock: '#6e6478' }
 ];
 const DAY = 65, NIGHT = 45, CYCLE = DAY + NIGHT, DAYS = 3, TOTAL = CYCLE * DAYS;
+// Unsealing the boss early: a living player must stand inside the altar ring (UNSEAL_RADIUS) for UNSEAL_TIME seconds.
+// Progress drains at UNSEAL_DRAIN x speed while nobody stands in the ring.
+const UNSEAL_TIME = 5, UNSEAL_RADIUS = 58, UNSEAL_DRAIN = 1.5;
 
 </script>
 <script>
@@ -386,7 +389,7 @@ const ZH = {
   '+8% damage': '傷害 +8%', '+15 max health': '最大生命 +15', '+5% speed, +4% crit': '速度 +5%，暴擊 +4%',
   'Not enough gold': '金幣不足', "The Peddler's wares": '行商的貨品', 'Day 1 — find the camps, caches and shrines.': '第 1 天 — 找出營地、寶箱與神龕。',
   // map prompts
-  'Wake the Gloam Stag early': '提早喚醒幽暮雄鹿', 'Drink from the spring': '飲用泉水', 'Open cache': '開啟寶箱', 'Pray at the wayshrine': '在路旁神龕祈禱',
+  'Wake the Gloam Stag early': '提早喚醒幽暮雄鹿', 'Unsealing': '解封中', 'Drink from the spring': '飲用泉水', 'Open cache': '開啟寶箱', 'Pray at the wayshrine': '在路旁神龕祈禱',
   // HUD
   'The Gloam Stag hunts you': '幽暮雄鹿正在獵殺你', 'LMB': '左鍵', 'RMB': '右鍵', 'SPACE': '空白鍵', 'DOWN': '倒地',
   'SKILL': '技能', 'AUTO': '自動', 'AUTO ✓': '自動 ✓', 'Auto attack': '自動攻擊', 'Auto attack on': '自動攻擊：開', 'Auto attack off': '自動攻擊：關', 'on': '開', 'off': '關', 'TALK': '說話', 'DASH': '衝刺', 'ULT': '絕招', 'USE': '使用', 'Lv 3': '3 級',
@@ -407,7 +410,7 @@ const ZH = {
 const ZH_RX = [
   [/^Day (\d+)$/, '第 $1 天'], [/^Level (\d+)$/, '等級 $1'], [/^Chapter (\d+)$/, '第 $1 章'], [/^(\d+) remaining$/, '剩餘 $1'],
   [/^Buy a boon — (\d+) gold$/, '購買祝福 — $1 金幣'], [/^(.+) has fallen$/, '$1 倒下了'], [/^(.+) is back up$/, '$1 重新站起來了'],
-  [/^(.+) left the party$/, '$1 離開了隊伍'], [/^Blocked · root (\d+)$/, '格擋 · 深根 $1'], [/^Deep Roots ×(\d+)$/, '深根 ×$1'], [/^Character: (.+)$/, '角色：$1'], [/^(Green|Blue|Purple|Yellow|Red) reward$/, '$1獎勵'], [/^(.+) unlocked$/, '已解鎖$1'], [/^Campaign cleared on (.+)$/, '已通關$1難度'],
+  [/^(.+) left the party$/, '$1 離開了隊伍'], [/^Stand in the ring for (\d+(?:\.\d+)?) s to unseal the Gloam Stag$/, '站在法陣中 $1 秒即可解封幽暮雄鹿'], [/^Blocked · root (\d+)$/, '格擋 · 深根 $1'], [/^Deep Roots ×(\d+)$/, '深根 ×$1'], [/^Character: (.+)$/, '角色：$1'], [/^(Green|Blue|Purple|Yellow|Red) reward$/, '$1獎勵'], [/^(.+) unlocked$/, '已解鎖$1'], [/^Campaign cleared on (.+)$/, '已通關$1難度'],
   [/^Weapon: (.+)$/, '武器：$1'], [/^Starting talent: (.+)$/, '初始天賦：$1'], [/^Upgrade: (.+?) (\+\d+%?)$/, '強化：$1 $2'], [/^Chapter (\d+) \(preview\)$/, '第 $1 章（預覽）'],
   [/^(.+)'s place was released$/, '$1 的位置已釋出'], [/^They can rejoin with room code (\S+) within (\d+) min$/, '可在 $2 分鐘內用房間代碼 $1 重新加入'], [/^(.+) lost connection$/, '$1 連線中斷'], [/^(.+) rejoined the party$/, '$1 重新加入了隊伍'],
   [/^They can rejoin with room code (.+)$/, '可用房間代碼 $1 重新加入'], [/^No room found with code (.+)\.$/, '找不到代碼為 $1 的房間。'],
@@ -786,6 +789,16 @@ function drawPoi(o) {
     case 'altar': {
       ell(c, 0, 8, 52, 20, '#3a3548'); ell(c, 0, 4, 40, 15, '#4c4660');
       for (let i = 0; i < 5; i++) { const a = i * TAU / 5 + 0.3, x = Math.cos(a) * 46, y = Math.sin(a) * 18 + 4; c.fillStyle = '#5a546e'; c.fillRect(x - 5, y - 30, 10, 32); }
+      if (!o.used) {
+        const u = clamp((o.unseal || 0) / UNSEAL_TIME, 0, 1);
+        c.strokeStyle = 'rgba(194,123,255,' + (0.25 + 0.15 * Math.sin(t * 2.5)) + ')'; c.lineWidth = 2; c.beginPath(); c.ellipse(0, 6, UNSEAL_RADIUS, UNSEAL_RADIUS * 0.4, 0, 0, TAU); c.stroke();
+        if (u > 0) {
+          c.strokeStyle = '#ff5ad6'; c.lineWidth = 5; c.beginPath(); c.ellipse(0, 6, UNSEAL_RADIUS, UNSEAL_RADIUS * 0.4, 0, -Math.PI / 2, -Math.PI / 2 + TAU * u); c.stroke();
+          const gl = c.createRadialGradient(0, -8, 2, 0, -8, 30 + 50 * u); gl.addColorStop(0, 'rgba(255,90,214,' + (0.35 + 0.4 * u) + ')'); gl.addColorStop(1, 'rgba(255,90,214,0)'); c.fillStyle = gl; c.beginPath(); c.arc(0, -8, 30 + 50 * u, 0, TAU); c.fill();
+          c.textAlign = 'center'; c.font = 'bold 15px Georgia'; c.fillStyle = 'rgba(0,0,0,.6)'; const tx = T('Unsealing') + ' ' + Math.max(0, UNSEAL_TIME - (o.unseal || 0)).toFixed(1) + 's';
+          c.fillText(tx, 1, -51); c.fillStyle = '#ffb8ee'; c.fillText(tx, 0, -52);
+        }
+      }
       const g = c.createRadialGradient(0, -8, 2, 0, -8, 34); g.addColorStop(0, o.used ? 'rgba(120,120,140,.5)' : 'rgba(200,120,255,' + (0.6 + Math.sin(t * 3) * 0.2) + ')'); g.addColorStop(1, 'rgba(160,80,255,0)'); c.fillStyle = g; c.beginPath(); c.arc(0, -8, 34, 0, TAU); c.fill();
       break;
     }
@@ -1627,6 +1640,14 @@ function update(dt) {
   if (!isNight && game.wasNight) { banner('Day ' + (dayIdx() + 1), 'A little light. Use it.', 3); sfx('dawn'); }
   game.wasNight = isNight;
   if (!game.boss && game.winT <= 0 && game.time >= TOTAL) spawnBoss();
+  // boss altar: stand in the ring to unseal the Gloam Stag early
+  const alt = world.pois[0];
+  if (alt && alt.kind === 'altar' && !alt.used && !game.boss && game.winT <= 0) {
+    const before = alt.unseal || 0, on = players.some(p => !p.down && dist(p, alt) < UNSEAL_RADIUS);
+    alt.unseal = on ? before + dt : Math.max(0, before - dt * UNSEAL_DRAIN);
+    if (on && Math.floor(alt.unseal) > Math.floor(before)) sfx('warn', alt); // a tick each second
+    if (alt.unseal >= UNSEAL_TIME) { alt.unseal = 0; spawnBoss(); }
+  }
   if (isNight && !game.boss && game.winT <= 0) {
     game.ambT -= dt;
     if (game.ambT <= 0) {
@@ -1803,7 +1824,7 @@ function nearPoi(p) { let best = null, bd = 80; for (const o of world.pois) { if
 const merchCost = o => 40 + 30 * o.uses;
 function poiPrompt(o) {
   switch (o.kind) {
-    case 'altar': return o.used ? null : 'Wake the Gloam Stag early';
+    case 'altar': return o.used ? null : 'Stand in the ring for ' + UNSEAL_TIME + ' s to unseal the Gloam Stag';
     case 'spring': return o.used ? null : 'Drink from the spring';
     case 'chest': return o.used ? null : 'Open cache';
     case 'shrine': return o.used ? null : 'Pray at the wayshrine';
@@ -1811,9 +1832,8 @@ function poiPrompt(o) {
   }
 }
 function interact(p) {
-  const o = nearPoi(p); if (!o || !poiPrompt(o)) return;
-  if (o.kind === 'altar') spawnBoss();
-  else if (o.kind === 'spring') { o.used = true; for (const q of players) heal(q, q.maxHp * 0.6); sfx('heal'); ring(o.x, o.y, 90, '#7fd6ff'); }
+  const o = nearPoi(p); if (!o || !poiPrompt(o) || o.kind === 'altar') return;
+  if (o.kind === 'spring') { o.used = true; for (const q of players) heal(q, q.maxHp * 0.6); sfx('heal'); ring(o.x, o.y, 90, '#7fd6ff'); }
   else if (o.kind === 'chest') { o.used = true; sfx('pick', o); for (let i = 0; i < 6; i++) drop('gold', o.x, o.y, randi(3, 6)); for (let i = 0; i < 5; i++) drop('xp', o.x, o.y, 4 + game.chapter * 2); if (Math.random() < 0.3) drop('heart', o.x, o.y, 20); }
   else if (o.kind === 'shrine') {
     o.used = true; sfx('pick'); ring(o.x, o.y, 90, '#f3d48a'); const r = randi(0, 2);
@@ -1892,7 +1912,7 @@ function expireAway() {
 }
 
 // ---------- netcode ----------
-const PEER_PREFIX = 'duskbound-v3-'; // bump whenever messages change, so mismatched versions never meet
+const PEER_PREFIX = 'duskbound-v4-'; // bump whenever messages change, so mismatched versions never meet
 const noNetMsg = () => window.DUSK_NO_NET ? 'Online co-op is not available on this page. Solo works here; for co-op, open the downloaded duskbound.html file or a copy on your own website.' : 'Online play needs an internet connection (the networking library did not load).';
 function wrapConn(c) {
   const w = { peerId: c.peer, send: d => { try { c.send(d); } catch (e) { } }, onData: null, onClose: null, close: () => { try { c.close(); } catch (e) { } } };
@@ -2186,7 +2206,7 @@ function snapPlayer(p) {
 function sendSnaps() {
   if (!net.conns.length || !world) return;
   const b = game.boss, g = [r1(game.time), game.chapter, game.wasNight ? 1 : 0, b ? [b.x | 0, b.y | 0, r3(b.hp / b.maxHp)] : 0, game.over || 0];
-  const P = players.map(snapPlayer), O = world.pois.map(o => [o.used ? 1 : 0, o.uses || 0]);
+  const P = players.map(snapPlayer), O = world.pois.map(o => [o.used ? 1 : 0, o.uses || 0, r2(o.unseal || 0)]);
   for (const c of net.conns) {
     const cp = players.find(p => p.id === c.pid); if (!cp || !c.inGame) continue;
     const nr = o => Math.abs(o.x - cp.x) < 1150 && Math.abs(o.y - cp.y) < 850;
@@ -2258,7 +2278,7 @@ function applySnap(s) {
     if (p === me) { if (q.tp !== p.tp) { p.x = q.x; p.y = q.y; p.tp = q.tp; p.dashT = 0; } }
     else { p.tx = q.x; p.ty = q.y; p.face = q.f; p.moving = !!q.mv; p.dashT = q.dt ? 0.05 : 0; if (dist(p, { x: q.x, y: q.y }) > 300) { p.x = q.x; p.y = q.y; } }
   }
-  s.O.forEach((o, i) => { const w = world.pois[i]; if (w) { w.used = !!o[0]; w.uses = o[1]; } });
+  s.O.forEach((o, i) => { const w = world.pois[i]; if (w) { w.used = !!o[0]; w.uses = o[1]; w.unseal = num(o[2]); } });
   const old = new Map(enemies.map(e => [e.id, e]));
   enemies = s.E.map(a => {
     const e = old.get(a[0]) || { id: a[0], x: a[2], y: a[3], ph: (a[0] * 1.7) % TAU, flash: 0, near: true };
@@ -2395,8 +2415,8 @@ function render() {
   }
   c.textAlign = 'center';
   for (const q of texts) { c.globalAlpha = clamp(q.life / 0.4, 0, 1); c.font = 'bold ' + q.size + 'px Georgia'; c.fillStyle = 'rgba(0,0,0,.7)'; const qs = T(q.s); c.fillText(qs, q.x + 1, q.y + 1); c.fillStyle = q.color; c.fillText(qs, q.x, q.y); } c.globalAlpha = 1;
-  const np = !p.down && nearPoi(p), pr = np && T(poiPrompt(np));
-  if (pr) { c.font = '15px Georgia'; const w = c.measureText(pr).width + 50; c.fillStyle = 'rgba(10,10,20,.8)'; rr(c, np.x - w / 2, np.y - 78, w, 26, 6); c.fill(); c.fillStyle = '#f3d48a'; c.fillText((touch.on ? '' : '[F]  ') + pr, np.x, np.y - 60); }
+  const np = !p.down && nearPoi(p), pr = np && !(np.kind === 'altar' && np.unseal > 0) && T(poiPrompt(np)); // while unsealing, the countdown replaces the hint
+  if (pr) { c.font = '15px Georgia'; const w = c.measureText(pr).width + 50; c.fillStyle = 'rgba(10,10,20,.8)'; rr(c, np.x - w / 2, np.y - 78, w, 26, 6); c.fill(); c.fillStyle = '#f3d48a'; c.fillText((touch.on || np.kind === 'altar' ? '' : '[F]  ') + pr, np.x, np.y - 60); }
   c.restore();
   drawHUD();
 }
@@ -2482,7 +2502,7 @@ function drawTouchUI() {
     c.globalAlpha = s ? 0.55 : 0.25; c.strokeStyle = '#e8e2d0'; c.lineWidth = 2; c.beginPath(); c.arc(x, y, 52 * u, 0, TAU); c.stroke(); circ(c, kx, ky, 22 * u, '#e8e2d0'); c.globalAlpha = 1;
   };
   const B = H - Math.max(SA.b - 8, 0); stick(touch.move, SA.l + 100 * u, B - 95 * u); stick(touch.aim, W - SA.r - 100 * u, B - 90 * u);
-  const np = !p.down && nearPoi(p), use = !!(np && poiPrompt(np));
+  const np = !p.down && nearPoi(p), use = !!(np && np.kind !== 'altar' && poiPrompt(np));
   const b1 = slotBlock(p, 1), alt = HEROES[p.hero].alt, b2 = alt ? slotBlock(p, 2) : null;
   const info = { skill: [b1 || 'SKILL', p.tSkill, p.cds[1], !b1], dash: [b2 || (alt ? 'SKILL 2' : 'DASH') + (p.dashMax > 1 ? ' ' + p.dashes : ''), p.dashes > 0 ? 0 : p.dashRe, p.cds[2], !b2], ult: [p.level >= 3 ? 'ULT' : 'Lv 3', p.tUlt, p.cds[3], p.level >= 3], f: ['USE', 0, 0, use],
     menu: [net.mode === 'solo' ? 'II' : '🎙', 0, 0, true], fs: ['⛶', 0, 0, true], auto: [autoAtk ? 'AUTO ✓' : 'AUTO', 0, 0, autoAtk], talk: [Voice.transmitting() ? '● ' + T('TALK') : T('TALK'), 0, 0, true] };

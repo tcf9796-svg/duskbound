@@ -102,4 +102,7 @@ const PAL = [
   { name: 'The Hollow Crown', placeholder: true, base: '#3a2c40', spk: ['#4a3852', '#2a2030', '#5c4466'], tree: ['#22172a', '#3c2848', '#5a3a6a'], rock: '#6e6478' }
 ];
 const DAY = 65, NIGHT = 45, CYCLE = DAY + NIGHT, DAYS = 3, TOTAL = CYCLE * DAYS;
+// Unsealing the boss early: a living player must stand inside the altar ring (UNSEAL_RADIUS) for UNSEAL_TIME seconds.
+// Progress drains at UNSEAL_DRAIN x speed while nobody stands in the ring.
+const UNSEAL_TIME = 5, UNSEAL_RADIUS = 58, UNSEAL_DRAIN = 1.5;
 

@@ -141,7 +141,7 @@ const ZH = {
   '+8% damage': '傷害 +8%', '+15 max health': '最大生命 +15', '+5% speed, +4% crit': '速度 +5%，暴擊 +4%',
   'Not enough gold': '金幣不足', "The Peddler's wares": '行商的貨品', 'Day 1 — find the camps, caches and shrines.': '第 1 天 — 找出營地、寶箱與神龕。',
   // map prompts
-  'Wake the Gloam Stag early': '提早喚醒幽暮雄鹿', 'Drink from the spring': '飲用泉水', 'Open cache': '開啟寶箱', 'Pray at the wayshrine': '在路旁神龕祈禱',
+  'Wake the Gloam Stag early': '提早喚醒幽暮雄鹿', 'Unsealing': '解封中', 'Drink from the spring': '飲用泉水', 'Open cache': '開啟寶箱', 'Pray at the wayshrine': '在路旁神龕祈禱',
   // HUD
   'The Gloam Stag hunts you': '幽暮雄鹿正在獵殺你', 'LMB': '左鍵', 'RMB': '右鍵', 'SPACE': '空白鍵', 'DOWN': '倒地',
   'SKILL': '技能', 'AUTO': '自動', 'AUTO ✓': '自動 ✓', 'Auto attack': '自動攻擊', 'Auto attack on': '自動攻擊：開', 'Auto attack off': '自動攻擊：關', 'on': '開', 'off': '關', 'TALK': '說話', 'DASH': '衝刺', 'ULT': '絕招', 'USE': '使用', 'Lv 3': '3 級',
@@ -162,7 +162,7 @@ const ZH = {
 const ZH_RX = [
   [/^Day (\d+)$/, '第 $1 天'], [/^Level (\d+)$/, '等級 $1'], [/^Chapter (\d+)$/, '第 $1 章'], [/^(\d+) remaining$/, '剩餘 $1'],
   [/^Buy a boon — (\d+) gold$/, '購買祝福 — $1 金幣'], [/^(.+) has fallen$/, '$1 倒下了'], [/^(.+) is back up$/, '$1 重新站起來了'],
-  [/^(.+) left the party$/, '$1 離開了隊伍'], [/^Blocked · root (\d+)$/, '格擋 · 深根 $1'], [/^Deep Roots ×(\d+)$/, '深根 ×$1'], [/^Character: (.+)$/, '角色：$1'], [/^(Green|Blue|Purple|Yellow|Red) reward$/, '$1獎勵'], [/^(.+) unlocked$/, '已解鎖$1'], [/^Campaign cleared on (.+)$/, '已通關$1難度'],
+  [/^(.+) left the party$/, '$1 離開了隊伍'], [/^Stand in the ring for (\d+(?:\.\d+)?) s to unseal the Gloam Stag$/, '站在法陣中 $1 秒即可解封幽暮雄鹿'], [/^Blocked · root (\d+)$/, '格擋 · 深根 $1'], [/^Deep Roots ×(\d+)$/, '深根 ×$1'], [/^Character: (.+)$/, '角色：$1'], [/^(Green|Blue|Purple|Yellow|Red) reward$/, '$1獎勵'], [/^(.+) unlocked$/, '已解鎖$1'], [/^Campaign cleared on (.+)$/, '已通關$1難度'],
   [/^Weapon: (.+)$/, '武器：$1'], [/^Starting talent: (.+)$/, '初始天賦：$1'], [/^Upgrade: (.+?) (\+\d+%?)$/, '強化：$1 $2'], [/^Chapter (\d+) \(preview\)$/, '第 $1 章（預覽）'],
   [/^(.+)'s place was released$/, '$1 的位置已釋出'], [/^They can rejoin with room code (\S+) within (\d+) min$/, '可在 $2 分鐘內用房間代碼 $1 重新加入'], [/^(.+) lost connection$/, '$1 連線中斷'], [/^(.+) rejoined the party$/, '$1 重新加入了隊伍'],
   [/^They can rejoin with room code (.+)$/, '可用房間代碼 $1 重新加入'], [/^No room found with code (.+)\.$/, '找不到代碼為 $1 的房間。'],
