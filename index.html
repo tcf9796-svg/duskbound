@@ -18,6 +18,13 @@
   /* iPhone notch / Dynamic Island / home bar: read by game.js to keep the HUD and touch buttons clear of them. */
   #sa{position:fixed;visibility:hidden;pointer-events:none;top:0;left:0;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
   canvas#game{position:fixed;left:0;top:0;display:block;width:100%;height:100%;cursor:crosshair;touch-action:none}
+  /* iPhone Safari hides its bars only when the page scrolls: there the page gets a little room to scroll (game.js adds .iosbar). */
+  html.iosbar,html.iosbar body{height:auto;overflow-x:hidden;overflow-y:auto}
+  html.iosbar body::after{content:'';display:block;height:calc(100vh + 200px)}
+  #swipehint{display:none;position:fixed;z-index:6;left:50%;transform:translateX(-50%);bottom:max(8px,env(safe-area-inset-bottom));padding:6px 14px;border-radius:16px;
+    background:rgba(243,212,138,.92);color:#1a1626;font-size:14px;white-space:nowrap;pointer-events:none;animation:swipe 1.6s ease-in-out infinite}
+  body.bars.menu #swipehint{display:block}
+  @keyframes swipe{0%,100%{transform:translate(-50%,0)}50%{transform:translate(-50%,-6px)}}
   input{-webkit-user-select:text;user-select:text}
   #choice.solo{overflow:auto}
   #rotate{display:none;position:fixed;inset:0;z-index:9;background:#0b0d14;align-items:center;justify-content:center;text-align:center;padding:24px;font-size:20px;color:#f3d48a;line-height:1.6}
@@ -98,13 +105,14 @@
 <div id="choice" class="hidden"></div>
 <div id="overlay"></div>
 <div id="sa"></div>
+<div id="swipehint"></div>
 <div id="rotate"><div><span class="rt1">Turn your phone sideways</span><br><span class="rt2" style="color:#a9a3c4;font-size:15px;font-style:italic">Duskbound plays best in landscape.</span><br><button id="rotok" type="button" style="margin-top:16px">Play upright anyway</button></div></div>
 <script>document.getElementById('rotok').onclick = function () { document.body.classList.add('upright'); };</script>
 <script async src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="data.js?v=8"></script>
-<script src="i18n.js?v=8"></script>
-<script src="art.js?v=8"></script>
-<script src="audio.js?v=8"></script>
-<script src="game.js?v=8"></script>
+<script src="data.js?v=9"></script>
+<script src="i18n.js?v=9"></script>
+<script src="art.js?v=9"></script>
+<script src="audio.js?v=9"></script>
+<script src="game.js?v=9"></script>
 </body>
 </html>

@@ -18,6 +18,13 @@
   /* iPhone notch / Dynamic Island / home bar: read by game.js to keep the HUD and touch buttons clear of them. */
   #sa{position:fixed;visibility:hidden;pointer-events:none;top:0;left:0;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
   canvas#game{position:fixed;left:0;top:0;display:block;width:100%;height:100%;cursor:crosshair;touch-action:none}
+  /* iPhone Safari hides its bars only when the page scrolls: there the page gets a little room to scroll (game.js adds .iosbar). */
+  html.iosbar,html.iosbar body{height:auto;overflow-x:hidden;overflow-y:auto}
+  html.iosbar body::after{content:'';display:block;height:calc(100vh + 200px)}
+  #swipehint{display:none;position:fixed;z-index:6;left:50%;transform:translateX(-50%);bottom:max(8px,env(safe-area-inset-bottom));padding:6px 14px;border-radius:16px;
+    background:rgba(243,212,138,.92);color:#1a1626;font-size:14px;white-space:nowrap;pointer-events:none;animation:swipe 1.6s ease-in-out infinite}
+  body.bars.menu #swipehint{display:block}
+  @keyframes swipe{0%,100%{transform:translate(-50%,0)}50%{transform:translate(-50%,-6px)}}
   input{-webkit-user-select:text;user-select:text}
   #choice.solo{overflow:auto}
   #rotate{display:none;position:fixed;inset:0;z-index:9;background:#0b0d14;align-items:center;justify-content:center;text-align:center;padding:24px;font-size:20px;color:#f3d48a;line-height:1.6}
@@ -98,6 +105,7 @@
 <div id="choice" class="hidden"></div>
 <div id="overlay"></div>
 <div id="sa"></div>
+<div id="swipehint"></div>
 <div id="rotate"><div><span class="rt1">Turn your phone sideways</span><br><span class="rt2" style="color:#a9a3c4;font-size:15px;font-style:italic">Duskbound plays best in landscape.</span><br><button id="rotok" type="button" style="margin-top:16px">Play upright anyway</button></div></div>
 <script>document.getElementById('rotok').onclick = function () { document.body.classList.add('upright'); };</script>
 <script>
@@ -554,9 +562,17 @@ function readSafeArea() {
 }
 const IOS = /iP(hone|od|ad)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const STANDALONE = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
+// iPhone Safari (not the Home Screen app, not inside another page): Safari shrinks its bars away only when the page
+// itself scrolls, so give the page some scroll room. Swiping up on menus scrolls it and the bars disappear; during play
+// the canvas blocks scrolling, so they stay hidden.
+const IOS_BARS = IOS && !STANDALONE && window.top === window;
+if (IOS_BARS) document.documentElement.classList.add('iosbar');
+// Are Safari's bars still taking up room? (screen.* is the full screen; in landscape the short side is the full height.)
+const barsShowing = () => IOS_BARS && innerHeight < (innerWidth > innerHeight ? Math.min(screen.width, screen.height) : Math.max(screen.width, screen.height)) - 24;
 function resize() {
   DPR = Math.min(window.devicePixelRatio || 1, 2); W = innerWidth; H = innerHeight; readSafeArea();
   cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+  if (IOS_BARS) { cv.style.width = W + 'px'; cv.style.height = H + 'px'; document.body.classList.toggle('bars', barsShowing()); }
   zoom = clamp(Math.min(W / 1280, H / 720), touch.on ? 0.72 : 0.55, 1.6); VW = W / zoom; VH = H / zoom;
 }
 addEventListener('resize', resize); addEventListener('orientationchange', () => { resize(); setTimeout(resize, 300); }); resize();
@@ -1691,14 +1707,16 @@ function goFull() {
 const fsButtonHtml = () => STANDALONE || isFS() || !(touch.on || IOS) || window.DUSK_NO_NET ? '' : '<button id="fsb" class="ghost fsbtn">⛶ ' + L('Full screen', '全螢幕') + '</button>';
 function onFsButton(back) {
   if (canFS()) { goFull(); setTimeout(back, 300); return; }
-  show('<h2>' + L('Full screen on iPhone', 'iPhone 全螢幕') + '</h2><ol class="steps">' + L(
+  show('<h2>' + L('Full screen on iPhone', 'iPhone 全螢幕') + '</h2><div class="sub">' +
+    L('<b>Quick:</b> on the title screen, swipe up once — Safari hides its bars. Tap the very top or bottom edge to bring them back.<br><b>Always full screen:</b> install it as an app —',
+      '<b>快速：</b>在標題畫面向上滑動一次，Safari 就會隱藏工具列。點螢幕最上緣或最下緣可叫回工具列。<br><b>永遠全螢幕：</b>把遊戲安裝成 App —') + '</div><ol class="steps">' + L(
     '<li>Tap <b>Share</b> — in Safari it is in the bottom bar (or under <b>⋯</b>); in Chrome, at the top right.</li><li>Choose <b>Add to Home Screen</b>, then <b>Add</b>.</li><li>Open <b>Duskbound</b> from your Home Screen. It runs full screen, with no browser bars.</li>',
     '<li>點選<b>分享</b> — Safari 在下方工具列（或在 <b>⋯</b> 裡）；Chrome 在右上角。</li><li>選擇<b>加入主畫面</b>，再點<b>加入</b>。</li><li>從主畫面開啟 <b>Duskbound</b>，就會以全螢幕執行，沒有瀏覽器工具列。</li>') +
     '</ol><div class="sub">' + L('Your name and language need setting again there; co-op works the same.', '在主畫面版本中需要重新設定名字與語言；合作模式照常可用。') + '</div><button id="fsok">' + L('Got it', '知道了') + '</button>');
   $('fsok').onclick = back;
 }
-function show(html, soft) { overlay.className = soft ? 'soft' : ''; overlay.innerHTML = html; }
-function hide() { overlay.className = 'hidden'; overlay.innerHTML = ''; }
+function show(html, soft) { overlay.className = soft ? 'soft' : ''; overlay.innerHTML = html; document.body.classList.toggle('menu', !!$('solo')); }
+function hide() { overlay.className = 'hidden'; overlay.innerHTML = ''; document.body.classList.remove('menu'); }
 function heroCards(sel, compact) {
   let h = '<div class="cards">';
   Object.keys(HEROES).forEach((id, i) => { const H2 = HEROES[id]; h += '<div class="card' + (id === sel ? ' sel' : '') + (compact ? ' compact' : '') + '" data-hero="' + id + '"><span class="key">' + (i + 1) + '</span><canvas width="170" height="' + (compact ? 96 : 120) + '" data-p="' + id + '"></canvas><div class="tag" style="color:' + H2.color + '">' + T(H2.title) + '</div><h3>' + T(H2.name) + '</h3>' + (compact ? '' : '<p><i>' + T(H2.blurb) + '</i></p>') + '<ul>' + H2.kit.map(k => '<li>' + T(k) + '</li>').join('') + '</ul></div>'; });
@@ -1724,6 +1742,7 @@ function showMenu(msg) {
     '<div id="msg">' + esc(T(msg) || '') + '</div>' + controlsHtml() + '<button id="lang" class="ghost langbtn">' + (LANG === 'zh' ? '🌐 English' : '🌐 繁體中文') + '</button>' + fsButtonHtml());
   if ($('fsb')) $('fsb').onclick = () => { saveName(); onFsButton(() => showMenu(msg)); };
   $('lang').onclick = () => { saveName(); setLang(LANG === 'zh' ? 'en' : 'zh'); showMenu(msg); };
+  $('swipehint').textContent = L('⇡ Swipe up to hide Safari’s bars', '⇡ 向上滑動即可隱藏 Safari 工具列');
   bindHeroCards(selectHero);
   $('solo').onclick = () => { saveName(); goFull(); startSolo(); };
   $('hostb').onclick = () => { saveName(); goFull(); hostGame(); };
