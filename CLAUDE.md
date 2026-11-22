@@ -36,6 +36,7 @@ node tests/e2e/heroes.test.js
 node tests/e2e/auto.test.js
 node tests/e2e/unseal.test.js
 node tests/e2e/downed.test.js
+node tests/e2e/touchmode.test.js
 ```
 
 When changing any `.js` file: bump `?v=N` on every script tag in `index.html`, rebuild `dist/`, run the tests.

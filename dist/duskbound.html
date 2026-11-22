@@ -1096,7 +1096,13 @@ addEventListener('keydown', e => {
 addEventListener('keyup', e => { const k = e.key.toLowerCase(); keys[k] = false; if (k === 'v') Voice.setTalking(false); });
 addEventListener('keydown', e => { if (e.key.toLowerCase() === 'v' && !(e.target && e.target.tagName === 'INPUT') && !e.repeat) Voice.setTalking(true); });
 cv.addEventListener('mousemove', e => { mouse.x = e.clientX; mouse.y = e.clientY; });
-cv.addEventListener('mousedown', e => { initAudio();
+// Phones turn some taps into fake mouse events (a finger that lifts off an upgrade card, taps on page elements).
+// Those must not switch the game to the desktop layout or fire attacks, so mouse presses shortly after any touch are
+// ignored; a real mouse (no touch in the last second) still switches a touchscreen laptop to desktop controls.
+let lastTouchT = -1e9;
+for (const ev of ['touchstart', 'touchmove', 'touchend', 'touchcancel']) document.addEventListener(ev, () => { lastTouchT = performance.now(); }, { capture: true, passive: true });
+const fakeMouse = e => performance.now() - lastTouchT < 1000 || !!(e.sourceCapabilities && e.sourceCapabilities.firesTouchEvents);
+cv.addEventListener('mousedown', e => { if (fakeMouse(e)) return; initAudio();
   if (!touch.on && e.button === 0 && hudAuto && e.clientX >= hudAuto.x && e.clientX <= hudAuto.x + hudAuto.w && e.clientY >= hudAuto.y && e.clientY <= hudAuto.y + hudAuto.h) { toggleAuto(); return; } if (touch.on) { touch.on = false; touch.move = touch.aim = null; resize(); } if (e.button === 0) mouse.l = true; if (e.button === 2) { mouse.r = true; pressed.rmb = true; } });
 addEventListener('mouseup', e => { if (e.button === 0) mouse.l = false; if (e.button === 2) mouse.r = false; });
 addEventListener('contextmenu', e => e.preventDefault());
