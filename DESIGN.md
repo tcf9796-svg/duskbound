@@ -101,6 +101,15 @@ Chapters 1–3 are the original biomes. **Chapters 4–5 are placeholders:** new
 existing enemies and the Gloam Stag boss. Missing for them: unique enemy types, a new boss (or boss variants), map
 features, music and art.
 
+## Full screen
+
+A **⛶ Full screen** button is on the title screen, lobby, pause menu and voice panel, plus a small ⛶ in play
+(under the pause/voice button) while the game isn't full screen. Turning it on is remembered (`duskbound-fs`): any
+later tap goes back into full screen after a notification, rotation or app switch knocked it out, and Android also
+locks landscape. "Exit full screen" turns that off. iPhone Safari can't put a web page in full screen (only video),
+so there the button explains the two options: swipe up on the title screen (Safari hides its bars) or Add to Home
+Screen (the installed app always runs full screen). Not shown on the claude.ai page or inside the installed app.
+
 ## Voice chat
 
 `voice.js`, over PeerJS media calls (WebRTC), so it works in the GitHub Pages build with no extra service or

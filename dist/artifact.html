@@ -928,14 +928,21 @@ function touchButtons() {
   return [{ id: 'skill', key: 'e', x: R - 205 * u, y: B - 62 * u, r: 30 * u }, { id: 'dash', key: ' ', x: R - 190 * u, y: B - 140 * u, r: 30 * u },
   { id: 'ult', key: 'q', x: R - 118 * u, y: B - 196 * u, r: 30 * u }, { id: 'f', key: 'f', x: R - 42 * u, y: B - 210 * u, r: 26 * u },
   // left of the minimap: pause in solo, mute in co-op
-  { id: 'menu', key: '', x: R - 156 * hs, y: SA.t + 38 * hs, r: 18 * hs }].concat(Voice.micTrack && Voice.mode === 'ptt' && net.mode !== 'solo' ? [{ id: 'talk', key: '', x: SA.l + 44 * u, y: B - 205 * u, r: 28 * u }] : []);
+  { id: 'menu', key: '', x: R - 156 * hs, y: SA.t + 38 * hs, r: 18 * hs }].concat(fsAvailable() && !isFS() && (canFS() || barsShowing()) ? [{ id: 'fs', key: '', x: R - 156 * hs, y: SA.t + 84 * hs, r: 18 * hs }] : []).concat(Voice.micTrack && Voice.mode === 'ptt' && net.mode !== 'solo' ? [{ id: 'talk', key: '', x: SA.l + 44 * u, y: B - 205 * u, r: 28 * u }] : []);
+}
+// In-game ⛶ (on finger lift, which browsers accept for full screen): enter directly, or on iPhone show the help
+// (a solo game pauses meanwhile; co-op keeps running).
+function fsFromGame() {
+  if (canFS()) { setKeepFS(true); goFull(true); return; }
+  if (net.mode === 'solo') game.paused = true;
+  onFsButton(() => { if (net.mode === 'solo') game.paused = false; hide(); });
 }
 function touchMenu() { if (net.mode === 'solo') onKey('p'); else if (game.state === 'play' && !game.over) showVoice(hide, true); }
 cv.addEventListener('touchstart', e => {
   e.preventDefault(); initAudio(); if (!touch.on) { touch.on = true; resize(); }
   for (const t of e.changedTouches) {
     const x = t.clientX, y = t.clientY, b = touchButtons().find(b => Math.hypot(x - b.x, y - b.y) < b.r * 1.25);
-    if (b) { if (b.id === 'menu') touchMenu(); else if (b.id === 'talk') { touch.talk = t.identifier; Voice.setTalking(true); } else pressed[b.key] = true; }
+    if (b) { if (b.id === 'menu') touchMenu(); else if (b.id === 'talk') { touch.talk = t.identifier; Voice.setTalking(true); } else if (b.id === 'fs') touch.fs = t.identifier; else pressed[b.key] = true; }
     else if (x < W * 0.45) { if (!touch.move) touch.move = { id: t.identifier, x0: x, y0: y, x, y }; }
     else if (!touch.aim) touch.aim = { id: t.identifier, x0: x, y0: y, x, y };
   }
@@ -945,7 +952,7 @@ cv.addEventListener('touchmove', e => {
   for (const t of e.changedTouches) for (const s of [touch.move, touch.aim]) if (s && s.id === t.identifier) { s.x = t.clientX; s.y = t.clientY; }
 }, { passive: false });
 function touchEnd(e) {
-  for (const t of e.changedTouches) { if (touch.talk === t.identifier) { touch.talk = null; Voice.setTalking(false); } if (touch.move && touch.move.id === t.identifier) touch.move = null; if (touch.aim && touch.aim.id === t.identifier) touch.aim = null; }
+  for (const t of e.changedTouches) { if (touch.fs === t.identifier) { touch.fs = null; fsFromGame(); } if (touch.talk === t.identifier) { touch.talk = null; Voice.setTalking(false); } if (touch.move && touch.move.id === t.identifier) touch.move = null; if (touch.aim && touch.aim.id === t.identifier) touch.aim = null; }
 }
 cv.addEventListener('touchend', touchEnd); cv.addEventListener('touchcancel', touchEnd);
 function touchInput() {
@@ -2082,7 +2089,7 @@ function drawTouchUI() {
   };
   const B = H - Math.max(SA.b - 8, 0); stick(touch.move, SA.l + 100 * u, B - 95 * u); stick(touch.aim, W - SA.r - 100 * u, B - 90 * u);
   const np = !p.down && nearPoi(p), use = !!(np && poiPrompt(np));
-  const info = { skill: ['SKILL', p.tSkill, p.cds[1], true], dash: ['DASH' + (p.dashMax > 1 ? ' ' + p.dashes : ''), p.dashes > 0 ? 0 : p.dashRe, p.cds[2], true], ult: [p.level >= 3 ? 'ULT' : 'Lv 3', p.tUlt, p.cds[3], p.level >= 3], f: ['USE', 0, 0, use], menu: [net.mode === 'solo' ? 'II' : '🎙', 0, 0, true], talk: [Voice.transmitting() ? '● ' + T('TALK') : T('TALK'), 0, 0, true] };
+  const info = { skill: ['SKILL', p.tSkill, p.cds[1], true], dash: ['DASH' + (p.dashMax > 1 ? ' ' + p.dashes : ''), p.dashes > 0 ? 0 : p.dashRe, p.cds[2], true], ult: [p.level >= 3 ? 'ULT' : 'Lv 3', p.tUlt, p.cds[3], p.level >= 3], f: ['USE', 0, 0, use], menu: [net.mode === 'solo' ? 'II' : '🎙', 0, 0, true], fs: ['⛶', 0, 0, true], talk: [Voice.transmitting() ? '● ' + T('TALK') : T('TALK'), 0, 0, true] };
   c.textAlign = 'center'; c.textBaseline = 'middle';
   for (const b of touchButtons()) {
     const [label, t, cd, on] = info[b.id], ready = on && t <= 0;
@@ -2106,12 +2113,26 @@ const controlsHtml = () => touch.on
 const DE = document.documentElement, IPHONE = /iPhone|iPod/.test(navigator.userAgent);
 const canFS = () => !IPHONE && !!(DE.requestFullscreen || DE.webkitRequestFullscreen);
 const isFS = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
-function goFull() {
-  if (!touch.on || !canFS() || isFS()) return;
-  try { const r = (DE.requestFullscreen || DE.webkitRequestFullscreen).call(DE); if (r && r.catch) r.catch(() => { }); } catch (e) { }
+// "Keep full screen": remembered once the player turns it on; any later tap goes back into full screen after a
+// notification, rotation or app switch knocked it out. Turned off with "Exit full screen".
+let keepFS = (() => { try { return localStorage.getItem('duskbound-fs') === '1'; } catch (e) { return false; } })();
+const setKeepFS = v => { keepFS = v; try { localStorage.setItem('duskbound-fs', v ? '1' : '0'); } catch (e) { } };
+function goFull(force) {
+  if (!canFS() || isFS() || !(force || keepFS || touch.on)) return;
+  try { const r = (DE.requestFullscreen || DE.webkitRequestFullscreen).call(DE); if (r && r.then) r.then(lockLandscape, () => { }); else lockLandscape(); } catch (e) { }
 }
-// Shown on the title screen when the game is not already full screen.
-const fsButtonHtml = () => STANDALONE || isFS() || !(touch.on || IOS) || window.DUSK_NO_NET ? '' : '<button id="fsb" class="ghost fsbtn">⛶ ' + L('Full screen', '全螢幕') + '</button>';
+function lockLandscape() { try { const r = screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape'); if (r && r.catch) r.catch(() => { }); } catch (e) { } }
+function exitFull() { setKeepFS(false); try { const f = document.exitFullscreen || document.webkitExitFullscreen; if (f && isFS()) { const r = f.call(document); if (r && r.catch) r.catch(() => { }); } } catch (e) { } }
+// taps re-enter full screen when it's kept on (touchend/click count as the user gesture browsers require)
+for (const ev of ['touchend', 'click']) document.addEventListener(ev, () => { if (keepFS && !isFS() && canFS()) goFull(true); }, { passive: true });
+document.addEventListener('fullscreenchange', () => { resize(); if (overlay.className !== 'hidden') document.querySelectorAll('.fsrow,.fsbtn').forEach(b => b.textContent = fsLabel()); });
+// Where the game can't go full screen by itself (the claude.ai page, an already installed app) there is no button.
+const fsAvailable = () => !STANDALONE && !window.DUSK_NO_NET;
+const fsLabel = () => '⛶ ' + (isFS() ? L('Exit full screen', '離開全螢幕') : L('Full screen', '全螢幕'));
+const fsButtonHtml = () => fsAvailable() ? '<button id="fsb" class="ghost fsbtn">' + fsLabel() + '</button>' : '';
+const fsRowHtml = () => fsAvailable() ? '<button class="ghost fsrow">' + fsLabel() + '</button>' : '';
+// back: what to show after the iPhone help screen
+function bindFs(back) { document.querySelectorAll('.fsrow,.fsbtn').forEach(b => b.onclick = () => { if (typeof saveName === 'function' && $('nm')) saveName(); onFsButton(back); }); }
 // "Install app" screen, opened by the app QR code (?a): on iPhone/iPad the Add to Home Screen steps, on Android
 // Chrome's own install prompt when it offers one, otherwise its menu steps. The installed app opens full screen.
 let installEvt = null;
@@ -2133,7 +2154,8 @@ function showInstall(back0) {
   if ($('instb')) $('instb').onclick = async () => { const e = installEvt; installEvt = null; try { e.prompt(); await e.userChoice; } catch (x) { } back(); };
 }
 function onFsButton(back) {
-  if (canFS()) { goFull(); setTimeout(back, 300); return; }
+  if (isFS()) { exitFull(); setTimeout(back, 300); return; }
+  if (canFS()) { setKeepFS(true); goFull(true); setTimeout(back, 300); return; }
   show('<h2>' + L('Full screen on iPhone', 'iPhone 全螢幕') + '</h2><div class="sub">' +
     L('<b>Quick:</b> on the title screen, swipe up once — Safari hides its bars. Tap the very top or bottom edge to bring them back.<br><b>Always full screen:</b> install it as an app —',
       '<b>快速：</b>在標題畫面向上滑動一次，Safari 就會隱藏工具列。點螢幕最上緣或最下緣可叫回工具列。<br><b>永遠全螢幕：</b>把遊戲安裝成 App —') + '</div><ol class="steps">' + L(
@@ -2168,7 +2190,7 @@ function showMenu(msg) {
     '<div class="row"><input id="nm" maxlength="14" placeholder="' + L('Your name', '你的名字') + '" value="' + esc(net.name) + '"><button id="solo">' + L('Play solo', '單人遊玩') + '</button><button id="hostb">' + L('Host co-op', '開設合作房') + '</button><span class="sep"></span><input id="code" maxlength="5" placeholder="' + L('CODE', '代碼') + '" autocomplete="off" value="' + esc(lastRoom()) + '"><button id="joinb">' + L('Join', '加入') + '</button></div>' +
     '<div class="row">' + diffSelect('diffsel', d => PROFILE.unlocked.includes(d)) + '<button id="profb" class="ghost">' + L('Profile', '個人檔案') + '</button></div>' +
     '<div id="msg">' + esc(T(msg) || '') + '</div>' + controlsHtml() + '<button id="lang" class="ghost langbtn">' + (LANG === 'zh' ? '🌐 English' : '🌐 繁體中文') + '</button>' + fsButtonHtml());
-  if ($('fsb')) $('fsb').onclick = () => { saveName(); onFsButton(() => showMenu(msg)); };
+  bindFs(() => showMenu(msg));
   $('lang').onclick = () => { saveName(); setLang(LANG === 'zh' ? 'en' : 'zh'); showMenu(msg); };
   $('swipehint').textContent = L('⇡ Swipe up to hide Safari’s bars', '⇡ 向上滑動即可隱藏 Safari 工具列');
   $('diffsel').onchange = e => setDiff(e.target.value);
@@ -2186,7 +2208,8 @@ function showLobby() {
   h += '</div><div class="row">' + (host ? diffSelect('diffsel', partyDiffOk) + '<span class="wait">' + L('Only difficulties every player has unlocked.', '只能選擇所有人都已解鎖的難度。') + '</span>'
     : '<span class="wait">' + L('Difficulty: ', '難度：') + T(DIFF(net.diff).name) + '</span>') + '</div>';
   h += heroCards(net.hero, true) + '<div class="row">' + (host ? '<button id="start">' + (net.lobby.length > 1 ? L('Set out (' + net.lobby.length + ' players)', '出發（' + net.lobby.length + ' 人）') : L('Set out alone', '獨自出發')) + '</button>' : '<span class="wait">' + L('Waiting for the host to set out…', '等待房主出發…') + '</span>') + (NetT.voice ? '<button id="voiceb" class="ghost">🎙 ' + L('Voice', '語音') + '</button>' : '') + '<button id="leave" class="ghost">' + L('Leave', '離開') + '</button></div>';
-  show(h); bindHeroCards(selectHero); if ($('voiceb')) $('voiceb').onclick = () => showVoice(showLobby);
+  h = h.replace(/<button id="leave"/, fsRowHtml() + '<button id="leave"');
+  show(h); bindHeroCards(selectHero); bindFs(showLobby); if ($('voiceb')) $('voiceb').onclick = () => showVoice(showLobby);
   if (host) { $('start').onclick = startHosted; $('diffsel').onchange = e => { if (partyDiffOk(e.target.value)) { setDiff(e.target.value); sendLobby(); } showLobby(); }; }
   $('leave').onclick = () => { leaveNet(); showMenu(); };
 }
@@ -2317,8 +2340,8 @@ async function showVoice(back, soft) {
     h += '<div class="stats prof">' + (others.length ? others.map(r => { const v = Voice.calls.get(r.id); return '<div class="vrow">' + esc(nameOf(r.id)) + ' <i>' + (v && v.stream ? L('connected', '已連線') : L('connecting…', '連線中…')) + '</i> ' +
       '<button class="ghost vmute" data-pid="' + r.id + '">' + (v && v.muted ? L('Unmute', '取消靜音') : L('Mute', '靜音')) + '</button> <input type="range" class="vvol" data-pid="' + r.id + '" min="0" max="2" step="0.05" value="' + (v ? v.vol : 1) + '"></div>'; }).join('') : '<i>' + L('No one else here yet.', '目前沒有其他人。') + '</i>') + '</div>';
   }
-  h += '<div class="row"><button id="vsfx" class="ghost">' + L('Game sound: ', '遊戲音效：') + (AU.muted ? L('off', '關') : L('on', '開')) + '</button><button id="vback">' + L('Close', '關閉') + '</button></div>';
-  show(h, soft);
+  h += '<div class="row"><button id="vsfx" class="ghost">' + L('Game sound: ', '遊戲音效：') + (AU.muted ? L('off', '關') : L('on', '開')) + '</button>' + fsRowHtml() + '<button id="vback">' + L('Close', '關閉') + '</button></div>';
+  show(h, soft); bindFs(() => showVoice(back, soft));
   $('vback').onclick = () => back(); $('vsfx').onclick = () => { initAudio(); onKey('m'); showVoice(back, soft); };
   if ($('vmic')) $('vmic').onclick = async () => { if (Voice.micStream) await Voice.disableMic(); else await Voice.enableMic(Voice.micId); showVoice(back, soft); };
   if ($('vmode')) $('vmode').onchange = e => { Voice.setMode(e.target.value); showVoice(back, soft); };
@@ -2336,8 +2359,9 @@ function onKey(k) {
   else if ((k === 'p' || k === 'escape') && game.state === 'play' && net.mode === 'solo' && !game.over && !(me && me.choice)) {
     game.paused = !game.paused;
     if (game.paused) {
-      show('<h2>' + L('Paused', '暫停') + '</h2>' + controlsHtml() + '<div class="row"><button id="res">' + L('Resume', '繼續') + '</button>' + (touch.on ? '<button id="mute" class="ghost">' + muteLabel() + '</button><button id="quit" class="ghost">' + L('Quit run', '放棄本局') + '</button>' : '') + '</div>', true);
+      show('<h2>' + L('Paused', '暫停') + '</h2>' + controlsHtml() + '<div class="row"><button id="res">' + L('Resume', '繼續') + '</button>' + (touch.on ? '<button id="mute" class="ghost">' + muteLabel() + '</button><button id="quit" class="ghost">' + L('Quit run', '放棄本局') + '</button>' : '') + fsRowHtml() + '</div>', true);
       $('res').onclick = () => { game.paused = false; hide(); };
+      bindFs(() => { game.paused = true; onKey('p'); onKey('p'); });
       if ($('mute')) $('mute').onclick = () => { initAudio(); onKey('m'); $('mute').textContent = muteLabel(); };
       if ($('quit')) $('quit').onclick = () => { game.paused = false; showMenu(); };
     } else hide();
