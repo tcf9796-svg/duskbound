@@ -75,6 +75,11 @@
   .plist i{color:#8e88ab}
   .wait{color:#a9a3c4;font-style:italic;margin-top:14px}
   .stats{color:#c9c4dc;font-size:15px;line-height:1.8;margin-top:6px}
+  .stats b{color:#f3d48a;font-weight:normal}
+  .prof{text-align:left;max-width:760px}
+  select{font-family:inherit;font-size:16px;padding:7px 10px;background:#14131f;color:#e8e2d0;border:1px solid #4a4370;border-radius:6px;max-width:100%}
+  .wsel{font-size:13px;padding:3px 6px}
+  .pcode{width:min(620px,90vw);font-size:12px;background:#14131f;color:#e8e2d0;border:1px solid #4a4370;border-radius:6px;margin-top:8px;-webkit-user-select:text;user-select:text}
   /* Language switch: always in the title screen's top corner. */
   .fsbtn{position:fixed;z-index:5;top:max(10px,env(safe-area-inset-top));left:max(12px,env(safe-area-inset-left));font-size:14px;padding:6px 12px;background:rgba(20,19,31,.85)}
   .steps{text-align:left;max-width:520px;line-height:1.7;font-size:16px;color:#e8e2d0;margin:4px 0 6px;padding-left:22px}
@@ -109,10 +114,11 @@
 <div id="rotate"><div><span class="rt1">Turn your phone sideways</span><br><span class="rt2" style="color:#a9a3c4;font-size:15px;font-style:italic">Duskbound plays best in landscape.</span><br><button id="rotok" type="button" style="margin-top:16px">Play upright anyway</button></div></div>
 <script>document.getElementById('rotok').onclick = function () { document.body.classList.add('upright'); };</script>
 <script async src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="data.js?v=9"></script>
-<script src="i18n.js?v=9"></script>
-<script src="art.js?v=9"></script>
-<script src="audio.js?v=9"></script>
-<script src="game.js?v=9"></script>
+<script src="data.js?v=11"></script>
+<script src="i18n.js?v=11"></script>
+<script src="meta.js?v=11"></script>
+<script src="art.js?v=11"></script>
+<script src="audio.js?v=11"></script>
+<script src="game.js?v=11"></script>
 </body>
 </html>

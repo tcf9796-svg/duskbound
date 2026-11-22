@@ -58,7 +58,17 @@ const ZH = {
   'Lunar Edge': '月刃', 'Cut reach +15%, +20% critical damage.': '斬擊範圍 +15%，暴擊傷害 +20%。',
   'Boon': '祝福', 'Choose': '選擇',
   // places
-  'The Thornwood': '荊棘林', 'The Drowned Mire': '沉溺沼澤', 'The Ashen Reach': '灰燼荒原',
+  'The Thornwood': '荊棘林', 'The Drowned Mire': '沉溺沼澤', 'The Ashen Reach': '灰燼荒原', 'The Frostfen': '霜沼', 'The Hollow Crown': '空洞王冠',
+  // difficulties, rarities, weapons, upgrades
+  'Normal': '普通', 'Nightmare': '夢魘', 'Hell': '地獄', 'Inferno': '煉獄',
+  'Green': '綠色', 'Blue': '藍色', 'Purple': '紫色', 'Yellow': '黃色', 'Red': '紅色',
+  'Thornmaul': '荊棘巨槌', 'Elder Bough': '古老樹枝', 'Gloam Antler': '幽暮鹿角', 'Cinderglass Lantern': '燼玻璃燈', 'Sun Lantern': '太陽燈籠', 'Starwick': '星芯',
+  'Mothfang Blades': '蛾牙雙刃', 'Dusk Needles': '暮色細針', 'Eclipse Edge': '蝕月之刃',
+  '+15% damage, -8% attack speed': '傷害 +15%，攻擊速度 -8%', 'Sweep reach +30%, +10% damage': '橫掃範圍 +30%，傷害 +10%', '+25% damage, +10% critical chance': '傷害 +25%，暴擊率 +10%',
+  'Bolts pierce +1 enemy': '火彈多穿透 1 名敵人', '+1 cinder bolt per cast': '每次施放多 1 發燼火彈', '+20% damage, cooldowns 15% faster': '傷害 +20%，冷卻加快 15%',
+  '+8% critical chance': '暴擊率 +8%', '+1 dash charge, +10% move speed': '衝刺次數 +1，移動速度 +10%', '+20% damage, +40% critical damage': '傷害 +20%，暴擊傷害 +40%',
+  'Max health': '最大生命', 'Damage': '傷害', 'Move speed': '移動速度', 'Critical chance': '暴擊率', 'Starting gold': '初始金幣',
+  'No reward': '沒有獎勵', 'Keepsake (everything already owned)': '紀念品（已擁有全部）', 'That profile is already in this party.': '這個檔案已經在隊伍中了。',
   // banners and floating text
   'THE GLOAM STAG': '幽暮雄鹿', 'It has come for what you carry.': '它為你身上之物而來。',
   'An Ember rekindles you': '餘燼讓你重燃', 'Stand beside them to revive.': '站到旁邊即可救起。',
@@ -89,7 +99,9 @@ const ZH = {
 const ZH_RX = [
   [/^Day (\d+)$/, '第 $1 天'], [/^Level (\d+)$/, '等級 $1'], [/^Chapter (\d+)$/, '第 $1 章'], [/^(\d+) remaining$/, '剩餘 $1'],
   [/^Buy a boon — (\d+) gold$/, '購買祝福 — $1 金幣'], [/^(.+) has fallen$/, '$1 倒下了'], [/^(.+) is back up$/, '$1 重新站起來了'],
-  [/^(.+) left the party$/, '$1 離開了隊伍'], [/^(.+) lost connection$/, '$1 連線中斷'], [/^(.+) rejoined the party$/, '$1 重新加入了隊伍'],
+  [/^(.+) left the party$/, '$1 離開了隊伍'], [/^(Green|Blue|Purple|Yellow|Red) reward$/, '$1獎勵'], [/^(.+) unlocked$/, '已解鎖$1'], [/^Campaign cleared on (.+)$/, '已通關$1難度'],
+  [/^Weapon: (.+)$/, '武器：$1'], [/^Starting talent: (.+)$/, '初始天賦：$1'], [/^Upgrade: (.+?) (\+\d+%?)$/, '強化：$1 $2'], [/^Chapter (\d+) \(preview\)$/, '第 $1 章（預覽）'],
+  [/^(.+)'s place was released$/, '$1 的位置已釋出'], [/^They can rejoin with room code (\S+) within (\d+) min$/, '可在 $2 分鐘內用房間代碼 $1 重新加入'], [/^(.+) lost connection$/, '$1 連線中斷'], [/^(.+) rejoined the party$/, '$1 重新加入了隊伍'],
   [/^They can rejoin with room code (.+)$/, '可用房間代碼 $1 重新加入'], [/^No room found with code (.+)\.$/, '找不到代碼為 $1 的房間。'],
   [/^Could not reach room (.+)\.$/, '無法連上房間 $1。'], [/^Connection failed \((.+)\)\.$/, '連線失敗（$1）。'],
   [/^Could not open a room \((.+)\)\. Check your connection and try again\.$/, '無法開啟房間（$1）。請檢查網路後再試一次。'],

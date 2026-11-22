@@ -118,12 +118,23 @@ function localInput() {
 }
 
 // ---------- state ----------
-const newGame = () => ({ state: 'play', chapter: 1, time: 0, boss: null, banner: null, shake: 0, winT: 0, ambT: 5, wasNight: false, t: 0, over: null, paused: false });
+const newGame = () => ({ state: 'play', diff: 'normal', runId: '', rewards: null, chapter: 1, time: 0, boss: null, banner: null, shake: 0, winT: 0, ambT: 5, wasNight: false, t: 0, over: null, paused: false });
 let game = newGame(); game.state = 'menu';
 let players = [], me = null, world = null, enemies = [], projs = [], zones = [], pickups = [], parts = [], texts = [], fxs = [];
 let night = 0, cam = { x: 0, y: 0 }, groundPat = null, nextId = 1, evQ = [];
-const net = { mode: 'solo', away: new Map(), conns: [], host: null, handle: null, lobby: [], myId: 1, nextPid: 2, name: '', hero: 'bramble', code: '', ready: false, snapT: 0, inT: 0, out: {}, pickedSeq: -1, worker: null };
+const net = { mode: 'solo', away: new Map(), claims: new Map(), rolled: new Set(), conns: [], host: null, handle: null, lobby: [], myId: 1, nextPid: 2, name: '', hero: 'bramble', code: '', ready: false, snapT: 0, inT: 0, out: {}, pickedSeq: -1, worker: null };
 try { net.name = localStorage.getItem('duskbound-name') || ''; } catch (e) { }
+// Saved profile (meta.js): identified by a random installation id kept in this browser's storage.
+const STORE = (() => { try { localStorage.setItem('duskbound-probe', '1'); localStorage.removeItem('duskbound-probe'); return localStorage; } catch (e) { const d = {}; return { getItem: k => k in d ? d[k] : null, setItem: (k, v) => { d[k] = String(v); }, removeItem: k => { delete d[k]; } }; } })();
+let PROFILE = loadProfile(STORE);
+const saveMe = () => saveProfile(STORE, PROFILE);
+const DIFF = id => DIFFICULTIES.find(d => d.id === id) || DIFFICULTIES[0];
+// The difficulty this player wants (remembered), never above what their profile has unlocked.
+net.diff = (() => { let d = ''; try { d = localStorage.getItem('duskbound-diff') || ''; } catch (e) { } return PROFILE.unlocked.includes(d) ? d : 'normal'; })();
+const setDiff = d => { if (!PROFILE.unlocked.includes(d)) return; net.diff = d; try { localStorage.setItem('duskbound-diff', d); } catch (e) { } };
+// Players counted for scaling: everyone in the session, including disconnected players whose slot is still held.
+const partyN = () => Math.max(1, players.length + (net.mode === 'host' ? net.away.size : 0));
+const partyMul = per => 1 + per * (partyN() - 1);
 const ETN = ['husk', 'spitter', 'ram', 'bloat', 'wisp', 'boss'], STN = ['chase', 'wind', 'rest', 'charge', 'fuse', 'bwind', 'bcharge', 'ring', 'slam'];
 const DASH_CD = 2.2, ULT_CD = 40;
 
@@ -157,7 +168,7 @@ function makeGround(p) {
 }
 function clearEntities() { enemies = []; projs = []; zones = []; pickups = []; parts = []; texts = []; fxs = []; evQ = []; }
 function genWorld() {
-  const S = 3400, pal = PAL[(game.chapter - 1) % 3];
+  const S = 3400, pal = PAL[(game.chapter - 1) % PAL.length];
   world = { S, obs: [], pois: [], pal }; groundPat = makeGround(pal); clearEntities();
   const c = { x: S / 2, y: S / 2 }, a = rand(TAU), sp = { x: c.x + Math.cos(a) * 1350, y: c.y + Math.sin(a) * 1350 };
   world.spawn = sp; const pois = world.pois;
@@ -194,10 +205,10 @@ function spawnPack(x, y, n, spread, aggro) {
   }
 }
 function spawnEnemy(type, x, y, elite = false) {
-  const T = ET[type], hm = (1 + 0.3 * dayIdx()) * (1 + 0.9 * (game.chapter - 1)) * (elite ? 6 : 1) * (1 + 0.6 * (players.length - 1));
+  const T = ET[type], hm = (1 + 0.3 * dayIdx()) * (1 + 0.9 * (game.chapter - 1)) * (elite ? 6 : 1) * DIFF(game.diff).hp * partyMul(PARTY_SCALE.hpPerExtra);
   const e = {
     id: nextId++, type, x: clamp(x, 40, world.S - 40), y: clamp(y, 40, world.S - 40), r: T.r * (elite ? 1.5 : 1), hp: T.hp * hm, maxHp: T.hp * hm,
-    spd: T.spd, dmg: T.dmg * (elite ? 1.4 : 1), xp: T.xp * (elite ? 8 : 1), elite, state: 'chase', t: 0, cd: rand(0.5, 2), aggro: false,
+    spd: T.spd, dmg: T.dmg * (elite ? 1.4 : 1) * DIFF(game.diff).dmg * partyMul(PARTY_SCALE.dmgPerExtra), xp: T.xp * (elite ? 8 : 1), elite, state: 'chase', t: 0, cd: rand(0.5, 2), aggro: false,
     flash: 0, slowT: 0, kbx: 0, kby: 0, poisT: 0, poisD: 0, poisTick: 0, poisBy: null, a: 0, dead: false, ph: rand(TAU), n: 0, near: false
   };
   enemies.push(e); return e;
@@ -444,11 +455,12 @@ function update(dt) {
   if (isNight && !game.boss && game.winT <= 0) {
     game.ambT -= dt;
     if (game.ambT <= 0) {
-      game.ambT = rand(6, 9) / (1 + 0.35 * (players.length - 1)); const p = pick(alive());
+      game.ambT = rand(6, 9) / (partyMul(PARTY_SCALE.ambushPerExtra) * DIFF(game.diff).ambush); const p = pick(alive());
       if (p) { const a = rand(TAU), n = randi(3, 4) + game.chapter; for (let i = 0; i < n; i++) { const e = spawnEnemy(Math.random() < 0.8 ? 'wisp' : 'husk', p.x + Math.cos(a + rand(-0.6, 0.6)) * rand(520, 640), p.y + Math.sin(a + rand(-0.6, 0.6)) * rand(520, 640)); e.aggro = true; } }
     }
   }
-  if (game.winT > 0) { game.winT -= dt; if (game.winT <= 0) { game.over = game.chapter < 3 ? 'win' : 'final'; showEnd(); return; } }
+  if (net.mode === 'host' && net.away.size) expireAway();
+  if (game.winT > 0) { game.winT -= dt; if (game.winT <= 0) { game.over = game.chapter < CHAPTERS ? 'win' : 'final'; chapterComplete(); showEnd(); return; } }
 
   // players
   for (const p of players) {
@@ -632,6 +644,52 @@ function applyPick(p, i) {
   p.talents[t.id] = (p.talents[t.id] || 0) + 1; t.f(p); sfx('pick', null, p.id); p.pending--; p.choice = null;
 }
 
+// ---------- chapter rewards (host decides; meta.js holds odds and pools) ----------
+// Eligible: every player in the session when the chapter ends, including disconnected players whose slot is still held.
+// One roll per player per chapter. Claims are keyed run:chapter:profile, so repeated completion events, reconnects and
+// duplicate players with the same profile can never roll twice.
+function chapterComplete() {
+  if (net.mode === 'client') return;
+  const key = game.runId + ':' + game.chapter; if (net.rolled.has(key)) return; net.rolled.add(key);
+  const list = [], seen = new Set();
+  for (const p of players.concat([...net.away.values()].map(a => a.p))) {
+    const pid = p.lo && p.lo.pid; if (!pid || seen.has(pid)) continue; seen.add(pid);
+    const claim = key + ':' + pid;
+    let r = net.claims.get(claim);
+    if (!r) { const roll = rollReward(p.lo); r = { claim, pid, id: p.id, name: p.name, rarity: roll.rarity, item: roll.item, ch: game.chapter, diff: game.diff, run: game.runId, final: game.over === 'final' }; net.claims.set(claim, r); }
+    list.push(r); deliverReward(r);
+  }
+  game.rewards = list.map(r => ({ id: r.id, name: r.name, rarity: r.rarity, item: r.item }));
+  for (const c of net.conns) if (c.inGame) c.send({ t: 'rewards', ch: game.chapter, list: game.rewards });
+}
+// Sends (or, for the host, applies) one player's result. Receivers ignore claims they already applied.
+function deliverReward(r) {
+  const msg = { t: 'reward', claim: r.claim, rarity: r.rarity, item: r.item, ch: r.ch, diff: r.diff, run: r.run, final: r.final };
+  if (r.id === 1 && net.mode !== 'client') return receiveReward(msg);
+  const c = net.conns.find(q => q.pid === r.id && q.inGame); if (c) c.send(msg);
+}
+// Runs on the player's own device: saves the reward and, after chapter 5, the campaign clear.
+function receiveReward(m) {
+  if (typeof m.claim !== 'string' || !m.claim.endsWith(':' + PROFILE.id)) return;
+  const valid = m.rarity === null || (RARITIES.includes(m.rarity) && typeof m.item === 'string' && (m.item === 'keepsake' || itemAvailable(m.item, { weapons: [], talents: {}, upgrades: {}, characters: [] }) || /^u:/.test(m.item)));
+  if (!valid) return;
+  if (grantReward(PROFILE, m.claim, m.rarity, m.rarity ? m.item : null, { chapter: m.ch, diff: m.diff })) {
+    if (m.rarity) banner(rarityName(m.rarity) + ' reward', itemLabel(m.item), 4, me && me.id);
+  }
+  if (m.final) { const un = recordCampaignClear(PROFILE, m.diff, m.run); if (un) setTimeout(() => banner(DIFF(un).name + ' unlocked', 'Campaign cleared on ' + DIFF(m.diff).name, 5), 4200); }
+  saveMe();
+}
+const rarityName = r => RARITY_NAMES[r] || '';
+// Mixed unlocks: a party may only play a difficulty that every player in the lobby has unlocked.
+const lobbyUnlocks = () => net.lobby.map(q => q.id === 1 ? PROFILE.unlocked : (q.lo && q.lo.unlocked) || ['normal']);
+const partyDiffOk = d => lobbyUnlocks().every(u => u.includes(d));
+const bestCommonDiff = () => DIFFICULTIES.filter(d => partyDiffOk(d.id)).pop().id;
+// A disconnected player's slot is held for PARTY_SCALE.graceSeconds, then released.
+function expireAway() {
+  const now = Date.now();
+  for (const [tok, a] of net.away) if (now - a.since > PARTY_SCALE.graceSeconds * 1000) { net.away.delete(tok); banner(a.p.name + "'s place was released", '', 3); }
+}
+
 // ---------- netcode ----------
 const PEER_PREFIX = 'duskbound-v1-';
 const noNetMsg = () => window.DUSK_NO_NET ? 'Online co-op is not available on this page. Solo works here; for co-op, open the downloaded duskbound.html file or a copy on your own website.' : 'Online play needs an internet connection (the networking library did not load).';
@@ -798,11 +856,8 @@ const netWhy = t => ({
   upstream_error: 'The live connection did not answer. Try again.'
 })[t];
 // Rejoining: each device keeps a random token (never shown to other players) and the last room it joined.
-function deviceToken() {
-  let t = ''; try { t = localStorage.getItem('duskbound-tok') || ''; } catch (e) { }
-  if (!/^[a-z0-9]{16,40}$/.test(t)) { t = ''; for (let i = 0; i < 24; i++) t += 'abcdefghijklmnopqrstuvwxyz0123456789'[Math.floor(Math.random() * 36)]; try { localStorage.setItem('duskbound-tok', t); } catch (e) { } }
-  return t;
-}
+// Per-session rejoin secret issued privately by the host (not the profile id, not a connection id).
+function rejoinSecret(code) { try { const r = JSON.parse(localStorage.getItem('duskbound-rejoin') || 'null'); if (r && r.code === code && /^[a-z0-9]{24}$/.test(r.s)) return r.s; } catch (e) { } return ''; }
 function rememberRoom(code) { try { localStorage.setItem('duskbound-room', JSON.stringify({ code, t: Date.now() })); } catch (e) { } }
 function lastRoom() { try { const r = JSON.parse(localStorage.getItem('duskbound-room') || 'null'); if (r && /^[A-Z0-9]{5}$/.test(r.code) && Date.now() - r.t < 3 * 3600e3) return r.code; } catch (e) { } return ''; }
 const cleanName = (s, i) => (String(s || '').replace(/[^\w \-'.]/g, '').trim().slice(0, 14)) || ('Wanderer ' + i);
@@ -828,21 +883,30 @@ function onClientConn(c) {
 function greetClient(c, d) {
   c.pending = false;
   const tok = typeof d.tok === 'string' ? d.tok.slice(0, 40) : '', name = cleanName(d.name, net.nextPid), hero = HEROES[d.hero] ? d.hero : 'bramble';
+  const lo = sanitizeLoadout(d.lo, hero);
   if (game.state === 'lobby') {
     if (net.conns.length >= 3) return c.refuse('That party is full (4 players).');
-    c.pid = net.nextPid++; net.conns.push(c); net.lobby.push({ id: c.pid, name, hero, tok }); sendLobby(); showLobby(); return;
+    if (lo.valid && (lo.pid === PROFILE.id || net.lobby.some(q => q.lo && q.lo.pid === lo.pid))) return c.refuse('That profile is already in this party.');
+    const secret = randId(24);
+    c.pid = net.nextPid++; net.conns.push(c); net.lobby.push({ id: c.pid, name, hero, tok: secret, lo: lo.valid ? lo : null });
+    c.send({ t: 'secret', code: net.code, s: secret });
+    if (!partyDiffOk(net.diff)) net.diff = bestCommonDiff();
+    sendLobby(); showLobby(); return;
   }
-  if (tok && game.state === 'play' && !game.over) {
+  if (tok && game.state === 'play') {
+    expireAway();
     // their old connection may not have timed out yet (e.g. the app crashed a moment ago): retire it first
     const live = players.find(p => p.remote && p.tok === tok), old = live && net.conns.find(q => q.pid === live.id);
+    // the secret alone isn't enough: the profile must match too, and nobody is disconnected until it does
+    if (live && live.lo && (!lo.valid || live.lo.pid !== lo.pid)) return c.refuse('That party has already set out. Ask the host to return to the lobby.');
     if (old) { dropClient(old); old.send({ t: 'no', why: 'You rejoined this game from another window.' }); setTimeout(() => old.close(), 600); }
-    const p = net.away.get(tok); if (p) return rejoinClient(c, p);
+    const a = net.away.get(tok); if (a && (!a.p.lo || (lo.valid && a.p.lo.pid === lo.pid))) return rejoinClient(c, a.p);
   }
   c.refuse('That party has already set out. Ask the host to return to the lobby.');
 }
 function rejoinClient(c, p) {
   net.away.delete(p.tok); c.pid = p.id; c.inGame = true; net.conns.push(c);
-  net.lobby.push({ id: p.id, name: p.name, hero: p.hero, tok: p.tok });
+  net.lobby.push({ id: p.id, name: p.name, hero: p.hero, tok: p.tok, lo: p.lo });
   const mate = players.find(q => !q.down) || players[0];
   if (mate) { p.x = p.tx = clamp(mate.x + rand(-50, 50), 30, world.S - 30); p.y = p.ty = clamp(mate.y + rand(-50, 50), 30, world.S - 30); }
   p.tp++; p.dashT = 0; p.flurry = null; p.in = newPlayer(0, p.hero, '').in; p.iT = Math.max(p.iT, 2);
@@ -850,6 +914,9 @@ function rejoinClient(c, p) {
   c.send(worldMsg(p.id));
   for (const q of net.conns) if (q !== c && q.inGame) q.send({ t: 'roster', players: roster() });
   banner(p.name + ' rejoined the party', '', 2.5);
+  // results they missed while away: same claims, so nothing is rolled again
+  for (const r of net.claims.values()) if (r.id === p.id) deliverReward(r);
+  if (game.rewards) c.send({ t: 'rewards', ch: game.chapter, list: game.rewards });
 }
 const roster = () => players.map(p => ({ id: p.id, name: p.name, hero: p.hero, x: p.x, y: p.y, tp: p.tp }));
 function dropClient(c) {
@@ -859,17 +926,17 @@ function dropClient(c) {
   else if (game.state === 'play') {
     const p = players.find(q => q.id === c.pid); players = players.filter(q => q.id !== c.pid);
     // keep the hero (level, boons, gold) so they can come back to this run
-    if (p && p.tok && !game.over) { net.away.set(p.tok, p); banner(p.name + ' lost connection', 'They can rejoin with room code ' + net.code, 3.5); }
+    if (p && p.tok) { net.away.set(p.tok, { p, since: Date.now() }); banner(p.name + ' lost connection', 'They can rejoin with room code ' + net.code + ' within ' + Math.round(PARTY_SCALE.graceSeconds / 60) + ' min', 3.5); }
     else if (entry) banner(entry.name + ' left the party', '', 2.5);
     if (!game.over && players.every(q => q.down)) { game.over = 'dead'; showEnd(); }
   }
 }
-function sendLobby() { const pl = net.lobby.map(q => ({ id: q.id, name: q.name, hero: q.hero })); for (const c of net.conns) c.send({ t: 'lobby', you: c.pid, code: net.code, players: pl }); }
+function sendLobby() { const pl = net.lobby.map(q => ({ id: q.id, name: q.name, hero: q.hero, unl: q.id === 1 ? PROFILE.unlocked : (q.lo && q.lo.unlocked) || ['normal'] })); for (const c of net.conns) c.send({ t: 'lobby', you: c.pid, code: net.code, diff: net.diff, players: pl }); }
 function hostRecv(c, d) {
   if (!d || typeof d !== 'object') return;
   if (c.pending) { if (d.t === 'hello') greetClient(c, d); return; }
   if (!net.conns.includes(c)) return;
-  if (d.t === 'hero') { const q = net.lobby.find(q => q.id === c.pid); if (q && HEROES[d.hero] && game.state === 'lobby') { q.hero = d.hero; sendLobby(); showLobby(); } }
+  if (d.t === 'hero') { const q = net.lobby.find(q => q.id === c.pid); if (q && HEROES[d.hero] && game.state === 'lobby') { q.hero = d.hero; const lo = sanitizeLoadout(d.lo, d.hero); if (lo.valid && q.lo && lo.pid === q.lo.pid) q.lo = lo; if (!partyDiffOk(net.diff)) net.diff = bestCommonDiff(); sendLobby(); showLobby(); } }
   else if (d.t === 'i' || d.t === 'pick') {
     const p = players.find(q => q.id === c.pid); if (!p || game.state !== 'play') return;
     if (d.t === 'pick') { if (d.q === p.choiceSeq) applyPick(p, d.i | 0); return; }
@@ -881,7 +948,7 @@ function hostRecv(c, d) {
 }
 function worldMsg(pid) {
   return {
-    t: 'world', you: pid, ch: game.chapter, S: world.S,
+    t: 'world', you: pid, ch: game.chapter, diff: game.diff, run: game.runId, S: world.S,
     obs: world.obs.map(o => [o.x | 0, o.y | 0, r1(o.r), r1(o.cr), o.tree ? 1 : 0, r2(o.v), o.tone]),
     pois: world.pois.map(o => [o.kind, o.x | 0, o.y | 0, o.r]),
     players: players.map(p => ({ id: p.id, name: p.name, hero: p.hero, x: p.x, y: p.y, tp: p.tp }))
@@ -931,7 +998,7 @@ function joinGame(code) {
     open(c) {
       if (net.handle !== handle) return c.close();
       net.host = c; c.onData = d => { try { clientRecv(d); } catch (e) { console.error(e); } }; c.onClose = () => { if (net.handle === handle) netFail('Lost connection to the host. Tap Join to rejoin the game.'); };
-      c.send({ t: 'hello', name: net.name, hero: net.hero, tok: deviceToken() }); rememberRoom(code);
+      c.send({ t: 'hello', name: net.name, hero: net.hero, tok: rejoinSecret(code), lo: loadoutOf(PROFILE, net.hero) }); rememberRoom(code);
     },
     error(t) { if (net.handle === handle) netFail(t === 'peer-unavailable' ? 'No room found with code ' + code + '.' : netWhy(t) || 'Connection failed (' + t + ').'); }
   });
@@ -940,13 +1007,16 @@ function joinGame(code) {
 function clientRecv(d) {
   if (!d || net.mode !== 'client') return;
   if (d.t === 'no') netFail(d.why);
-  else if (d.t === 'lobby') { players = []; net.myId = d.you; net.lobby = d.players; net.code = d.code; game = newGame(); game.state = 'lobby'; me = null; showLobby(); }
+  else if (d.t === 'secret' && /^[a-z0-9]{24}$/.test(d.s)) { try { localStorage.setItem('duskbound-rejoin', JSON.stringify({ code: d.code, s: d.s, t: Date.now() })); } catch (e) { } }
+  else if (d.t === 'reward') receiveReward(d);
+  else if (d.t === 'rewards' && Array.isArray(d.list)) { game.rewards = d.list.slice(0, 4); if (game.over) showEnd(); }
+  else if (d.t === 'lobby') { players = []; net.myId = d.you; net.lobby = d.players; net.code = d.code; net.diff = DIFF(d.diff).id; game = newGame(); game.state = 'lobby'; me = null; showLobby(); }
   else if (d.t === 'world') {
-    game = newGame(); game.chapter = d.ch; night = 0; net.myId = d.you; net.out = {}; net.pickedSeq = -1; clearEntities();
-    world = { S: d.S, pal: PAL[(d.ch - 1) % 3], obs: d.obs.map(o => ({ x: o[0], y: o[1], r: o[2], cr: o[3], tree: !!o[4], v: o[5], tone: o[6] })), pois: d.pois.map(o => ({ kind: o[0], x: o[1], y: o[2], r: o[3], used: false, uses: 0, seen: o[0] === 'altar' })) };
+    game = newGame(); game.chapter = d.ch; game.diff = DIFF(d.diff).id; game.runId = String(d.run || ''); night = 0; net.myId = d.you; net.out = {}; net.pickedSeq = -1; clearEntities();
+    world = { S: d.S, pal: PAL[(d.ch - 1) % PAL.length], obs: d.obs.map(o => ({ x: o[0], y: o[1], r: o[2], cr: o[3], tree: !!o[4], v: o[5], tone: o[6] })), pois: d.pois.map(o => ({ kind: o[0], x: o[1], y: o[2], r: o[3], used: false, uses: 0, seen: o[0] === 'altar' })) };
     groundPat = makeGround(world.pal);
     players = d.players.map(q => { const p = newPlayer(q.id, q.hero, q.name); p.x = p.tx = q.x; p.y = p.ty = q.y; p.tp = q.tp; return p; });
-    me = players.find(p => p.id === d.you); hide(); banner(world.pal.name, 'Chapter ' + d.ch, 4);
+    me = players.find(p => p.id === d.you); hide(); banner(world.pal.name, chapterSub(), 4);
   }
   else if (d.t === 'roster' && world && me && Array.isArray(d.players)) {
     for (const q of d.players) if (q && HEROES[q.hero] && !players.some(p => p.id === q.id)) { const p = newPlayer(q.id, q.hero, cleanName(q.name, q.id)); p.x = p.tx = num(q.x); p.y = p.ty = num(q.y); p.tp = q.tp; players.push(p); }
@@ -1109,7 +1179,7 @@ function drawHUD() {
   if (game.boss) { c.fillStyle = '#ff8ae0'; c.fillText(T('The Gloam Stag hunts you'), W / 2, cy + 36); }
   else { c.fillStyle = isN ? '#b6b6ff' : '#f3d48a'; c.fillText(LANG === 'zh' ? '第 ' + (dayIdx() + 1) + (isN ? ' 夜 · ' + fmtTime(CYCLE - ct) + ' 後黎明' : ' 天 · ' + fmtTime(DAY - ct) + ' 後入夜') + '   —   雄鹿將於 ' + fmtTime(TOTAL - game.time) + ' 後甦醒'
     : (isN ? 'Night ' : 'Day ') + (dayIdx() + 1) + ' · ' + (isN ? 'dawn in ' + fmtTime(CYCLE - ct) : 'dusk in ' + fmtTime(DAY - ct)) + '   —   the Stag wakes in ' + fmtTime(TOTAL - game.time), W / 2, cy + 36); }
-  c.textAlign = 'left'; c.font = '13px Georgia'; c.fillStyle = '#a9a3c4'; c.fillText(T('Chapter ' + game.chapter) + ' · ' + T(world.pal.name), 20, 28); c.fillText(L('Slain: ', '擊殺：') + p.kills, 20, 46);
+  c.textAlign = 'left'; c.font = '13px Georgia'; c.fillStyle = '#a9a3c4'; c.fillText(T('Chapter ' + game.chapter) + '/' + CHAPTERS + ' · ' + T(world.pal.name) + ' · ' + T(DIFF(game.diff).name), 20, 28); c.fillText(L('Slain: ', '擊殺：') + p.kills, 20, 46);
   // party
   let py = TU ? (W < 760 ? 220 : 176) : 70;
   for (const q of players) {
@@ -1200,7 +1270,7 @@ function selectHero(id) {
   if (game.state === 'menu') { overlay.querySelectorAll('.card').forEach(cd => cd.classList.toggle('sel', cd.dataset.hero === id)); return; }
   if (game.state !== 'lobby') return;
   const q = net.lobby.find(q => q.id === net.myId); if (q) q.hero = id;
-  if (net.mode === 'host') sendLobby(); else if (net.host) net.host.send({ t: 'hero', hero: id });
+  if (net.mode === 'host') sendLobby(); else if (net.host) net.host.send({ t: 'hero', hero: id, lo: loadoutOf(PROFILE, id) });
   showLobby();
 }
 function saveName() { const el = $('nm'); if (el) { net.name = el.value.trim().slice(0, 14); try { localStorage.setItem('duskbound-name', net.name); } catch (e) { } } }
@@ -1208,10 +1278,13 @@ function showMenu(msg) {
   game.state = 'menu'; game.over = null; me = null; players = [];
   show('<h1>DUSKBOUND</h1><div class="sub">' + L('Three days. Three nights. Then the Gloam Stag wakes.<br>Roam the wood alone or with up to three friends, and be ready when it comes for you.', '三個白晝，三個黑夜，然後幽暮雄鹿將會甦醒。<br>獨自或與最多三位朋友一同漫遊森林，在它找上你之前做好準備。') + '</div>' + heroCards(net.hero) +
     '<div class="row"><input id="nm" maxlength="14" placeholder="' + L('Your name', '你的名字') + '" value="' + esc(net.name) + '"><button id="solo">' + L('Play solo', '單人遊玩') + '</button><button id="hostb">' + L('Host co-op', '開設合作房') + '</button><span class="sep"></span><input id="code" maxlength="5" placeholder="' + L('CODE', '代碼') + '" autocomplete="off" value="' + esc(lastRoom()) + '"><button id="joinb">' + L('Join', '加入') + '</button></div>' +
+    '<div class="row">' + diffSelect('diffsel', d => PROFILE.unlocked.includes(d)) + '<button id="profb" class="ghost">' + L('Profile', '個人檔案') + '</button></div>' +
     '<div id="msg">' + esc(T(msg) || '') + '</div>' + controlsHtml() + '<button id="lang" class="ghost langbtn">' + (LANG === 'zh' ? '🌐 English' : '🌐 繁體中文') + '</button>' + fsButtonHtml());
   if ($('fsb')) $('fsb').onclick = () => { saveName(); onFsButton(() => showMenu(msg)); };
   $('lang').onclick = () => { saveName(); setLang(LANG === 'zh' ? 'en' : 'zh'); showMenu(msg); };
   $('swipehint').textContent = L('⇡ Swipe up to hide Safari’s bars', '⇡ 向上滑動即可隱藏 Safari 工具列');
+  $('diffsel').onchange = e => setDiff(e.target.value);
+  $('profb').onclick = () => { saveName(); showProfile(); };
   bindHeroCards(selectHero);
   $('solo').onclick = () => { saveName(); goFull(); startSolo(); };
   $('hostb').onclick = () => { saveName(); goFull(); hostGame(); };
@@ -1221,22 +1294,58 @@ function showMenu(msg) {
 function showLobby() {
   const host = net.mode === 'host';
   let h = '<h2>' + L('Party', '隊伍') + '</h2><div class="sub">' + (host && !net.ready ? L('Opening a room…', '正在開設房間…') : L('Room code', '房間代碼') + ' <span class="code">' + esc(net.code) + '</span>' + (host ? '<br>' + L('Share this code — friends enter it under Join on the title screen' + (NetT.hint || '') + '.', '分享這組代碼 — 朋友在標題畫面的「加入」欄輸入即可' + (NetT.hint ? '（需開啟同一個頁面，且頁面已分享給他們）' : '') + '。') : '')) + '</div><div class="plist">';
-  for (const q of net.lobby) h += '<div><span style="color:' + HEROES[q.hero].color + '">●</span> ' + esc(q.name) + (q.id === net.myId ? L(' (you)', '（你）') : '') + (q.id === 1 ? L(' — host', ' — 房主') : '') + ' <i>' + T(HEROES[q.hero].name) + '</i></div>';
-  h += '</div>' + heroCards(net.hero, true) + '<div class="row">' + (host ? '<button id="start">' + (net.lobby.length > 1 ? L('Set out (' + net.lobby.length + ' players)', '出發（' + net.lobby.length + ' 人）') : L('Set out alone', '獨自出發')) + '</button>' : '<span class="wait">' + L('Waiting for the host to set out…', '等待房主出發…') + '</span>') + '<button id="leave" class="ghost">' + L('Leave', '離開') + '</button></div>';
+  for (const q of net.lobby) h += '<div><span style="color:' + HEROES[q.hero].color + '">●</span> ' + esc(q.name) + (q.id === net.myId ? L(' (you)', '（你）') : '') + (q.id === 1 ? L(' — host', ' — 房主') : '') + ' <i>' + T(HEROES[q.hero].name) + '</i> · ' + L('up to ', '最高 ') + T(DIFF(unlocksOf(q).slice(-1)[0]).name) + '</div>';
+  h += '</div><div class="row">' + (host ? diffSelect('diffsel', partyDiffOk) + '<span class="wait">' + L('Only difficulties every player has unlocked.', '只能選擇所有人都已解鎖的難度。') + '</span>'
+    : '<span class="wait">' + L('Difficulty: ', '難度：') + T(DIFF(net.diff).name) + '</span>') + '</div>';
+  h += heroCards(net.hero, true) + '<div class="row">' + (host ? '<button id="start">' + (net.lobby.length > 1 ? L('Set out (' + net.lobby.length + ' players)', '出發（' + net.lobby.length + ' 人）') : L('Set out alone', '獨自出發')) + '</button>' : '<span class="wait">' + L('Waiting for the host to set out…', '等待房主出發…') + '</span>') + '<button id="leave" class="ghost">' + L('Leave', '離開') + '</button></div>';
   show(h); bindHeroCards(selectHero);
-  if (host) $('start').onclick = startHosted;
+  if (host) { $('start').onclick = startHosted; $('diffsel').onchange = e => { if (partyDiffOk(e.target.value)) { setDiff(e.target.value); sendLobby(); } showLobby(); }; }
   $('leave').onclick = () => { leaveNet(); showMenu(); };
 }
-function beginRun() {
-  game = newGame(); night = 0; nextId = 1; genWorld(); hide();
+const unlocksOf = q => q.id === net.myId ? PROFILE.unlocked : q.unl || (q.lo && q.lo.unlocked) || ['normal'];
+function diffSelect(id, allowed) {
+  return '<select id="' + id + '" class="diffsel">' + DIFFICULTIES.map(d => '<option value="' + d.id + '"' + (d.id === net.diff ? ' selected' : '') + (allowed(d.id) ? '' : ' disabled') + '>' +
+    L('Difficulty: ', '難度：') + T(d.name) + (allowed(d.id) ? '' : ' 🔒') + '</option>').join('') + '</select>';
+}
+// Profile screen: unlocks, weapons (equip one per hero), upgrades, starting talents, reward history, backup code.
+function showProfile(extra) {
+  const P = PROFILE, rar = r => r ? '<span style="color:' + RARITY_COLORS[r] + '">' + T(RARITY_NAMES[r]) + '</span>' : L('No reward', '沒有獎勵');
+  let h = '<h2>' + L('Profile', '個人檔案') + '</h2><div class="sub">' + L('Saved in this browser · ID ', '儲存在此瀏覽器 · ID ') + esc(P.id.slice(0, 10)) + '…</div><div class="stats prof">';
+  h += '<b>' + L('Difficulties', '難度') + '</b><br>' + DIFFICULTIES.map(d => (P.unlocked.includes(d.id) ? '✓ ' : '🔒 ') + T(d.name) + (P.cleared[d.id] ? L(' (cleared ×' + P.cleared[d.id] + ')', '（通關 ×' + P.cleared[d.id] + '）') : '')).join(' · ');
+  h += '<br><b>' + L('Weapons', '武器') + '</b><br>' + Object.keys(HEROES).map(hero => {
+    const own = P.weapons.filter(w => WEAPONS[w].hero === hero);
+    return T(HEROES[hero].name) + ': ' + (own.length ? '<select data-hero="' + hero + '" class="wsel"><option value="">' + L('(none)', '（無）') + '</option>' + own.map(w => '<option value="' + w + '"' + (P.equipped[hero] === w ? ' selected' : '') + '>' + T(WEAPONS[w].name) + ' — ' + T(WEAPONS[w].desc) + '</option>').join('') + '</select>' : '<i>' + L('none yet', '尚無') + '</i>');
+  }).join('<br>');
+  const ups = Object.entries(P.upgrades).filter(([, v]) => v > 0).map(([k, v]) => T(UPGRADES[k].name) + ' +' + v + UPGRADES[k].unit);
+  h += '<br><b>' + L('Upgrades', '強化') + '</b> ' + (ups.join(' · ') || '<i>' + L('none yet', '尚無') + '</i>');
+  const tal = Object.keys(P.talents).filter(k => P.talents[k] > 0).map(k => T((TALENTS.find(t => t.id === k) || { name: k }).name));
+  h += '<br><b>' + L('Starting talents', '初始天賦') + '</b> ' + (tal.join(' · ') || '<i>' + L('none yet', '尚無') + '</i>');
+  const rec = P.rewards.slice(-6).reverse();
+  h += '<br><b>' + L('Recent chapter rewards', '最近的章節獎勵') + '</b><br>' + (rec.length ? rec.map(r => T('Chapter ' + r.chapter) + ' · ' + T(DIFF(r.diff).name) + ': ' + rar(r.rarity) + (r.item ? ' — ' + T(itemLabel(r.item)) : '')).join('<br>') : '<i>' + L('none yet', '尚無') + '</i>');
+  h += '</div>' + (extra || '') + '<div class="row"><button id="pback">' + L('Back', '返回') + '</button><button id="pexp" class="ghost">' + L('Backup code', '備份代碼') + '</button><button id="pimp" class="ghost">' + L('Restore', '還原') + '</button></div>' +
+    '<div class="wait">' + L('Clearing this site’s data, private browsing, another browser or the Home Screen app each start a new profile — use a backup code to move it.', '清除網站資料、私密瀏覽、換瀏覽器或使用主畫面 App 都會建立新的檔案 — 請用備份代碼搬移。') + '</div>';
+  show(h);
+  document.querySelectorAll('.wsel').forEach(s => s.onchange = () => { const hero = s.dataset.hero; if (s.value) PROFILE.equipped[hero] = s.value; else delete PROFILE.equipped[hero]; saveMe(); });
+  $('pback').onclick = () => showMenu();
+  $('pexp').onclick = () => { showProfile('<textarea id="pcode" readonly rows="3" class="pcode">' + exportProfile(PROFILE) + '</textarea>'); const t = $('pcode'); t.focus(); t.select(); };
+  $('pimp').onclick = () => {
+    showProfile('<textarea id="pcode" rows="3" class="pcode" placeholder="DB1.…"></textarea><div class="row"><button id="pdo">' + L('Replace this profile', '取代目前的檔案') + '</button></div>');
+    $('pdo').onclick = () => { const p = importProfile($('pcode').value); if (!p) return showProfile('<div id="msg">' + L('That code is not valid.', '代碼無效。') + '</div>'); PROFILE = p; saveMe(); if (!PROFILE.unlocked.includes(net.diff)) setDiff('normal'); showProfile('<div class="wait">' + L('Profile restored.', '已還原檔案。') + '</div>'); };
+  };
+}
+const chapterSub = () => 'Chapter ' + game.chapter + (world && world.pal.placeholder ? ' (preview)' : '');
+function beginRun(diff) {
+  game = newGame(); game.diff = DIFF(diff).id; game.runId = randId(12); night = 0; nextId = 1; net.claims = new Map(); net.rolled = new Set(); genWorld(); hide();
   banner(world.pal.name, 'Day 1 — find the camps, caches and shrines.', 4); sfx('dawn');
 }
 function startSolo() {
-  initAudio(); leaveNet(); players = [newPlayer(1, net.hero, cleanName(net.name, 1))]; me = players[0]; beginRun();
+  initAudio(); leaveNet(); if (!PROFILE.unlocked.includes(net.diff)) net.diff = 'normal';
+  players = [newPlayer(1, net.hero, cleanName(net.name, 1))]; me = players[0]; me.lo = loadoutOf(PROFILE, net.hero); applyLoadout(me, me.lo); beginRun(net.diff);
 }
 function startHosted() {
-  net.away.clear(); players = net.lobby.map(q => { const p = newPlayer(q.id, q.hero, q.name); p.remote = q.id !== 1; p.tok = q.tok || ''; return p; });
-  me = players.find(p => p.id === 1); beginRun(); sendWorld(); net.snapT = 0;
+  const d = partyDiffOk(net.diff) ? net.diff : bestCommonDiff(); net.diff = d;
+  net.away.clear(); players = net.lobby.map(q => { const p = newPlayer(q.id, q.hero, q.name); p.remote = q.id !== 1; p.tok = q.tok || ''; p.lo = q.id === 1 ? loadoutOf(PROFILE, q.hero) : q.lo; applyLoadout(p, p.lo); return p; });
+  me = players.find(p => p.id === 1); beginRun(d); sendWorld(); net.snapT = 0;
 }
 // Phones only turn a tap into a click when no other finger is down, so a thumb on the move stick
 // would swallow taps on cards. Act on the touch itself (finger lifted inside the element), and keep click for mice.
@@ -1274,10 +1383,11 @@ function chooseTalent(i) {
 function showEnd() {
   if (!me) return;
   const st = '<div class="stats">' + players.map(p => esc(p.name) + ' — ' + T(HEROES[p.hero].name) + ' · ' + L('Lv ', '等級 ') + p.level + ' · ' + L(p.kills + ' slain', '擊殺 ' + p.kills)).join('<br>') + '<br>' + T('Chapter ' + game.chapter) + '</div>';
+  const rw = game.rewards ? '<div class="stats"><b>' + L('Chapter reward', '章節獎勵') + '</b><br>' + game.rewards.map(r => esc(r.name) + ' — ' + (r.rarity ? '<span style="color:' + RARITY_COLORS[r.rarity] + '">' + T(RARITY_NAMES[r.rarity]) + '</span> · ' + esc(T(itemLabel(r.item))) : L('No reward', '沒有獎勵'))).join('<br>') + '</div>' : '';
   const guest = net.mode === 'client', wait = '<div class="wait">' + L('Waiting for the host…', '等待房主…') + '</div><button id="leave" class="ghost">' + L('Leave party', '離開隊伍') + '</button>';
-  if (game.over === 'dead') show('<h2>' + L('The dusk takes you', '你被暮色吞沒') + '</h2><div class="sub">' + L('The wood closes over another lantern.', '森林又吞沒了一盞燈火。') + '</div>' + st + (guest ? wait : '<button id="again">' + (net.mode === 'host' ? L('Back to the lobby', '回到大廳') : L('Try again', '再試一次')) + '</button>'), true);
-  else if (game.over === 'win') show('<h2>' + L('The Stag falls', '雄鹿倒下了') + '</h2><div class="sub">' + L('…but its shadow runs ahead of you, deeper in. ' + PAL[game.chapter % 3].name + ' awaits, and everything there is stronger.', '…但它的影子已先一步奔向更深處。' + T(PAL[game.chapter % 3].name) + '在等著你，那裡的一切都更加強大。') + '</div>' + st + (guest ? wait : '<button id="next">' + L('Press on', '繼續前進') + '</button>'), true);
-  else show('<h1>' + L('DAWN', '黎明') + '</h1><div class="sub">' + L('The last Gloam Stag is ash on the wind. For the first time in an age, morning comes and stays.', '最後一頭幽暮雄鹿化為風中灰燼。漫長歲月以來，晨光第一次降臨並且留了下來。') + '</div>' + st + (guest ? wait : '<button id="again">' + (net.mode === 'host' ? L('Back to the lobby', '回到大廳') : L('Play again', '再玩一次')) + '</button>'));
+  if (game.over === 'dead') show('<h2>' + L('The dusk takes you', '你被暮色吞沒') + '</h2><div class="sub">' + L('The wood closes over another lantern.', '森林又吞沒了一盞燈火。') + '</div>' + st + rw + (guest ? wait : '<button id="again">' + (net.mode === 'host' ? L('Back to the lobby', '回到大廳') : L('Try again', '再試一次')) + '</button>'), true);
+  else if (game.over === 'win') show('<h2>' + L('The Stag falls', '雄鹿倒下了') + '</h2><div class="sub">' + L('…but its shadow runs ahead of you, deeper in. ' + PAL[game.chapter % PAL.length].name + ' awaits, and everything there is stronger.', '…但它的影子已先一步奔向更深處。' + T(PAL[game.chapter % PAL.length].name) + '在等著你，那裡的一切都更加強大。') + '</div>' + st + rw + (guest ? wait : '<button id="next">' + L('Press on', '繼續前進') + '</button>'), true);
+  else show('<h1>' + L('DAWN', '黎明') + '</h1><div class="sub">' + L('The last Gloam Stag is ash on the wind. For the first time in an age, morning comes and stays.', '最後一頭幽暮雄鹿化為風中灰燼。漫長歲月以來，晨光第一次降臨並且留了下來。') + '</div>' + st + rw + (guest ? wait : '<button id="again">' + (net.mode === 'host' ? L('Back to the lobby', '回到大廳') : L('Play again', '再玩一次')) + '</button>'));
   if ($('again')) $('again').onclick = endRun;
   if ($('next')) $('next').onclick = nextChapter;
   if ($('leave')) $('leave').onclick = () => { leaveNet(); showMenu(); };
@@ -1288,10 +1398,10 @@ function endRun() {
 }
 function nextChapter() {
   if (game.over !== 'win') return;
-  const ch = game.chapter + 1; game = newGame(); game.chapter = ch; night = 0;
+  const ch = game.chapter + 1, keep = { diff: game.diff, runId: game.runId }; game = newGame(); Object.assign(game, keep); game.chapter = ch; night = 0;
   for (const p of players) { p.down = false; p.rev = 0; p.flurry = null; p.dashT = 0; if (p.hp <= 0) p.hp = 1; }
   genWorld(); for (const p of players) heal(p, p.maxHp * 0.5);
-  hide(); banner(world.pal.name, 'Chapter ' + game.chapter, 4); sfx('dawn');
+  hide(); banner(world.pal.name, chapterSub(), 4); sfx('dawn');
   if (net.mode === 'host') sendWorld();
 }
 const muteLabel = () => AU.muted ? L('Unmute', '取消靜音') : L('Mute', '靜音');

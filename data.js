@@ -60,7 +60,10 @@ const TALENTS = [
 const PAL = [
   { name: 'The Thornwood', base: '#2f4a33', spk: ['#3a5a3c', '#284029', '#466b45'], tree: ['#1c3522', '#2a4f31', '#3a6a40'], rock: '#6b7078' },
   { name: 'The Drowned Mire', base: '#27404a', spk: ['#31525a', '#1f343c', '#3f6a66'], tree: ['#1f3040', '#2c4c5a', '#467478'], rock: '#5a5f73' },
-  { name: 'The Ashen Reach', base: '#43322f', spk: ['#54403a', '#352624', '#6a4a3c'], tree: ['#251a1a', '#472823', '#70392a'], rock: '#7a6c62' }
+  { name: 'The Ashen Reach', base: '#43322f', spk: ['#54403a', '#352624', '#6a4a3c'], tree: ['#251a1a', '#472823', '#70392a'], rock: '#7a6c62' },
+  // Chapters 4-5: PLACEHOLDER biomes. New palettes only; they reuse the existing enemies and the Gloam Stag boss.
+  { name: 'The Frostfen', placeholder: true, base: '#2c3d4a', spk: ['#3a5060', '#22323d', '#4a6676'], tree: ['#1c2c38', '#2e4656', '#48687a'], rock: '#8a96a3' },
+  { name: 'The Hollow Crown', placeholder: true, base: '#3a2c40', spk: ['#4a3852', '#2a2030', '#5c4466'], tree: ['#22172a', '#3c2848', '#5a3a6a'], rock: '#6e6478' }
 ];
 const DAY = 65, NIGHT = 45, CYCLE = DAY + NIGHT, DAYS = 3, TOTAL = CYCLE * DAYS;
 
