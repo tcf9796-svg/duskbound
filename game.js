@@ -1254,6 +1254,26 @@ function goFull() {
 }
 // Shown on the title screen when the game is not already full screen.
 const fsButtonHtml = () => STANDALONE || isFS() || !(touch.on || IOS) || window.DUSK_NO_NET ? '' : '<button id="fsb" class="ghost fsbtn">⛶ ' + L('Full screen', '全螢幕') + '</button>';
+// "Install app" screen, opened by the app QR code (?a): on iPhone/iPad the Add to Home Screen steps, on Android
+// Chrome's own install prompt when it offers one, otherwise its menu steps. The installed app opens full screen.
+let installEvt = null;
+addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; });
+function showInstall(back0) {
+  if (STANDALONE) return back0();
+  // readable with the phone upright: the 'turn sideways' prompt waits until they choose
+  document.body.classList.add('installing'); const back = () => { document.body.classList.remove('installing'); back0(); };
+  const ios = IOS || /iPad|Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1;
+  let h = '<h2>' + L('Install Duskbound', '安裝 Duskbound') + '</h2><div class="sub">' + L('Free, no App Store needed. It opens full screen from your Home Screen, with its own icon.', '免費，不需要 App Store。從主畫面開啟即為全螢幕，並有專屬圖示。') + '</div>';
+  if (ios) h += '<ol class="steps">' + L('<li>Tap <b>Share</b> — in Safari it is in the bottom bar (or under <b>⋯</b>); in Chrome, at the top right.</li><li>Choose <b>Add to Home Screen</b>, then <b>Add</b>.</li><li>Open <b>Duskbound</b> from your Home Screen.</li>',
+    '<li>點選<b>分享</b> — Safari 在下方工具列（或在 <b>⋯</b> 裡）；Chrome 在右上角。</li><li>選擇<b>加入主畫面</b>，再點<b>加入</b>。</li><li>從主畫面開啟 <b>Duskbound</b>。</li>') + '</ol>';
+  else if (installEvt) h += '<div class="row"><button id="instb">📲 ' + L('Install app', '安裝 App') + '</button></div>';
+  else h += '<ol class="steps">' + L('<li>Open the browser menu <b>⋮</b> (top right in Chrome).</li><li>Choose <b>Install app</b> or <b>Add to Home screen</b>.</li><li>Open <b>Duskbound</b> from your Home screen.</li>',
+    '<li>開啟瀏覽器選單 <b>⋮</b>（Chrome 右上角）。</li><li>選擇<b>安裝應用程式</b>或<b>加到主畫面</b>。</li><li>從主畫面開啟 <b>Duskbound</b>。</li>') + '</ol>';
+  h += '<div class="row"><button id="instok"' + (installEvt && !ios ? ' class="ghost"' : '') + '>' + L('Play in the browser', '直接在瀏覽器遊玩') + '</button></div>';
+  show(h);
+  $('instok').onclick = back;
+  if ($('instb')) $('instb').onclick = async () => { const e = installEvt; installEvt = null; try { e.prompt(); await e.userChoice; } catch (x) { } back(); };
+}
 function onFsButton(back) {
   if (canFS()) { goFull(); setTimeout(back, 300); return; }
   show('<h2>' + L('Full screen on iPhone', 'iPhone 全螢幕') + '</h2><div class="sub">' +
@@ -1472,3 +1492,4 @@ function tick(ts) {
 }
 function frame(ts) { tick(ts); music(); render(); requestAnimationFrame(frame); }
 showMenu(); requestAnimationFrame(frame);
+if (/[?&]a(=|&|$)/.test(location.search) && !STANDALONE && !window.DUSK_NO_NET) showInstall(() => showMenu());
