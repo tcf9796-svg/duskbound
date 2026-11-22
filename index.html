@@ -59,6 +59,13 @@
   .plist i{color:#8e88ab}
   .wait{color:#a9a3c4;font-style:italic;margin-top:14px}
   .stats{color:#c9c4dc;font-size:15px;line-height:1.8;margin-top:6px}
+  .card.locked{cursor:default;opacity:.6}
+  .card.locked:hover{transform:none;border-color:#4a4370;box-shadow:none}
+  .card.locked canvas{filter:grayscale(.7) brightness(.55)}
+  .card .lock{font-style:italic;color:#a9a3c4}
+  .rar{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;border:1px solid;border-radius:4px;padding:0 5px;margin-left:8px;vertical-align:middle}
+  .reward{color:#d8d2ee;font-size:15px;margin-top:8px}
+  .reward.won{font-size:18px;color:#f3d48a}
   /* Phones in landscape: must stay after the base rules so it wins. */
   @media (max-height:540px){
     #overlay{padding:10px 16px}
