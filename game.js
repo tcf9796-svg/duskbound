@@ -41,7 +41,7 @@ const barsShowing = () => IOS_BARS && innerHeight < (innerWidth > innerHeight ? 
 function resize() {
   DPR = Math.min(window.devicePixelRatio || 1, 2); W = innerWidth; H = innerHeight; readSafeArea();
   cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
-  if (IOS_BARS) { cv.style.width = W + 'px'; cv.style.height = H + 'px'; document.body.classList.toggle('bars', barsShowing()); }
+  if (IOS_BARS) { cv.style.width = W + 'px'; cv.style.height = H + 'px'; overlay.style.height = H + 'px'; document.body.classList.toggle('bars', barsShowing()); }
   zoom = clamp(Math.min(W / 1280, H / 720), touch.on ? 0.72 : 0.55, 1.6); VW = W / zoom; VH = H / zoom;
 }
 addEventListener('resize', resize); addEventListener('orientationchange', () => { resize(); setTimeout(resize, 300); }); resize();

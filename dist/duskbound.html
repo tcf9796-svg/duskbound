@@ -19,8 +19,12 @@
   #sa{position:fixed;visibility:hidden;pointer-events:none;top:0;left:0;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
   canvas#game{position:fixed;left:0;top:0;display:block;width:100%;height:100%;cursor:crosshair;touch-action:none}
   /* iPhone Safari hides its bars only when the page scrolls: there the page gets a little room to scroll (game.js adds .iosbar). */
-  html.iosbar,html.iosbar body{height:auto;overflow-x:hidden;overflow-y:auto}
+  html.iosbar{height:auto;overflow-x:hidden;overflow-y:auto}
+  html.iosbar body{height:auto;overflow:visible;overscroll-behavior:auto}
   html.iosbar body::after{content:'';display:block;height:calc(100vh + 200px)}
+  /* A swipe on a fixed layer never scrolls the page in iPhone Safari, so there the menus are part of the page:
+     sticky at the top, so swiping on them scrolls the page (and Safari hides its bars) while they stay in view. */
+  html.iosbar #overlay{position:sticky;inset:auto;top:0;height:100vh}
   #swipehint{display:none;position:fixed;z-index:6;left:50%;transform:translateX(-50%);bottom:max(8px,env(safe-area-inset-bottom));padding:6px 14px;border-radius:16px;
     background:rgba(243,212,138,.92);color:#1a1626;font-size:14px;white-space:nowrap;pointer-events:none;animation:swipe 1.6s ease-in-out infinite}
   body.bars.menu #swipehint{display:block}
@@ -887,7 +891,7 @@ const barsShowing = () => IOS_BARS && innerHeight < (innerWidth > innerHeight ? 
 function resize() {
   DPR = Math.min(window.devicePixelRatio || 1, 2); W = innerWidth; H = innerHeight; readSafeArea();
   cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
-  if (IOS_BARS) { cv.style.width = W + 'px'; cv.style.height = H + 'px'; document.body.classList.toggle('bars', barsShowing()); }
+  if (IOS_BARS) { cv.style.width = W + 'px'; cv.style.height = H + 'px'; overlay.style.height = H + 'px'; document.body.classList.toggle('bars', barsShowing()); }
   zoom = clamp(Math.min(W / 1280, H / 720), touch.on ? 0.72 : 0.55, 1.6); VW = W / zoom; VH = H / zoom;
 }
 addEventListener('resize', resize); addEventListener('orientationchange', () => { resize(); setTimeout(resize, 300); }); resize();
