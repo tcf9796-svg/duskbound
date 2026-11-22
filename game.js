@@ -1716,41 +1716,59 @@ function diffSelect(id, allowed) {
     L('Difficulty: ', '難度：') + T(d.name) + (allowed(d.id) ? '' : ' 🔒') + '</option>').join('') + '</select>';
 }
 // Profile screen: unlocks, weapons (equip one per hero), upgrades, starting talents, reward history, backup code.
-// Online profile panel on the Profile screen: email -> 6-digit code -> signed in (then synced automatically).
-const cloudUI = { email: '', sent: false, msg: '' };
+// Online profile panel on the Profile screen: email + password (sign in or create an account), then synced
+// automatically. A forgotten password is reset through an emailed link that brings the player back to set a new one.
+const cloudUI = { email: '', mode: '', msg: '' }; // mode: '' | 'newpw' (arrived from a reset link)
+const cloudErr = e => {
+  const m = String(e && e.message || e);
+  if (/invalid login credentials/i.test(m)) return L('Wrong email or password.', '電子郵件或密碼錯誤。');
+  if (/already (been )?registered|already exists/i.test(m)) return L('That email already has an account — use Sign in.', '這個電子郵件已有帳號，請按「登入」。');
+  if (/password should be|at least 6|weak/i.test(m)) return L('Use a password of at least 6 characters.', '密碼至少需要 6 個字元。');
+  if (/rate limit|too many|security purposes/i.test(m)) return L('Too many tries — wait a minute and try again.', '嘗試次數過多，請稍候一分鐘再試。');
+  if (/failed to fetch|network|load failed/i.test(m)) return L('Could not reach the server. Check your internet connection.', '無法連上伺服器，請檢查網路連線。');
+  return m;
+};
 function cloudHtml() {
   if (!Cloud.enabled()) return '';
   let h = '<div class="stats prof"><b>☁ ' + L('Online profile', '線上檔案') + '</b><br>';
-  if (Cloud.signedIn()) {
+  if (Cloud.signedIn() && cloudUI.mode === 'newpw') {
+    h += L('Choose a new password for ', '請為以下帳號設定新密碼：') + esc(Cloud.session.email) +
+      '<div class="row"><input id="cpw" type="password" autocomplete="new-password" style="width:200px" placeholder="' + L('New password', '新密碼') + '"><button id="cnew">' + L('Save password', '儲存密碼') + '</button></div>';
+  } else if (Cloud.signedIn()) {
     const t = Cloud.lastSync ? new Date(Cloud.lastSync).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
-    h += L('Signed in as ', '已登入：') + esc(Cloud.session.email) + ' · ' + (Cloud.busy ? L('syncing…', '同步中…') : Cloud.error ? '<span style="color:#ff9b8a">' + L('could not sync (', '無法同步（') + esc(Cloud.error) + L(') — your progress is kept here and sent later', '）— 進度已保留在此，稍後再上傳') + '</span>' : t ? L('synced at ', '同步於 ') + t : L('not synced yet', '尚未同步')) +
+    h += L('Signed in as ', '已登入：') + esc(Cloud.session.email) + ' · ' + (Cloud.busy ? L('syncing…', '同步中…') : Cloud.error ? '<span style="color:#ff9b8a">' + L('could not sync (', '無法同步（') + esc(cloudErr(Cloud.error)) + L(') — your progress is kept here and sent later', '）— 進度已保留在此，稍後再上傳') + '</span>' : t ? L('synced at ', '同步於 ') + t : L('not synced yet', '尚未同步')) +
       '<div class="row"><button id="csync" class="ghost">' + L('Sync now', '立即同步') + '</button><button id="cout" class="ghost">' + L('Sign out', '登出') + '</button></div>';
-  } else if (!cloudUI.sent) {
-    h += L('Sign in to keep one profile across browsers, devices and the Home Screen app.', '登入後，不同瀏覽器、裝置和主畫面 App 都能使用同一個檔案。') +
-      '<div class="row"><input id="cem" type="email" autocomplete="email" style="width:230px" placeholder="' + L('Email', '電子郵件') + '" value="' + esc(cloudUI.email) + '"><button id="csend">' + L('Email me a code', '寄送登入碼') + '</button></div>';
   } else {
-    h += L('We emailed a 6-digit code to ', '已寄送 6 位數登入碼到 ') + esc(cloudUI.email) + L('. Enter it here (this works in the Home Screen app too).', '。請在此輸入（主畫面 App 也適用）。') +
-      '<div class="row"><input id="ccode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" style="width:110px;letter-spacing:3px" placeholder="123456"><button id="cver">' + L('Sign in', '登入') + '</button><button id="cback" class="ghost">' + L('Different email', '換一個電子郵件') + '</button></div>';
+    h += L('Sign in to keep one profile across browsers, devices and the Home Screen app. New here? Pick an email and password, then Create account.', '登入後，不同瀏覽器、裝置和主畫面 App 都能使用同一個檔案。第一次使用？輸入電子郵件和密碼，再按「建立帳號」。') +
+      '<div class="row"><input id="cem" type="email" autocomplete="email" style="width:210px" placeholder="' + L('Email', '電子郵件') + '" value="' + esc(cloudUI.email) + '">' +
+      '<input id="cpw" type="password" autocomplete="current-password" style="width:150px" placeholder="' + L('Password', '密碼') + '"></div>' +
+      '<div class="row"><button id="cin">' + L('Sign in', '登入') + '</button><button id="cup" class="ghost">' + L('Create account', '建立帳號') + '</button><button id="cfor" class="ghost">' + L('Forgot password', '忘記密碼') + '</button></div>';
   }
   return h + (cloudUI.msg ? '<div id="msg">' + esc(cloudUI.msg) + '</div>' : '') + '</div>';
 }
 function bindCloud() {
   const msg = m => { cloudUI.msg = m; showProfile(); };
-  if ($('csend')) $('csend').onclick = async () => {
-    const em = $('cem').value.trim(); cloudUI.email = em;
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) return msg(L('Enter your email address.', '請輸入電子郵件地址。'));
-    $('csend').disabled = true;
-    try { await Cloud.sendCode(em); cloudUI.sent = true; cloudUI.msg = ''; showProfile(); } catch (e) { msg(L('Could not send the code: ', '無法寄送登入碼：') + e.message); }
+  const creds = () => { const em = ($('cem').value || '').trim(), pw = $('cpw').value || ''; cloudUI.email = em; return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em) ? { em, pw } : null; };
+  const go = async (fn, btn) => {
+    const c = creds(); if (!c) return msg(L('Enter your email address.', '請輸入電子郵件地址。'));
+    if (c.pw.length < 6) return msg(L('Use a password of at least 6 characters.', '密碼至少需要 6 個字元。'));
+    btn.disabled = true;
+    try { await fn(c.em, c.pw); cloudUI.msg = ''; showProfile(); await cloudSync(); } catch (e) { msg(e.message === 'confirm-email' ? L('Check your email to confirm the account, then sign in.', '請到信箱確認帳號後再登入。') : cloudErr(e)); }
   };
-  if ($('cver')) $('cver').onclick = async () => {
-    $('cver').disabled = true;
-    try { await Cloud.verify(cloudUI.email, $('ccode').value); cloudUI.sent = false; cloudUI.msg = ''; showProfile(); await cloudSync(); }
-    catch (e) { msg(L('That code did not work: ', '登入碼無效：') + e.message); }
+  if ($('cin')) $('cin').onclick = () => go((e, p) => Cloud.signIn(e, p), $('cin'));
+  if ($('cup')) $('cup').onclick = () => go((e, p) => Cloud.signUp(e, p), $('cup'));
+  if ($('cpw') && $('cin')) $('cpw').onkeydown = e => { if (e.key === 'Enter') $('cin').onclick(); };
+  if ($('cfor')) $('cfor').onclick = async () => {
+    const em = ($('cem').value || '').trim(); cloudUI.email = em;
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) return msg(L('Enter your email address first.', '請先輸入電子郵件地址。'));
+    try { await Cloud.recover(em); msg(L('If that email has an account, a reset link is on its way. Open it on this device; it brings you back here to choose a new password.', '若此電子郵件有帳號，重設連結已寄出。請在這台裝置開啟連結，它會帶你回到這裡設定新密碼。')); } catch (e) { msg(cloudErr(e)); }
   };
-  if ($('ccode')) $('ccode').onkeydown = e => { if (e.key === 'Enter') $('cver').onclick(); };
-  if ($('cback')) $('cback').onclick = () => { cloudUI.sent = false; cloudUI.msg = ''; showProfile(); };
+  if ($('cnew')) $('cnew').onclick = async () => {
+    const pw = $('cpw').value || ''; if (pw.length < 6) return msg(L('Use a password of at least 6 characters.', '密碼至少需要 6 個字元。'));
+    try { await Cloud.setPassword(pw); cloudUI.mode = ''; msg(L('Password saved.', '密碼已儲存。')); cloudSync(); } catch (e) { msg(cloudErr(e)); }
+  };
   if ($('csync')) $('csync').onclick = () => { cloudSync(); showProfile(); };
-  if ($('cout')) $('cout').onclick = () => { Cloud.signOut(); cloudUI.msg = L('Signed out. This browser keeps a copy of the profile.', '已登出。此瀏覽器仍保留一份檔案。'); showProfile(); };
+  if ($('cout')) $('cout').onclick = () => { Cloud.signOut(); cloudUI.mode = ''; cloudUI.msg = L('Signed out. This browser keeps a copy of the profile.', '已登出。此瀏覽器仍保留一份檔案。'); showProfile(); };
 }
 function showProfile(extra) {
   const P = PROFILE, rar = r => r ? '<span style="color:' + RARITY_COLORS[r] + '">' + T(RARITY_NAMES[r]) + '</span>' : L('No reward', '沒有獎勵');
@@ -1919,5 +1937,7 @@ function tick(ts) {
   syncChoice();
 }
 function frame(ts) { tick(ts); music(); render(); requestAnimationFrame(frame); }
-showMenu(); requestAnimationFrame(frame); cloudSync();
+showMenu(); requestAnimationFrame(frame);
+// online profile: finish a password-reset link if we arrived from one, then sync
+if (Cloud.enabled()) Cloud.fromLink().then(t => { if (t === 'recovery') { cloudUI.mode = 'newpw'; showProfile(); } cloudSync(); });
 if (/[?&]a(=|&|$)/.test(location.search) && !STANDALONE && !window.DUSK_NO_NET) showInstall(() => showMenu());

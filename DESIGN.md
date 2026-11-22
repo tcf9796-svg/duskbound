@@ -37,8 +37,11 @@ device and in the iPhone Home Screen app (which has storage separate from Safari
 with `CLOUD_CONFIG` empty the game behaves exactly as before. It is always off on the claude.ai page (it cannot
 reach other servers). No library: plain `fetch` against Supabase's Auth and REST APIs.
 
-- **Sign-in:** Profile → Online profile → email → a 6-digit code from the email, typed into the game. A code rather
-  than a magic link, because a link would open Safari instead of the Home Screen app.
+- **Sign-in:** Profile → Online profile → email + password → **Sign in** or **Create account** (signed in at once:
+  the project skips email confirmation, so no email is needed and it works inside the Home Screen app). **Forgot
+  password** emails a reset link that brings the player back to the game to choose a new password; open it on the
+  same device. (Supabase's free email sender allows only a few emails per hour and its text can't be changed without
+  custom SMTP, which is why sign-in doesn't use emailed codes.) Email addresses are not verified.
 - **Sync:** at start-up, after every saved change (1.5 s later), on "Sync now" and right after signing in. Each sync
   pulls the online copy, merges it with this device's profile (`mergeProfiles` in `meta.js`) and uploads the result.
   The merge never loses progress: the online copy's id is kept; rewards it hasn't seen are replayed by claim id (so
@@ -49,14 +52,14 @@ reach other servers). No library: plain `fetch` against Supabase's Auth and REST
 - **Not tamper-proof yet:** players write their own row (row-level security limits them to it). Phase 2 would move
   reward rolls into a server function and remove the client write policies.
 
-**Setup (once):**
-1. Create a project at supabase.com (free tier).
-2. SQL Editor → run `server/supabase.sql` (profiles table + row-level security).
-3. Authentication → Emails → "Magic Link" template: include the code, e.g. `Your Duskbound code: {{ .Token }}`.
-   Supabase's built-in mailer only sends a few emails per hour; for real players add custom SMTP
-   (Authentication → Emails → SMTP settings, e.g. Resend or Brevo).
-4. Project Settings → API: put the Project URL and the **anon public** key into `CLOUD_CONFIG` in `cloud.js`
-   (the anon key is meant to be public; never put the service_role key in the game).
+**Setup (done for project `ojsjccqugdnuhhmewtqy`, Singapore, free plan):**
+1. Create a project at supabase.com.
+2. SQL Editor → run `server/supabase.sql` (profiles table, grants, row-level security).
+3. Authentication → Sign In / Providers → Email: turn off "Confirm email" (Management API: `mailer_autoconfirm: true`);
+   minimum password length 6. URL Configuration → Site URL `https://tcf9796-svg.github.io/duskbound/` and the same
+   address with `**` in Redirect URLs (for password-reset links).
+4. Project Settings → API Keys: put the Project URL and the **publishable** key into `CLOUD_CONFIG` in `cloud.js`
+   (it is meant to be public; never put a secret or service_role key in the game).
 5. Bump `?v=N`, rebuild `dist/`, publish.
 
 ## Difficulty
