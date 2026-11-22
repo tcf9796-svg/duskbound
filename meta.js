@@ -22,8 +22,8 @@ const DIFFICULTIES = [
 const PARTY_SCALE = { hpPerExtra: 0.6, dmgPerExtra: 0, ambushPerExtra: 0.35, graceSeconds: 120 };
 
 // Chapter reward odds in basis points (1/100 of a percent): one roll per player per chapter, mutually exclusive.
-// Whatever is left over up to 10000 is "no reward" (here 5150 = 51.5%).
-const REWARD_ODDS = [['green', 3000], ['blue', 1000], ['purple', 500], ['yellow', 250], ['red', 100]];
+// Whatever is left over up to 10000 is "no reward" (currently 0: every chapter completion gives one reward).
+const REWARD_ODDS = [['green', 4500], ['blue', 3000], ['purple', 1500], ['yellow', 700], ['red', 300]];
 const RARITIES = ['green', 'blue', 'purple', 'yellow', 'red'];
 const RARITY_NAMES = { green: 'Green', blue: 'Blue', purple: 'Purple', yellow: 'Yellow', red: 'Red' };
 const RARITY_COLORS = { green: '#7bd96f', blue: '#6fb6ff', purple: '#c27bff', yellow: '#f3d048', red: '#ff5a5a' };
@@ -126,6 +126,30 @@ function loadProfile(store) {
   const out = sanitizeProfile(p); saveProfile(store, out); return out;
 }
 function saveProfile(store, p) { try { store.setItem(PROFILE_KEY, JSON.stringify(p)); return true; } catch (e) { return false; } }
+// Online profiles: combines this device's profile with the saved online copy without ever losing progress.
+// The online copy is the base (its id is kept); rewards this device earned that the online copy hasn't seen are
+// replayed onto it by claim id, so nothing is counted twice and upgrades earned on two devices both count.
+// Everything else only grows: unlocked difficulties, characters and weapons are merged, clear counts take the higher.
+function mergeProfiles(local, remote) {
+  const a = sanitizeProfile(local); if (!remote) return a;
+  const out = sanitizeProfile(remote); if (out.id !== remote.id) return a; // unreadable online copy: keep ours
+  for (const r of a.rewards) if (r && typeof r.claim === 'string' && !out.claims[r.claim]) {
+    grantReward(out, r.claim, r.rarity, r.item, { chapter: r.chapter, diff: r.diff });
+    out.rewards[out.rewards.length - 1] = r; // keep the original record (and its time)
+  }
+  for (const k of Object.keys(a.claims)) out.claims[k] = 1;
+  out.rewards.sort((x, y) => (x.t || 0) - (y.t || 0)); out.rewards = out.rewards.slice(-60);
+  out.unlocked = DIFFICULTIES.map(d => d.id).filter(id => out.unlocked.includes(id) || a.unlocked.includes(id));
+  for (const [k, v] of Object.entries(a.cleared)) out.cleared[k] = Math.max(out.cleared[k] || 0, v);
+  out.characters = [...new Set(out.characters.concat(a.characters))];
+  out.weapons = [...new Set(out.weapons.concat(a.weapons))];
+  for (const [k, v] of Object.entries(a.talents)) out.talents[k] = Math.max(out.talents[k] || 0, v);
+  // the reward history only keeps 60 entries, so never end below what this device already had
+  for (const [k, v] of Object.entries(a.upgrades)) out.upgrades[k] = Math.max(out.upgrades[k] || 0, v);
+  for (const [h, w] of Object.entries(a.equipped)) if (!out.equipped[h]) out.equipped[h] = w;
+  out.created = Math.min(out.created, a.created);
+  return sanitizeProfile(out);
+}
 
 // Applies one awarded reward. Idempotent: a claim id that was already applied is ignored (returns false).
 function grantReward(prof, claim, rarity, item, meta = {}) {
@@ -193,6 +217,6 @@ function itemLabel(item) {
   if (k === 'c') return 'Character: ' + (typeof HEROES !== 'undefined' && HEROES[a] ? HEROES[a].name : a);
   return item;
 }
-if (typeof module !== 'undefined') module.exports = { CHAPTERS, DIFFICULTIES, PARTY_SCALE, REWARD_ODDS, REWARD_POOLS, REWARD_FALLBACK, RARITIES, UPGRADES, WEAPONS, START_TALENT_CAP,
+if (typeof module !== 'undefined') module.exports = { mergeProfiles, CHAPTERS, DIFFICULTIES, PARTY_SCALE, REWARD_ODDS, REWARD_POOLS, REWARD_FALLBACK, RARITIES, UPGRADES, WEAPONS, START_TALENT_CAP,
   checkOdds, rarityFor, rollRarity, rollReward, itemAvailable, newProfile, sanitizeProfile, loadProfile, saveProfile, grantReward, recordCampaignClear, highestUnlocked,
   loadoutOf, sanitizeLoadout, applyLoadout, exportProfile, importProfile, itemLabel, ODDS_TOTAL };

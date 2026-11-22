@@ -9,19 +9,19 @@ let fails = 0, n = 0;
 const ok = (cond, msg) => { n++; if (!cond) { fails++; console.log('FAIL', msg); } };
 const store = () => { const d = {}; return { getItem: k => k in d ? d[k] : null, setItem: (k, v) => { d[k] = String(v); }, raw: d }; };
 
-// --- odds: total 100%, no-reward share is 51.5%
+// --- odds: total 100% (45/30/15/7/3), no 'no reward' share
 const { sum, none } = M.checkOdds();
-ok(sum === 4850 && none === 5150 && sum + none === 10000, 'odds total 10000 bp with 5150 bp for no reward');
+ok(sum === 10000 && none === 0, 'odds total exactly 10000 bp (100%), no "no reward" share');
 const pct = Object.fromEntries(M.REWARD_ODDS.map(([r, bp]) => [r, bp / 100]));
-ok(pct.green === 30 && pct.blue === 10 && pct.purple === 5 && pct.yellow === 2.5 && pct.red === 1, 'exact table 30/10/5/2.5/1');
+ok(pct.green === 45 && pct.blue === 30 && pct.purple === 15 && pct.yellow === 7 && pct.red === 3, 'exact table 45/30/15/7/3');
 // --- roll boundaries (one draw 0..9999)
-const B = [[0, 'green'], [2999, 'green'], [3000, 'blue'], [3999, 'blue'], [4000, 'purple'], [4499, 'purple'], [4500, 'yellow'], [4749, 'yellow'], [4750, 'red'], [4849, 'red'], [4850, null], [9999, null]];
+const B = [[0, 'green'], [4499, 'green'], [4500, 'blue'], [7499, 'blue'], [7500, 'purple'], [8999, 'purple'], [9000, 'yellow'], [9699, 'yellow'], [9700, 'red'], [9999, 'red']];
 for (const [x, want] of B) ok(M.rarityFor(x) === want, 'boundary ' + x + ' -> ' + want);
 // exhaustive count over every draw
 const count = {}; for (let x = 0; x < 10000; x++) { const r = M.rarityFor(x) || 'none'; count[r] = (count[r] || 0) + 1; }
-ok(count.green === 3000 && count.blue === 1000 && count.purple === 500 && count.yellow === 250 && count.red === 100 && count.none === 5150, 'exhaustive draw counts ' + JSON.stringify(count));
+ok(count.green === 4500 && count.blue === 3000 && count.purple === 1500 && count.yellow === 700 && count.red === 300 && !count.none, 'exhaustive draw counts ' + JSON.stringify(count));
 // rng edge: 0 and just under 1
-ok(M.rollRarity(() => 0) === 'green' && M.rollRarity(() => 0.9999999) === null, 'rng edges');
+ok(M.rollRarity(() => 0) === 'green' && M.rollRarity(() => 0.9999999) === 'red', 'rng edges');
 // --- one roll -> at most one item, from that rarity's pool
 const inv = { weapons: [], talents: {}, upgrades: {}, characters: [] };
 for (let i = 0; i < 2000; i++) {
@@ -32,7 +32,7 @@ for (let i = 0; i < 2000; i++) {
 }
 // owned items are skipped; fully owned pool falls back to an upgrade of the same rarity
 const own = { weapons: Object.keys(M.WEAPONS), talents: { step: 1, exec: 1 }, upgrades: {}, characters: [] };
-const y = M.rollReward(own, (() => { const s = [0.46, 0.5]; return () => s.shift(); })());
+const y = M.rollReward(own, (() => { const s = [0.95, 0.5]; return () => s.shift(); })());
 ok(y.rarity === 'yellow' && M.REWARD_FALLBACK.yellow.includes(y.item), 'yellow with everything owned -> fallback upgrade, got ' + JSON.stringify(y));
 // --- profiles survive restart; ids are stable
 const st = store(); const p1 = M.loadProfile(st); const p2 = M.loadProfile(st);
@@ -73,4 +73,25 @@ ok(!M.itemAvailable('c:rowan', { ...ci(5), characters: ['rowan'] }) && !M.itemAv
 const hp = M.newProfile(); M.grantReward(hp, 'r:1:' + hp.id, 'green', 'c:rowan', { chapter: 1 });
 ok(hp.characters.includes('rowan') && M.itemLabel('c:rowan') === 'Character: Rowan', 'hero reward unlocks the character for the profile');
 ok(M.sanitizeProfile({ ...hp }).characters.includes('rowan'), 'unlocked hero survives a reload');
+// --- online profiles: merging this device's profile with the online copy never loses progress
+{
+  const A = M.newProfile(), B = M.newProfile();
+  M.grantReward(A, 'ra:1:' + A.id, 'green', 'u:hp:4', { chapter: 1 }); M.grantReward(A, 'ra:2:' + A.id, 'green', 'c:rowan', { chapter: 2 });
+  M.grantReward(B, 'rb:1:' + B.id, 'green', 'u:hp:4', { chapter: 1 }); M.grantReward(B, 'rb:2:' + B.id, 'purple', 'w:thornmaul', { chapter: 2 });
+  M.recordCampaignClear(B, 'normal', 'runB');
+  const m = M.mergeProfiles(A, B);
+  ok(m.id === B.id, 'merge keeps the id of the online copy');
+  ok(m.upgrades.hp === 8, 'upgrades earned on two devices both count (' + m.upgrades.hp + ')');
+  ok(m.characters.includes('rowan') && m.weapons.includes('thornmaul') && m.unlocked.includes('nightmare') && m.cleared.normal === 1, 'characters, weapons, difficulties and clears combine');
+  ok(m.rewards.length === 4 && ['ra:1:' + A.id, 'ra:2:' + A.id, 'rb:1:' + B.id, 'rb:2:' + B.id].every(c => m.claims[c]), 'reward history and claims combine');
+  const again = M.mergeProfiles(m, m);
+  ok(again.upgrades.hp === 8 && again.rewards.length === 4, 'merging an already merged profile changes nothing (no double counting)');
+  const m2 = M.mergeProfiles(A, m);
+  ok(m2.upgrades.hp === 8 && m2.characters.includes('rowan'), 'syncing the first device again adds nothing twice');
+  ok(M.mergeProfiles(A, null).id === A.id && M.mergeProfiles(A, { junk: 1 }).id === A.id, 'no or unreadable online copy: keep the profile on this device');
+  const capped = M.newProfile(); capped.upgrades.hp = 60; const c2 = M.newProfile(); M.grantReward(c2, 'x:1:' + c2.id, 'red', 'u:hp:20', { chapter: 1 });
+  ok(M.mergeProfiles(c2, capped).upgrades.hp === 60, 'merged upgrades stay within their cap');
+  const old = M.newProfile(); old.upgrades.dmg = 10; // earned long ago, no longer in the 60-entry history
+  ok(M.mergeProfiles(old, M.newProfile()).upgrades.dmg === 10, 'upgrades older than the reward history are not lost');
+}
 console.log((fails ? 'FAILED ' + fails : 'all passed') + ' (' + n + ' checks)'); process.exit(fails ? 1 : 0);

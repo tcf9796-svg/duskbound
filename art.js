@@ -68,6 +68,8 @@ function drawHero(c, id, x, y, face, t, o = {}) {
   c.restore();
 }
 function drawEnemy(e) {
+  if (e.type === 'boss') return drawBossBody(ctx, e); // chapter bosses (bosses.js)
+  if (SUMMONS.has(e.type)) return drawSummon(ctx, e);
   const c = ctx, r = e.r, t = game.t + e.ph, fl = e.dir || 1;
   c.save(); c.translate(e.x, e.y);
   ell(c, 0, r * 0.8, r, r * 0.38, 'rgba(0,0,0,.3)');
@@ -141,6 +143,16 @@ function drawPoi(o) {
     case 'altar': {
       ell(c, 0, 8, 52, 20, '#3a3548'); ell(c, 0, 4, 40, 15, '#4c4660');
       for (let i = 0; i < 5; i++) { const a = i * TAU / 5 + 0.3, x = Math.cos(a) * 46, y = Math.sin(a) * 18 + 4; c.fillStyle = '#5a546e'; c.fillRect(x - 5, y - 30, 10, 32); }
+      if (!o.used) {
+        const u = clamp((o.unseal || 0) / UNSEAL_TIME, 0, 1);
+        c.strokeStyle = 'rgba(194,123,255,' + (0.25 + 0.15 * Math.sin(t * 2.5)) + ')'; c.lineWidth = 2; c.beginPath(); c.ellipse(0, 6, UNSEAL_RADIUS, UNSEAL_RADIUS * 0.4, 0, 0, TAU); c.stroke();
+        if (u > 0) {
+          c.strokeStyle = '#ff5ad6'; c.lineWidth = 5; c.beginPath(); c.ellipse(0, 6, UNSEAL_RADIUS, UNSEAL_RADIUS * 0.4, 0, -Math.PI / 2, -Math.PI / 2 + TAU * u); c.stroke();
+          const gl = c.createRadialGradient(0, -8, 2, 0, -8, 30 + 50 * u); gl.addColorStop(0, 'rgba(255,90,214,' + (0.35 + 0.4 * u) + ')'); gl.addColorStop(1, 'rgba(255,90,214,0)'); c.fillStyle = gl; c.beginPath(); c.arc(0, -8, 30 + 50 * u, 0, TAU); c.fill();
+          c.textAlign = 'center'; c.font = 'bold 15px Georgia'; c.fillStyle = 'rgba(0,0,0,.6)'; const tx = T('Unsealing') + ' ' + Math.max(0, UNSEAL_TIME - (o.unseal || 0)).toFixed(1) + 's';
+          c.fillText(tx, 1, -51); c.fillStyle = '#ffb8ee'; c.fillText(tx, 0, -52);
+        }
+      }
       const g = c.createRadialGradient(0, -8, 2, 0, -8, 34); g.addColorStop(0, o.used ? 'rgba(120,120,140,.5)' : 'rgba(200,120,255,' + (0.6 + Math.sin(t * 3) * 0.2) + ')'); g.addColorStop(1, 'rgba(160,80,255,0)'); c.fillStyle = g; c.beginPath(); c.arc(0, -8, 34, 0, TAU); c.fill();
       break;
     }
