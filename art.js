@@ -6,8 +6,41 @@ function ell(c, x, y, rx, ry, fill, rot = 0) { c.fillStyle = fill; c.beginPath()
 function drawHero(c, id, x, y, face, t, o = {}) {
   c.save(); c.translate(x, y); const s = o.scale || 1; c.scale(s, s);
   const bob = Math.sin(t * 11) * (o.moving ? 1.6 : 0.4), fl = Math.cos(face) < 0 ? -1 : 1, sw = o.swing || 0, swOff = sw > 0 ? (0.5 - sw) * 2.4 : 0;
-  ell(c, 0, 13, 14, 5, 'rgba(0,0,0,.32)');
-  if (id === 'bramble') {
+  if (!o.ghost) ell(c, 0, 13, 14, 5, 'rgba(0,0,0,.32)');
+  if (id === 'rowan') {
+    // The Thornwarden: bark armour, a moss cloak, a spear and a living-wood shield. As the Sentinel, a crown of boughs.
+    c.fillStyle = '#4f6e34'; c.beginPath(); c.moveTo(-15, 13); c.quadraticCurveTo(-16, -6 + bob, -6, -10 + bob); c.lineTo(6, -10 + bob); c.quadraticCurveTo(16, -6 + bob, 15, 13); c.closePath(); c.fill();
+    for (let i = 0; i < 5; i++) ell(c, -12 + i * 6, 12, 3.5, 2.5, i % 2 ? '#6f9a45' : '#86b25a');
+    ell(c, 0, 1 + bob, 10, 11, '#6b4a2b'); c.strokeStyle = '#3e2a17'; c.lineWidth = 1.4; c.beginPath(); c.moveTo(-6, -6 + bob); c.lineTo(-4, 8 + bob); c.moveTo(2, -7 + bob); c.lineTo(4, 9 + bob); c.moveTo(-8, 2 + bob); c.lineTo(8, 0 + bob); c.stroke();
+    circ(c, 0, -13 + bob, 8, '#7a5634'); c.fillStyle = '#3e2a17'; c.fillRect(-8, -12 + bob, 16, 3);
+    c.fillStyle = '#e8f7a8'; c.fillRect(fl * 2 - 4, -12 + bob, 2.5, 2); c.fillRect(fl * 2 + 2, -12 + bob, 2.5, 2);
+    ell(c, -4, -20 + bob, 5, 2.5, '#86b25a', -0.4); ell(c, 4, -21 + bob, 4, 2, '#a9c46c', 0.5);
+    if (o.sentinel) { c.strokeStyle = '#5d4023'; c.lineWidth = 2.5; c.lineCap = 'round'; for (const sd of [-1, 1]) { c.beginPath(); c.moveTo(sd * 4, -19 + bob); c.lineTo(sd * 10, -30 + bob); c.lineTo(sd * 16, -32 + bob); c.moveTo(sd * 8, -26 + bob); c.lineTo(sd * 5, -34 + bob); c.stroke(); } ell(c, -12, -34 + bob, 6, 4, '#7da353'); ell(c, 12, -34 + bob, 6, 4, '#7da353'); ell(c, 0, -36 + bob, 5, 4, '#a9c46c'); }
+    c.save(); c.rotate(face); const th = sw > 0 ? sw * 12 : 0;
+    c.strokeStyle = '#6b4a2b'; c.lineWidth = 3.5; c.lineCap = 'round'; c.beginPath(); c.moveTo(-6 + th, 9); c.lineTo(40 + th, 9); c.stroke();
+    c.fillStyle = '#d8e8c0'; c.beginPath(); c.moveTo(40 + th, 5); c.lineTo(52 + th, 9); c.lineTo(40 + th, 13); c.fill(); ell(c, 37 + th, 9, 3, 1.6, '#86b25a');
+    c.fillStyle = '#7a5634'; c.beginPath(); c.ellipse(15, -6, 5, 12, 0, 0, TAU); c.fill(); c.strokeStyle = '#a9c46c'; c.lineWidth = 2; c.beginPath(); c.ellipse(15, -6, 5, 12, 0, 0, TAU); c.stroke();
+    circ(c, 15, -6, 2.5, '#cfe89a'); ell(c, 17, -15, 3, 1.6, '#86b25a', 0.6); c.restore();
+  } else if (id === 'mira') {
+    // The Mirrorblade: a masked duelist with twin glass daggers and drifting mirror shards.
+    c.fillStyle = '#25414a'; c.beginPath(); c.moveTo(-11, 13); c.lineTo(-7, -6 + bob); c.lineTo(7, -6 + bob); c.lineTo(11, 13); c.closePath(); c.fill();
+    c.fillStyle = '#9ee7f2'; c.beginPath(); c.moveTo(-2, 13); c.lineTo(0, -4 + bob); c.lineTo(2, 13); c.fill();
+    circ(c, 0, -12 + bob, 7, '#1d2a30'); ell(c, fl * 1.5, -12 + bob, 6, 6.5, '#eef8fb');
+    c.strokeStyle = '#6f8f99'; c.lineWidth = 0.9; c.beginPath(); c.moveTo(fl * 1.5 - 3, -18 + bob); c.lineTo(fl * 1.5, -13 + bob); c.lineTo(fl * 1.5 + 4, -15 + bob); c.moveTo(fl * 1.5, -13 + bob); c.lineTo(fl * 1.5 + 1, -7 + bob); c.stroke();
+    c.fillStyle = '#1d2a30'; c.fillRect(fl * 1.5 - 4, -13 + bob, 3, 1.6); c.fillRect(fl * 1.5 + 1.5, -13 + bob, 3, 1.6);
+    for (let i = 0; i < 3; i++) { const q = t * 1.3 + i * 2.1, x = Math.cos(q) * 18, y = Math.sin(q) * 8 - 8 + bob; c.fillStyle = 'rgba(200,245,255,' + (0.5 + Math.sin(t * 4 + i) * 0.3) + ')'; c.beginPath(); c.moveTo(x, y - 4); c.lineTo(x + 3, y + 1); c.lineTo(x - 2, y + 3); c.fill(); }
+    for (const sd of [-1, 1]) { c.save(); c.rotate(face + sd * 0.4 + swOff * sd); c.strokeStyle = 'rgba(210,250,255,.9)'; c.lineWidth = 3.2; c.lineCap = 'round'; c.beginPath(); c.moveTo(11, 0); c.lineTo(25, 0); c.stroke(); c.strokeStyle = '#ffffff'; c.lineWidth = 1; c.beginPath(); c.moveTo(13, -0.8); c.lineTo(23, -0.8); c.stroke(); c.strokeStyle = '#3d5a63'; c.lineWidth = 3; c.beginPath(); c.moveTo(8, 0); c.lineTo(11, 0); c.stroke(); c.restore(); }
+  } else if (id === 'vespera') {
+    // The Lanternkeeper: a hooded traveller, spectral flame in a lantern on a chain, and a few wandering spirits.
+    c.fillStyle = '#2b3346'; c.beginPath(); c.moveTo(-14, 13); c.quadraticCurveTo(-12, -10 + bob, 0, -24 + bob); c.quadraticCurveTo(12, -10 + bob, 14, 13); c.closePath(); c.fill();
+    c.fillStyle = '#3b4660'; c.beginPath(); c.moveTo(-5, 13); c.lineTo(0, -6 + bob); c.lineTo(5, 13); c.fill();
+    ell(c, fl * 1.5, -12 + bob, 6, 6, '#0d1018'); c.fillStyle = '#86f0cf'; c.fillRect(fl * 3 - 4, -13 + bob, 2.2, 2.2); c.fillRect(fl * 3 + 1, -13 + bob, 2.2, 2.2);
+    for (let i = 0; i < 2; i++) { const q = t * 1.7 + i * Math.PI, x = Math.cos(q) * 22, y = Math.sin(q * 1.3) * 7 - 16 + bob; c.fillStyle = 'rgba(200,255,240,.55)'; c.beginPath(); c.moveTo(x - 3, y + 3); c.quadraticCurveTo(x, y - 8, x + 3, y + 3); c.quadraticCurveTo(x, y + 6, x - 3, y + 3); c.fill(); }
+    const sway = Math.sin(t * 5) * 0.25, ln = 22 + sw * 10, lx = Math.cos(face + sway) * ln, ly = Math.sin(face + sway) * ln + 4;
+    c.strokeStyle = '#8a8f9e'; c.lineWidth = 1.2; c.setLineDash([2, 2]); c.beginPath(); c.moveTo(Math.cos(face) * 8, Math.sin(face) * 8 - 2 + bob); c.lineTo(lx, ly - 6); c.stroke(); c.setLineDash([]);
+    const g = c.createRadialGradient(lx, ly, 1, lx, ly, 17); g.addColorStop(0, 'rgba(160,255,225,.9)'); g.addColorStop(1, 'rgba(90,220,190,0)'); c.fillStyle = g; c.beginPath(); c.arc(lx, ly, 17, 0, TAU); c.fill();
+    c.fillStyle = '#3a3f4c'; c.fillRect(lx - 4.5, ly - 7, 9, 2); c.fillRect(lx - 4.5, ly + 5, 9, 2); c.fillStyle = '#e6fff7'; c.beginPath(); c.moveTo(lx - 3, ly + 4); c.quadraticCurveTo(lx, ly - 8 - Math.sin(t * 12) * 2, lx + 3, ly + 4); c.fill();
+  } else if (id === 'bramble') {
     ell(c, 0, bob, 14, 14, '#4d7a3f'); ell(c, 0, 3 + bob, 9, 8, '#6b4a2b');
     ell(c, -11, -3 + bob, 6, 4, '#7bc96f', -0.5); ell(c, 11, -3 + bob, 6, 4, '#7bc96f', 0.5);
     circ(c, 0, -13 + bob, 9, '#8a6238'); c.fillStyle = '#5d4023'; c.fillRect(-9, -11 + bob, 18, 2);
@@ -84,6 +117,11 @@ function drawEnemy(e) {
   c.restore();
   if (e.type !== 'boss' && e.hp < e.maxHp) { const w = r * 2; ctx.fillStyle = 'rgba(0,0,0,.6)'; ctx.fillRect(e.x - w / 2, e.y - r - 14, w, 4); ctx.fillStyle = e.elite ? '#f3d48a' : e.poisT > 0 ? '#a6e36a' : '#e25555'; ctx.fillRect(e.x - w / 2, e.y - r - 14, w * clamp(e.hp / e.maxHp, 0, 1), 4); }
   if (e.slowT > 0) { ctx.strokeStyle = '#7bc96f'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(e.x, e.y + r * 0.6, r * 0.9, 0, TAU); ctx.stroke(); }
+  if (e.rootT > 0) {
+    // Root Snare: roots curl up around the feet.
+    ctx.strokeStyle = '#8a6238'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+    for (let i = 0; i < 5; i++) { const q = i * TAU / 5 + 0.4, bx = e.x + Math.cos(q) * r * 0.9, by = e.y + r * 0.6 + Math.sin(q) * r * 0.35; ctx.beginPath(); ctx.moveTo(bx, by); ctx.quadraticCurveTo(bx + Math.cos(q) * 6, by - r * 0.6, e.x + Math.cos(q) * r * 0.4, e.y - r * 0.2); ctx.stroke(); }
+  }
 }
 function drawObs(o) {
   const c = ctx, T = world.pal.tree;
@@ -131,6 +169,11 @@ function drawPickup(k) {
   const c = ctx, b = Math.sin(k.t * 5) * 2;
   if (k.kind === 'xp') { circ(c, k.x, k.y + b, 4, '#7fe0ff'); circ(c, k.x - 1, k.y - 1 + b, 1.6, '#fff'); }
   else if (k.kind === 'gold') { circ(c, k.x, k.y + b, 5, '#f3c84a'); circ(c, k.x, k.y + b, 2.5, '#fff0a8'); }
+  else if (k.kind === 'lume') {
+    // Lingering Light: a small spectral ember for the Lanternkeeper.
+    const g = c.createRadialGradient(k.x, k.y + b, 1, k.x, k.y + b, 12); g.addColorStop(0, 'rgba(200,255,240,.9)'); g.addColorStop(1, 'rgba(134,240,207,0)'); c.fillStyle = g; c.beginPath(); c.arc(k.x, k.y + b, 12, 0, TAU); c.fill();
+    c.fillStyle = '#eafff8'; c.beginPath(); c.moveTo(k.x - 3, k.y + 3 + b); c.quadraticCurveTo(k.x, k.y - 8 + b, k.x + 3, k.y + 3 + b); c.fill();
+  }
   else if (k.kind === 'heart') { c.fillStyle = '#ff5a6e'; c.beginPath(); c.arc(k.x - 4, k.y - 2 + b, 5, 0, TAU); c.arc(k.x + 4, k.y - 2 + b, 5, 0, TAU); c.fill(); c.beginPath(); c.moveTo(k.x - 9, k.y + b); c.lineTo(k.x, k.y + 10 + b); c.lineTo(k.x + 9, k.y + b); c.fill(); }
   else { c.save(); c.translate(k.x, k.y + b); c.rotate(k.t); const g = c.createRadialGradient(0, 0, 1, 0, 0, 22); g.addColorStop(0, 'rgba(243,212,138,.8)'); g.addColorStop(1, 'rgba(243,212,138,0)'); c.fillStyle = g; c.beginPath(); c.arc(0, 0, 22, 0, TAU); c.fill(); c.fillStyle = '#f3d48a'; c.beginPath(); c.moveTo(0, -11); c.lineTo(8, 0); c.lineTo(0, 11); c.lineTo(-8, 0); c.fill(); c.restore(); }
 }

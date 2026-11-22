@@ -56,6 +56,12 @@ function playSfx(name) {
     case 'boss': tone(55, 2.2, 'sawtooth', 0.22, -15, 0, 0.4); hiss(2, 0.3, 150, 0.4); break;
     case 'warn': tone(440, 0.12, 'square', 0.04); break;
     case 'spit': tone(300, 0.15, 'sine', 0.06, -150); break;
+    case 'block': tone(150, 0.12, 'square', 0.06, -40); hiss(0.08, 0.15, 600, 1.2); break;
+    case 'root': tone(80, 0.45, 'sawtooth', 0.12, 40); hiss(0.35, 0.2, 260, 0.6); break;
+    case 'shatter': hiss(0.25, 0.22, 6500, 2); [1760, 2350, 2960].forEach((f, i) => tone(f, 0.18, 'triangle', 0.035, -300, i * 0.03)); break;
+    case 'shield': tone(660, 0.3, 'sine', 0.07, 330); tone(990, 0.35, 'sine', 0.05, 0, 0.08); break;
+    case 'tether': tone(440, 0.4, 'sine', 0.06, -220); tone(445, 0.4, 'sine', 0.06, -222, 0.02); break;
+    case 'unlock': [523, 659, 784, 1047, 1319].forEach((f, i) => tone(f, 0.5, 'triangle', 0.09, 0, i * 0.1)); break;
   }
 }
 const MUS = { next: 0, step: 0 };

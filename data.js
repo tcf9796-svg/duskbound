@@ -18,8 +18,38 @@ const HEROES = {
     blurb: 'Dust-winged and needle-quick. Drawn to the dark, not the light.',
     kit: ['<b>Attack</b> — rapid twin cuts; every third throws a blade', '<b>Skill</b> — Fan of piercing blades', '<b>Dash</b> — Two charges; cuts through foes', '<b>Ultimate</b> — Eclipse: blink-strike up to 8 enemies', '<b>Trait</b> — Moonlit: +15% crit and speed at night'],
     names: ['Twin Cuts', 'Blade Fan', 'Flit', 'Eclipse']
+  },
+  // Unlockable heroes. `rarity` names their character reward pool (see RARITY); `alt` heroes cast a second skill
+  // from the dash slot (Space / DASH button) instead of dashing; `dashCd` overrides that slot's recharge.
+  rowan: {
+    name: 'Rowan', title: 'The Thornwarden', color: '#a9c46c', hp: 170, spd: 205, dmg: 14, atkCd: 0.5, skillCd: 9, dashes: 1, dashCd: 14, alt: true, rarity: 'green',
+    blurb: 'Bark armour, a moss-heavy cloak and a shield that is still growing. Where Rowan plants a foot, the line holds.',
+    kit: ['<b>Attack</b> — Briar Thrust: a long spear jab', '<b>Skill</b> — Root Snare: roots nearby foes in place', '<b>Space</b> — Shelterwood: a grove where allies take 35% less damage', '<b>Ultimate</b> — Ancient Sentinel: become a tree guardian; +35% armour, foes are drawn to you', '<b>Trait</b> — Deep Roots: frontal hits are blocked by the shield (half damage) and store up to 5 charges for the next Root Snare'],
+    names: ['Briar Thrust', 'Root Snare', 'Shelterwood', 'Ancient Sentinel']
+  },
+  mira: {
+    name: 'Mira', title: 'The Mirrorblade', color: '#9ee7f2', hp: 100, spd: 245, dmg: 8, atkCd: 0.2, skillCd: 6, dashes: 1, dashCd: 3.2, rarity: 'blue',
+    blurb: 'A masked duelist in a coat of cracked mirror. Whatever you think you are fighting, it is not quite her.',
+    kit: ['<b>Attack</b> — Shattered Cuts: a fast three-strike dagger combo', '<b>Skill</b> — Mirror Exchange: swap places with your decoy, then shatter it', '<b>Dash</b> — Reflection Step: dash through foes, leaving a decoy that draws them', '<b>Ultimate</b> — Hall of Mirrors: three reflections repeat your cuts at 40% damage', '<b>Trait</b> — Blind Spot: +40% damage to foes distracted by an ally or decoy'],
+    names: ['Shattered Cuts', 'Mirror Exchange', 'Reflection Step', 'Hall of Mirrors']
+  },
+  vespera: {
+    name: 'Vespera', title: 'The Lanternkeeper', color: '#86f0cf', hp: 100, spd: 225, dmg: 12, atkCd: 0.38, skillCd: 10, dashes: 1, dashCd: 12, alt: true, rarity: 'purple',
+    blurb: 'A cloaked traveller swinging a haunted lantern on a chain. The lost follow her light; so does everything else.',
+    kit: ['<b>Attack</b> — Ghostlight: a spectral bolt', '<b>Skill</b> — Guiding Wisp: shield the ally nearest your aim (yourself when solo). 30 energy', '<b>Space</b> — Soul Tether: link up to 4 foes; 40% of direct damage to one spreads to the rest. 30 energy', '<b>Ultimate</b> — Midnight Procession: spirits march toward your aim, harming foes and healing allies', '<b>Trait</b> — Lingering Light: the fallen leave embers that restore lantern energy'],
+    names: ['Ghostlight', 'Guiding Wisp', 'Soul Tether', 'Midnight Procession']
   }
 };
+// Character reward pools. Completing chapter `chapter` puts the pool's heroes into the reward roll, starting with that
+// completion. Each completion is one roll: the rarest eligible locked hero whose `chance` beats the roll is unlocked.
+// Unlockable heroes' reward tier and the first chapter they can be won from. They are won through the single
+// chapter reward roll in meta.js (REWARD_POOLS); `chance` is unused (kept from the earlier separate roll).
+const RARITY = {
+  green: { name: 'Green', color: '#6fdc7a', chance: 0.6, chapter: 1 },
+  blue: { name: 'Blue', color: '#6fb6ff', chance: 0.35, chapter: 2 },
+  purple: { name: 'Purple', color: '#c38bff', chance: 0.2, chapter: 3 }
+};
+const LANTERN_MAX = 100, LANTERN_COST = 30;
 const ET = {
   husk: { r: 14, hp: 34, spd: 108, dmg: 9, xp: 5 },
   spitter: { r: 13, hp: 24, spd: 82, dmg: 8, xp: 6 },
@@ -39,7 +69,7 @@ const TALENTS = [
   { id: 'bark', name: 'Ironbark', desc: 'Take 10% less damage.', max: 4, f: p => p.armor += 0.10 },
   { id: 'tinker', name: 'Restless', desc: 'Cooldowns recover 12% faster.', max: 4, f: p => p.cdr *= 0.88 },
   { id: 'magnet', name: 'Magpie', desc: '+60% pickup radius, +15% experience.', max: 2, f: p => { p.pickR *= 1.6; p.xpMul += 0.15; } },
-  { id: 'step', name: 'Second Step', desc: '+1 dash charge.', max: 1, f: p => { p.dashMax++; p.dashes++; } },
+  { id: 'step', dash: true, name: 'Second Step', desc: '+1 dash charge.', max: 1, f: p => { p.dashMax++; p.dashes++; } },
   { id: 'nightborn', name: 'Nightborn', desc: '+20% damage after dark.', max: 3, f: p => p.nightDmg += 0.2 },
   { id: 'sun', name: 'Sunkissed', desc: 'Regenerate 1.2 health per second by day.', max: 3, f: p => p.dayRegen += 1.2 },
   { id: 'spite', name: 'Spite', desc: 'When struck, lash out at everything nearby.', max: 3, f: p => p.spite++ },
@@ -55,7 +85,13 @@ const TALENTS = [
   { id: 'lantern', hero: 'wick', name: 'Great Lantern', desc: 'Lantern: +25% radius, +2s duration.', max: 2, f: p => p.h.lantern = (p.h.lantern || 0) + 1 },
   { id: 'fan', hero: 'vesper', name: 'Blade Storm', desc: 'Blade Fan throws +2 blades.', max: 3, f: p => p.h.fan = (p.h.fan || 0) + 1 },
   { id: 'ghost', hero: 'vesper', name: 'Ghoststep', desc: 'Dash damage doubled; kills refund a dash.', max: 1, f: p => p.h.ghost = 1 },
-  { id: 'lunar', hero: 'vesper', name: 'Lunar Edge', desc: 'Cut reach +15%, +20% critical damage.', max: 2, f: p => { p.h.lunar = (p.h.lunar || 0) + 1; p.critMul += 0.2; } }
+  { id: 'lunar', hero: 'vesper', name: 'Lunar Edge', desc: 'Cut reach +15%, +20% critical damage.', max: 2, f: p => { p.h.lunar = (p.h.lunar || 0) + 1; p.critMul += 0.2; } },
+  { id: 'thicket', hero: 'rowan', name: 'Thicket', desc: 'Shelterwood: +25% radius, +2s duration.', max: 2, f: p => p.h.thicket = (p.h.thicket || 0) + 1 },
+  { id: 'taproot', hero: 'rowan', name: 'Taproot', desc: 'Root Snare roots 0.5s longer and deals +40% damage.', max: 2, f: p => p.h.taproot = (p.h.taproot || 0) + 1 },
+  { id: 'facets', hero: 'mira', name: 'Many Facets', desc: 'Decoys last +2s; their shatter deals +40% damage.', max: 2, f: p => p.h.facets = (p.h.facets || 0) + 1 },
+  { id: 'glint', hero: 'mira', name: 'Cold Glint', desc: 'Blind Spot bonus +20%.', max: 2, f: p => p.h.glint = (p.h.glint || 0) + 1 },
+  { id: 'deepwick', hero: 'vespera', name: 'Deep Wick', desc: '+25 maximum lantern energy, +1 energy per second.', max: 2, f: p => { p.h.deepwick = (p.h.deepwick || 0) + 1; p.lanMax += 25; } },
+  { id: 'kindred', hero: 'vespera', name: 'Kindred Flame', desc: 'Guiding Wisp shields are 50% stronger.', max: 2, f: p => p.h.kindred = (p.h.kindred || 0) + 1 }
 ];
 const PAL = [
   { name: 'The Thornwood', base: '#2f4a33', spk: ['#3a5a3c', '#284029', '#466b45'], tree: ['#1c3522', '#2a4f31', '#3a6a40'], rock: '#6b7078' },

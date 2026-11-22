@@ -80,8 +80,10 @@ capped; if nothing is left, a same-rarity upgrade from `REWARD_FALLBACK` is give
   the claim ids it has applied. So duplicate completion events, reconnects and resends never roll or grant twice.
 - **Categories:** upgrades (stackable stats, capped), starting talents (begin each run with one rank of a boon),
   weapons (one per hero, equipped in Profile) and characters.
-- **Characters: pool empty.** No heroes exist beyond the three starters, which every profile already has. Adding
-  one needs art, a kit and balancing; then list it as `c:<id>` in a pool.
+- **Characters:** the unlockable heroes Rowan (Green), Mira (Blue) and Vespera (Purple) are `c:<id>` items in their
+  tier's pool, winnable from Chapter 1, 2 and 3 respectively (`RARITY[...].chapter` in `data.js`). They are part of
+  the single roll above, not a separate one. Unlocks are saved in the profile; an older per-device unlock save
+  (`duskbound-unlocks`) is imported once. The host only lets a guest play a hero their profile owns.
 
 ## Reconnection
 

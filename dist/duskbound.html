@@ -90,6 +90,13 @@
   .steps{text-align:left;max-width:520px;line-height:1.7;font-size:16px;color:#e8e2d0;margin:4px 0 6px;padding-left:22px}
   .steps b{color:#f3d48a;font-weight:normal}
   .langbtn{position:fixed;z-index:5;top:max(10px,env(safe-area-inset-top));right:max(12px,env(safe-area-inset-right));font-size:14px;padding:6px 12px;background:rgba(20,19,31,.85)}
+  .card.locked{cursor:default;opacity:.6}
+  .card.locked:hover{transform:none;border-color:#4a4370;box-shadow:none}
+  .card.locked canvas{filter:grayscale(.7) brightness(.55)}
+  .card .lock{font-style:italic;color:#a9a3c4}
+  .rar{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;border:1px solid;border-radius:4px;padding:0 5px;margin-left:8px;vertical-align:middle;white-space:nowrap;display:inline-block}
+  .reward{color:#d8d2ee;font-size:15px;margin-top:8px}
+  .reward.won{font-size:18px;color:#f3d48a}
   /* Phones in landscape: must stay after the base rules so it wins. */
   @media (max-height:540px){
     .langbtn,.fsbtn{font-size:12px;padding:4px 9px;top:max(6px,env(safe-area-inset-top))} .steps{font-size:13px;line-height:1.5}
@@ -149,8 +156,38 @@ const HEROES = {
     blurb: 'Dust-winged and needle-quick. Drawn to the dark, not the light.',
     kit: ['<b>Attack</b> — rapid twin cuts; every third throws a blade', '<b>Skill</b> — Fan of piercing blades', '<b>Dash</b> — Two charges; cuts through foes', '<b>Ultimate</b> — Eclipse: blink-strike up to 8 enemies', '<b>Trait</b> — Moonlit: +15% crit and speed at night'],
     names: ['Twin Cuts', 'Blade Fan', 'Flit', 'Eclipse']
+  },
+  // Unlockable heroes. `rarity` names their character reward pool (see RARITY); `alt` heroes cast a second skill
+  // from the dash slot (Space / DASH button) instead of dashing; `dashCd` overrides that slot's recharge.
+  rowan: {
+    name: 'Rowan', title: 'The Thornwarden', color: '#a9c46c', hp: 170, spd: 205, dmg: 14, atkCd: 0.5, skillCd: 9, dashes: 1, dashCd: 14, alt: true, rarity: 'green',
+    blurb: 'Bark armour, a moss-heavy cloak and a shield that is still growing. Where Rowan plants a foot, the line holds.',
+    kit: ['<b>Attack</b> — Briar Thrust: a long spear jab', '<b>Skill</b> — Root Snare: roots nearby foes in place', '<b>Space</b> — Shelterwood: a grove where allies take 35% less damage', '<b>Ultimate</b> — Ancient Sentinel: become a tree guardian; +35% armour, foes are drawn to you', '<b>Trait</b> — Deep Roots: frontal hits are blocked by the shield (half damage) and store up to 5 charges for the next Root Snare'],
+    names: ['Briar Thrust', 'Root Snare', 'Shelterwood', 'Ancient Sentinel']
+  },
+  mira: {
+    name: 'Mira', title: 'The Mirrorblade', color: '#9ee7f2', hp: 100, spd: 245, dmg: 8, atkCd: 0.2, skillCd: 6, dashes: 1, dashCd: 3.2, rarity: 'blue',
+    blurb: 'A masked duelist in a coat of cracked mirror. Whatever you think you are fighting, it is not quite her.',
+    kit: ['<b>Attack</b> — Shattered Cuts: a fast three-strike dagger combo', '<b>Skill</b> — Mirror Exchange: swap places with your decoy, then shatter it', '<b>Dash</b> — Reflection Step: dash through foes, leaving a decoy that draws them', '<b>Ultimate</b> — Hall of Mirrors: three reflections repeat your cuts at 40% damage', '<b>Trait</b> — Blind Spot: +40% damage to foes distracted by an ally or decoy'],
+    names: ['Shattered Cuts', 'Mirror Exchange', 'Reflection Step', 'Hall of Mirrors']
+  },
+  vespera: {
+    name: 'Vespera', title: 'The Lanternkeeper', color: '#86f0cf', hp: 100, spd: 225, dmg: 12, atkCd: 0.38, skillCd: 10, dashes: 1, dashCd: 12, alt: true, rarity: 'purple',
+    blurb: 'A cloaked traveller swinging a haunted lantern on a chain. The lost follow her light; so does everything else.',
+    kit: ['<b>Attack</b> — Ghostlight: a spectral bolt', '<b>Skill</b> — Guiding Wisp: shield the ally nearest your aim (yourself when solo). 30 energy', '<b>Space</b> — Soul Tether: link up to 4 foes; 40% of direct damage to one spreads to the rest. 30 energy', '<b>Ultimate</b> — Midnight Procession: spirits march toward your aim, harming foes and healing allies', '<b>Trait</b> — Lingering Light: the fallen leave embers that restore lantern energy'],
+    names: ['Ghostlight', 'Guiding Wisp', 'Soul Tether', 'Midnight Procession']
   }
 };
+// Character reward pools. Completing chapter `chapter` puts the pool's heroes into the reward roll, starting with that
+// completion. Each completion is one roll: the rarest eligible locked hero whose `chance` beats the roll is unlocked.
+// Unlockable heroes' reward tier and the first chapter they can be won from. They are won through the single
+// chapter reward roll in meta.js (REWARD_POOLS); `chance` is unused (kept from the earlier separate roll).
+const RARITY = {
+  green: { name: 'Green', color: '#6fdc7a', chance: 0.6, chapter: 1 },
+  blue: { name: 'Blue', color: '#6fb6ff', chance: 0.35, chapter: 2 },
+  purple: { name: 'Purple', color: '#c38bff', chance: 0.2, chapter: 3 }
+};
+const LANTERN_MAX = 100, LANTERN_COST = 30;
 const ET = {
   husk: { r: 14, hp: 34, spd: 108, dmg: 9, xp: 5 },
   spitter: { r: 13, hp: 24, spd: 82, dmg: 8, xp: 6 },
@@ -170,7 +207,7 @@ const TALENTS = [
   { id: 'bark', name: 'Ironbark', desc: 'Take 10% less damage.', max: 4, f: p => p.armor += 0.10 },
   { id: 'tinker', name: 'Restless', desc: 'Cooldowns recover 12% faster.', max: 4, f: p => p.cdr *= 0.88 },
   { id: 'magnet', name: 'Magpie', desc: '+60% pickup radius, +15% experience.', max: 2, f: p => { p.pickR *= 1.6; p.xpMul += 0.15; } },
-  { id: 'step', name: 'Second Step', desc: '+1 dash charge.', max: 1, f: p => { p.dashMax++; p.dashes++; } },
+  { id: 'step', dash: true, name: 'Second Step', desc: '+1 dash charge.', max: 1, f: p => { p.dashMax++; p.dashes++; } },
   { id: 'nightborn', name: 'Nightborn', desc: '+20% damage after dark.', max: 3, f: p => p.nightDmg += 0.2 },
   { id: 'sun', name: 'Sunkissed', desc: 'Regenerate 1.2 health per second by day.', max: 3, f: p => p.dayRegen += 1.2 },
   { id: 'spite', name: 'Spite', desc: 'When struck, lash out at everything nearby.', max: 3, f: p => p.spite++ },
@@ -186,7 +223,13 @@ const TALENTS = [
   { id: 'lantern', hero: 'wick', name: 'Great Lantern', desc: 'Lantern: +25% radius, +2s duration.', max: 2, f: p => p.h.lantern = (p.h.lantern || 0) + 1 },
   { id: 'fan', hero: 'vesper', name: 'Blade Storm', desc: 'Blade Fan throws +2 blades.', max: 3, f: p => p.h.fan = (p.h.fan || 0) + 1 },
   { id: 'ghost', hero: 'vesper', name: 'Ghoststep', desc: 'Dash damage doubled; kills refund a dash.', max: 1, f: p => p.h.ghost = 1 },
-  { id: 'lunar', hero: 'vesper', name: 'Lunar Edge', desc: 'Cut reach +15%, +20% critical damage.', max: 2, f: p => { p.h.lunar = (p.h.lunar || 0) + 1; p.critMul += 0.2; } }
+  { id: 'lunar', hero: 'vesper', name: 'Lunar Edge', desc: 'Cut reach +15%, +20% critical damage.', max: 2, f: p => { p.h.lunar = (p.h.lunar || 0) + 1; p.critMul += 0.2; } },
+  { id: 'thicket', hero: 'rowan', name: 'Thicket', desc: 'Shelterwood: +25% radius, +2s duration.', max: 2, f: p => p.h.thicket = (p.h.thicket || 0) + 1 },
+  { id: 'taproot', hero: 'rowan', name: 'Taproot', desc: 'Root Snare roots 0.5s longer and deals +40% damage.', max: 2, f: p => p.h.taproot = (p.h.taproot || 0) + 1 },
+  { id: 'facets', hero: 'mira', name: 'Many Facets', desc: 'Decoys last +2s; their shatter deals +40% damage.', max: 2, f: p => p.h.facets = (p.h.facets || 0) + 1 },
+  { id: 'glint', hero: 'mira', name: 'Cold Glint', desc: 'Blind Spot bonus +20%.', max: 2, f: p => p.h.glint = (p.h.glint || 0) + 1 },
+  { id: 'deepwick', hero: 'vespera', name: 'Deep Wick', desc: '+25 maximum lantern energy, +1 energy per second.', max: 2, f: p => { p.h.deepwick = (p.h.deepwick || 0) + 1; p.lanMax += 25; } },
+  { id: 'kindred', hero: 'vespera', name: 'Kindred Flame', desc: 'Guiding Wisp shields are 50% stronger.', max: 2, f: p => p.h.kindred = (p.h.kindred || 0) + 1 }
 ];
 const PAL = [
   { name: 'The Thornwood', base: '#2f4a33', spk: ['#3a5a3c', '#284029', '#466b45'], tree: ['#1c3522', '#2a4f31', '#3a6a40'], rock: '#6b7078' },
@@ -259,6 +302,67 @@ const ZH = {
   'Ghoststep': '鬼步', 'Dash damage doubled; kills refund a dash.': '衝刺傷害加倍；擊殺返還一次衝刺。',
   'Lunar Edge': '月刃', 'Cut reach +15%, +20% critical damage.': '斬擊範圍 +15%，暴擊傷害 +20%。',
   'Boon': '祝福', 'Choose': '選擇',
+  // unlockable heroes (Rowan, Mira, Vespera)
+  "<b>Attack</b> — Briar Thrust: a long spear jab": "<b>攻擊</b> — 荊刺突：長矛突刺",
+  "<b>Skill</b> — Root Snare: roots nearby foes in place": "<b>技能</b> — 根縛：將附近敵人定身",
+  "<b>Space</b> — Shelterwood: a grove where allies take 35% less damage": "<b>空白鍵</b> — 庇護林：林中的隊友受到的傷害 -35%",
+  "<b>Ultimate</b> — Ancient Sentinel: become a tree guardian; +35% armour, foes are drawn to you": "<b>絕招</b> — 遠古哨衛：化身樹之守護者；護甲 +35%，敵人會被你吸引",
+  "<b>Trait</b> — Deep Roots: frontal hits are blocked by the shield (half damage) and store up to 5 charges for the next Root Snare": "<b>特性</b> — 深根：盾牌格擋正面攻擊（傷害減半），並儲存最多 5 層，強化下一次根縛",
+  "Bark armour, a moss-heavy cloak and a shield that is still growing. Where Rowan plants a foot, the line holds.": "樹皮盔甲、厚苔斗篷，還有一面仍在生長的盾牌。羅文站定之處，防線便不會潰散。",
+  "<b>Attack</b> — Shattered Cuts: a fast three-strike dagger combo": "<b>攻擊</b> — 碎鏡斬：快速的三段匕首連擊",
+  "<b>Skill</b> — Mirror Exchange: swap places with your decoy, then shatter it": "<b>技能</b> — 鏡像交換：與分身交換位置，然後將其擊碎",
+  "<b>Dash</b> — Reflection Step: dash through foes, leaving a decoy that draws them": "<b>衝刺</b> — 映步：穿過敵人衝刺，留下吸引敵人的分身",
+  "<b>Ultimate</b> — Hall of Mirrors: three reflections repeat your cuts at 40% damage": "<b>絕招</b> — 鏡之迴廊：三道倒影以 40% 傷害重複你的斬擊",
+  "<b>Trait</b> — Blind Spot: +40% damage to foes distracted by an ally or decoy": "<b>特性</b> — 盲點：對被隊友或分身吸引的敵人傷害 +40%",
+  "A masked duelist in a coat of cracked mirror. Whatever you think you are fighting, it is not quite her.": "戴著面具、身穿碎鏡外衣的決鬥者。無論你以為自己在和什麼戰鬥，那都不完全是她。",
+  "<b>Attack</b> — Ghostlight: a spectral bolt": "<b>攻擊</b> — 鬼火：發射幽靈光彈",
+  "<b>Skill</b> — Guiding Wisp: shield the ally nearest your aim (yourself when solo). 30 energy": "<b>技能</b> — 引路幽光：為瞄準方向最近的隊友加上護盾（單人時為自己）。消耗 30 能量",
+  "<b>Space</b> — Soul Tether: link up to 4 foes; 40% of direct damage to one spreads to the rest. 30 energy": "<b>空白鍵</b> — 魂鏈：連結最多 4 名敵人；對其中一名的直接傷害有 40% 擴散至其他人。消耗 30 能量",
+  "<b>Ultimate</b> — Midnight Procession: spirits march toward your aim, harming foes and healing allies": "<b>絕招</b> — 午夜行列：亡魂朝瞄準方向前進，傷害敵人並治療隊友",
+  "<b>Trait</b> — Lingering Light: the fallen leave embers that restore lantern energy": "<b>特性</b> — 殘光：倒下的敵人會留下恢復燈籠能量的餘燼",
+  "A cloaked traveller swinging a haunted lantern on a chain. The lost follow her light; so does everything else.": "披著斗篷的旅人，鏈上搖晃著一盞鬧鬼的燈籠。迷途者追隨她的光，其他東西也是。",
+  "Rowan": "羅文",
+  "The Thornwarden": "棘盾衛士",
+  "Mira": "米拉",
+  "The Mirrorblade": "鏡刃",
+  "Vespera": "薇斯佩拉",
+  "The Lanternkeeper": "守燈人",
+  "Briar Thrust": "荊刺突",
+  "Root Snare": "根縛",
+  "Shelterwood": "庇護林",
+  "Ancient Sentinel": "遠古哨衛",
+  "Shattered Cuts": "碎鏡斬",
+  "Mirror Exchange": "鏡像交換",
+  "Reflection Step": "映步",
+  "Hall of Mirrors": "鏡之迴廊",
+  "Ghostlight": "鬼火",
+  "Guiding Wisp": "引路幽光",
+  "Soul Tether": "魂鏈",
+  "Midnight Procession": "午夜行列",
+  "Thicket": "灌木叢",
+  "Shelterwood: +25% radius, +2s duration.": "庇護林：範圍 +25%，持續時間 +2 秒。",
+  "Taproot": "主根",
+  "Root Snare roots 0.5s longer and deals +40% damage.": "根縛定身時間延長 0.5 秒，傷害 +40%。",
+  "Many Facets": "多重鏡面",
+  "Decoys last +2s; their shatter deals +40% damage.": "分身持續時間 +2 秒；碎裂傷害 +40%。",
+  "Cold Glint": "冷光",
+  "Blind Spot bonus +20%.": "盲點加成 +20%。",
+  "Deep Wick": "深芯",
+  "+25 maximum lantern energy, +1 energy per second.": "燈籠能量上限 +25，每秒 +1 能量。",
+  "Kindred Flame": "同源之火",
+  "Guiding Wisp shields are 50% stronger.": "引路幽光的護盾強化 50%。",
+  "Deep Roots": "深根",
+  "Decoy standing": "分身存在中",
+  "No decoy — dash to leave one": "沒有分身 — 衝刺可留下分身",
+  "Shield": "護盾",
+  "NO DECOY": "無分身",
+  "LOW": "能量不足",
+  "SKILL 2": "技能 2",
+  "Absorbed": "吸收",
+  "Blocked": "格擋",
+  "Needs two foes to tether": "需要兩名敵人才能連結",
+  "No ally to guide": "沒有可引導的隊友",
+  "The wood rallies to you.": "森林為你集結。",
   // places
   'The Thornwood': '荊棘林', 'The Drowned Mire': '沉溺沼澤', 'The Ashen Reach': '灰燼荒原', 'The Frostfen': '霜沼', 'The Hollow Crown': '空洞王冠',
   // difficulties, rarities, weapons, upgrades
@@ -303,7 +407,7 @@ const ZH = {
 const ZH_RX = [
   [/^Day (\d+)$/, '第 $1 天'], [/^Level (\d+)$/, '等級 $1'], [/^Chapter (\d+)$/, '第 $1 章'], [/^(\d+) remaining$/, '剩餘 $1'],
   [/^Buy a boon — (\d+) gold$/, '購買祝福 — $1 金幣'], [/^(.+) has fallen$/, '$1 倒下了'], [/^(.+) is back up$/, '$1 重新站起來了'],
-  [/^(.+) left the party$/, '$1 離開了隊伍'], [/^(Green|Blue|Purple|Yellow|Red) reward$/, '$1獎勵'], [/^(.+) unlocked$/, '已解鎖$1'], [/^Campaign cleared on (.+)$/, '已通關$1難度'],
+  [/^(.+) left the party$/, '$1 離開了隊伍'], [/^Blocked · root (\d+)$/, '格擋 · 深根 $1'], [/^Deep Roots ×(\d+)$/, '深根 ×$1'], [/^Character: (.+)$/, '角色：$1'], [/^(Green|Blue|Purple|Yellow|Red) reward$/, '$1獎勵'], [/^(.+) unlocked$/, '已解鎖$1'], [/^Campaign cleared on (.+)$/, '已通關$1難度'],
   [/^Weapon: (.+)$/, '武器：$1'], [/^Starting talent: (.+)$/, '初始天賦：$1'], [/^Upgrade: (.+?) (\+\d+%?)$/, '強化：$1 $2'], [/^Chapter (\d+) \(preview\)$/, '第 $1 章（預覽）'],
   [/^(.+)'s place was released$/, '$1 的位置已釋出'], [/^They can rejoin with room code (\S+) within (\d+) min$/, '可在 $2 分鐘內用房間代碼 $1 重新加入'], [/^(.+) lost connection$/, '$1 連線中斷'], [/^(.+) rejoined the party$/, '$1 重新加入了隊伍'],
   [/^They can rejoin with room code (.+)$/, '可用房間代碼 $1 重新加入'], [/^No room found with code (.+)\.$/, '找不到代碼為 $1 的房間。'],
@@ -392,11 +496,12 @@ const WEAPONS = {
 // Starting talents: begin every run with 1 rank of this boon (ids from TALENTS in data.js).
 const START_TALENT_CAP = 1;
 // Reward pools per rarity. Item ids: 'u:<upgrade>:<amount>', 'w:<weapon>', 't:<talent>', 'c:<character>'.
-// Characters: no heroes beyond the three starters exist yet, so the character pools are empty (see DESIGN notes).
+// Characters ('c:<hero>'): the unlockable heroes from data.js, in the tier their `rarity` names, winnable from the
+// chapter RARITY[...].chapter on.
 const REWARD_POOLS = {
-  green: ['u:hp:4', 'u:dmg:2', 'u:spd:2', 'u:gold:10'],
-  blue: ['u:hp:8', 'u:dmg:4', 'u:crit:2', 't:keen', 't:quick', 't:fleet', 't:hearty'],
-  purple: ['w:thornmaul', 'w:cinderglass', 'w:mothfang', 't:eye', 't:leech', 't:tinker', 't:chain', 't:ember'],
+  green: ['u:hp:4', 'u:dmg:2', 'u:spd:2', 'u:gold:10', 'c:rowan'],
+  blue: ['u:hp:8', 'u:dmg:4', 'u:crit:2', 't:keen', 't:quick', 't:fleet', 't:hearty', 'c:mira'],
+  purple: ['w:thornmaul', 'w:cinderglass', 'w:mothfang', 't:eye', 't:leech', 't:tinker', 't:chain', 't:ember', 'c:vespera'],
   yellow: ['w:elderbough', 'w:sunlantern', 'w:duskneedles', 't:step', 't:exec'],
   red: ['w:gloamantler', 'w:starwick', 'w:eclipseedge', 'u:dmg:10', 'u:hp:20']
 };
@@ -424,7 +529,8 @@ function itemAvailable(id, inv) {
   if (k === 'w') return !!WEAPONS[a] && !(inv.weapons || []).includes(a);
   if (k === 't') return (inv.talents && inv.talents[a] || 0) < START_TALENT_CAP;
   if (k === 'u') return !!UPGRADES[a] && (inv.upgrades && inv.upgrades[a] || 0) + Number(b) <= UPGRADES[a].cap;
-  if (k === 'c') return !(inv.characters || []).includes(a);
+  if (k === 'c') { const H = typeof HEROES !== 'undefined' && HEROES[a], R = H && typeof RARITY !== 'undefined' && RARITY[H.rarity];
+    return !!H && !(inv.characters || []).includes(a) && (!R || (inv.chapter || 0) >= R.chapter); }
   return false;
 }
 // The single reward for one player: a rarity from one roll, then one item from that rarity's pool.
@@ -529,7 +635,7 @@ function itemLabel(item) {
   if (k === 'w') return 'Weapon: ' + WEAPONS[a].name;
   if (k === 't') { const t = typeof TALENTS !== 'undefined' && TALENTS.find(t => t.id === a); return 'Starting talent: ' + (t ? t.name : a); }
   if (k === 'u') return 'Upgrade: ' + UPGRADES[a].name + ' +' + b + UPGRADES[a].unit;
-  if (k === 'c') return 'Character: ' + a;
+  if (k === 'c') return 'Character: ' + (typeof HEROES !== 'undefined' && HEROES[a] ? HEROES[a].name : a);
   return item;
 }
 if (typeof module !== 'undefined') module.exports = { CHAPTERS, DIFFICULTIES, PARTY_SCALE, REWARD_ODDS, REWARD_POOLS, REWARD_FALLBACK, RARITIES, UPGRADES, WEAPONS, START_TALENT_CAP,
@@ -545,8 +651,41 @@ function ell(c, x, y, rx, ry, fill, rot = 0) { c.fillStyle = fill; c.beginPath()
 function drawHero(c, id, x, y, face, t, o = {}) {
   c.save(); c.translate(x, y); const s = o.scale || 1; c.scale(s, s);
   const bob = Math.sin(t * 11) * (o.moving ? 1.6 : 0.4), fl = Math.cos(face) < 0 ? -1 : 1, sw = o.swing || 0, swOff = sw > 0 ? (0.5 - sw) * 2.4 : 0;
-  ell(c, 0, 13, 14, 5, 'rgba(0,0,0,.32)');
-  if (id === 'bramble') {
+  if (!o.ghost) ell(c, 0, 13, 14, 5, 'rgba(0,0,0,.32)');
+  if (id === 'rowan') {
+    // The Thornwarden: bark armour, a moss cloak, a spear and a living-wood shield. As the Sentinel, a crown of boughs.
+    c.fillStyle = '#4f6e34'; c.beginPath(); c.moveTo(-15, 13); c.quadraticCurveTo(-16, -6 + bob, -6, -10 + bob); c.lineTo(6, -10 + bob); c.quadraticCurveTo(16, -6 + bob, 15, 13); c.closePath(); c.fill();
+    for (let i = 0; i < 5; i++) ell(c, -12 + i * 6, 12, 3.5, 2.5, i % 2 ? '#6f9a45' : '#86b25a');
+    ell(c, 0, 1 + bob, 10, 11, '#6b4a2b'); c.strokeStyle = '#3e2a17'; c.lineWidth = 1.4; c.beginPath(); c.moveTo(-6, -6 + bob); c.lineTo(-4, 8 + bob); c.moveTo(2, -7 + bob); c.lineTo(4, 9 + bob); c.moveTo(-8, 2 + bob); c.lineTo(8, 0 + bob); c.stroke();
+    circ(c, 0, -13 + bob, 8, '#7a5634'); c.fillStyle = '#3e2a17'; c.fillRect(-8, -12 + bob, 16, 3);
+    c.fillStyle = '#e8f7a8'; c.fillRect(fl * 2 - 4, -12 + bob, 2.5, 2); c.fillRect(fl * 2 + 2, -12 + bob, 2.5, 2);
+    ell(c, -4, -20 + bob, 5, 2.5, '#86b25a', -0.4); ell(c, 4, -21 + bob, 4, 2, '#a9c46c', 0.5);
+    if (o.sentinel) { c.strokeStyle = '#5d4023'; c.lineWidth = 2.5; c.lineCap = 'round'; for (const sd of [-1, 1]) { c.beginPath(); c.moveTo(sd * 4, -19 + bob); c.lineTo(sd * 10, -30 + bob); c.lineTo(sd * 16, -32 + bob); c.moveTo(sd * 8, -26 + bob); c.lineTo(sd * 5, -34 + bob); c.stroke(); } ell(c, -12, -34 + bob, 6, 4, '#7da353'); ell(c, 12, -34 + bob, 6, 4, '#7da353'); ell(c, 0, -36 + bob, 5, 4, '#a9c46c'); }
+    c.save(); c.rotate(face); const th = sw > 0 ? sw * 12 : 0;
+    c.strokeStyle = '#6b4a2b'; c.lineWidth = 3.5; c.lineCap = 'round'; c.beginPath(); c.moveTo(-6 + th, 9); c.lineTo(40 + th, 9); c.stroke();
+    c.fillStyle = '#d8e8c0'; c.beginPath(); c.moveTo(40 + th, 5); c.lineTo(52 + th, 9); c.lineTo(40 + th, 13); c.fill(); ell(c, 37 + th, 9, 3, 1.6, '#86b25a');
+    c.fillStyle = '#7a5634'; c.beginPath(); c.ellipse(15, -6, 5, 12, 0, 0, TAU); c.fill(); c.strokeStyle = '#a9c46c'; c.lineWidth = 2; c.beginPath(); c.ellipse(15, -6, 5, 12, 0, 0, TAU); c.stroke();
+    circ(c, 15, -6, 2.5, '#cfe89a'); ell(c, 17, -15, 3, 1.6, '#86b25a', 0.6); c.restore();
+  } else if (id === 'mira') {
+    // The Mirrorblade: a masked duelist with twin glass daggers and drifting mirror shards.
+    c.fillStyle = '#25414a'; c.beginPath(); c.moveTo(-11, 13); c.lineTo(-7, -6 + bob); c.lineTo(7, -6 + bob); c.lineTo(11, 13); c.closePath(); c.fill();
+    c.fillStyle = '#9ee7f2'; c.beginPath(); c.moveTo(-2, 13); c.lineTo(0, -4 + bob); c.lineTo(2, 13); c.fill();
+    circ(c, 0, -12 + bob, 7, '#1d2a30'); ell(c, fl * 1.5, -12 + bob, 6, 6.5, '#eef8fb');
+    c.strokeStyle = '#6f8f99'; c.lineWidth = 0.9; c.beginPath(); c.moveTo(fl * 1.5 - 3, -18 + bob); c.lineTo(fl * 1.5, -13 + bob); c.lineTo(fl * 1.5 + 4, -15 + bob); c.moveTo(fl * 1.5, -13 + bob); c.lineTo(fl * 1.5 + 1, -7 + bob); c.stroke();
+    c.fillStyle = '#1d2a30'; c.fillRect(fl * 1.5 - 4, -13 + bob, 3, 1.6); c.fillRect(fl * 1.5 + 1.5, -13 + bob, 3, 1.6);
+    for (let i = 0; i < 3; i++) { const q = t * 1.3 + i * 2.1, x = Math.cos(q) * 18, y = Math.sin(q) * 8 - 8 + bob; c.fillStyle = 'rgba(200,245,255,' + (0.5 + Math.sin(t * 4 + i) * 0.3) + ')'; c.beginPath(); c.moveTo(x, y - 4); c.lineTo(x + 3, y + 1); c.lineTo(x - 2, y + 3); c.fill(); }
+    for (const sd of [-1, 1]) { c.save(); c.rotate(face + sd * 0.4 + swOff * sd); c.strokeStyle = 'rgba(210,250,255,.9)'; c.lineWidth = 3.2; c.lineCap = 'round'; c.beginPath(); c.moveTo(11, 0); c.lineTo(25, 0); c.stroke(); c.strokeStyle = '#ffffff'; c.lineWidth = 1; c.beginPath(); c.moveTo(13, -0.8); c.lineTo(23, -0.8); c.stroke(); c.strokeStyle = '#3d5a63'; c.lineWidth = 3; c.beginPath(); c.moveTo(8, 0); c.lineTo(11, 0); c.stroke(); c.restore(); }
+  } else if (id === 'vespera') {
+    // The Lanternkeeper: a hooded traveller, spectral flame in a lantern on a chain, and a few wandering spirits.
+    c.fillStyle = '#2b3346'; c.beginPath(); c.moveTo(-14, 13); c.quadraticCurveTo(-12, -10 + bob, 0, -24 + bob); c.quadraticCurveTo(12, -10 + bob, 14, 13); c.closePath(); c.fill();
+    c.fillStyle = '#3b4660'; c.beginPath(); c.moveTo(-5, 13); c.lineTo(0, -6 + bob); c.lineTo(5, 13); c.fill();
+    ell(c, fl * 1.5, -12 + bob, 6, 6, '#0d1018'); c.fillStyle = '#86f0cf'; c.fillRect(fl * 3 - 4, -13 + bob, 2.2, 2.2); c.fillRect(fl * 3 + 1, -13 + bob, 2.2, 2.2);
+    for (let i = 0; i < 2; i++) { const q = t * 1.7 + i * Math.PI, x = Math.cos(q) * 22, y = Math.sin(q * 1.3) * 7 - 16 + bob; c.fillStyle = 'rgba(200,255,240,.55)'; c.beginPath(); c.moveTo(x - 3, y + 3); c.quadraticCurveTo(x, y - 8, x + 3, y + 3); c.quadraticCurveTo(x, y + 6, x - 3, y + 3); c.fill(); }
+    const sway = Math.sin(t * 5) * 0.25, ln = 22 + sw * 10, lx = Math.cos(face + sway) * ln, ly = Math.sin(face + sway) * ln + 4;
+    c.strokeStyle = '#8a8f9e'; c.lineWidth = 1.2; c.setLineDash([2, 2]); c.beginPath(); c.moveTo(Math.cos(face) * 8, Math.sin(face) * 8 - 2 + bob); c.lineTo(lx, ly - 6); c.stroke(); c.setLineDash([]);
+    const g = c.createRadialGradient(lx, ly, 1, lx, ly, 17); g.addColorStop(0, 'rgba(160,255,225,.9)'); g.addColorStop(1, 'rgba(90,220,190,0)'); c.fillStyle = g; c.beginPath(); c.arc(lx, ly, 17, 0, TAU); c.fill();
+    c.fillStyle = '#3a3f4c'; c.fillRect(lx - 4.5, ly - 7, 9, 2); c.fillRect(lx - 4.5, ly + 5, 9, 2); c.fillStyle = '#e6fff7'; c.beginPath(); c.moveTo(lx - 3, ly + 4); c.quadraticCurveTo(lx, ly - 8 - Math.sin(t * 12) * 2, lx + 3, ly + 4); c.fill();
+  } else if (id === 'bramble') {
     ell(c, 0, bob, 14, 14, '#4d7a3f'); ell(c, 0, 3 + bob, 9, 8, '#6b4a2b');
     ell(c, -11, -3 + bob, 6, 4, '#7bc96f', -0.5); ell(c, 11, -3 + bob, 6, 4, '#7bc96f', 0.5);
     circ(c, 0, -13 + bob, 9, '#8a6238'); c.fillStyle = '#5d4023'; c.fillRect(-9, -11 + bob, 18, 2);
@@ -623,6 +762,11 @@ function drawEnemy(e) {
   c.restore();
   if (e.type !== 'boss' && e.hp < e.maxHp) { const w = r * 2; ctx.fillStyle = 'rgba(0,0,0,.6)'; ctx.fillRect(e.x - w / 2, e.y - r - 14, w, 4); ctx.fillStyle = e.elite ? '#f3d48a' : e.poisT > 0 ? '#a6e36a' : '#e25555'; ctx.fillRect(e.x - w / 2, e.y - r - 14, w * clamp(e.hp / e.maxHp, 0, 1), 4); }
   if (e.slowT > 0) { ctx.strokeStyle = '#7bc96f'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(e.x, e.y + r * 0.6, r * 0.9, 0, TAU); ctx.stroke(); }
+  if (e.rootT > 0) {
+    // Root Snare: roots curl up around the feet.
+    ctx.strokeStyle = '#8a6238'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+    for (let i = 0; i < 5; i++) { const q = i * TAU / 5 + 0.4, bx = e.x + Math.cos(q) * r * 0.9, by = e.y + r * 0.6 + Math.sin(q) * r * 0.35; ctx.beginPath(); ctx.moveTo(bx, by); ctx.quadraticCurveTo(bx + Math.cos(q) * 6, by - r * 0.6, e.x + Math.cos(q) * r * 0.4, e.y - r * 0.2); ctx.stroke(); }
+  }
 }
 function drawObs(o) {
   const c = ctx, T = world.pal.tree;
@@ -670,6 +814,11 @@ function drawPickup(k) {
   const c = ctx, b = Math.sin(k.t * 5) * 2;
   if (k.kind === 'xp') { circ(c, k.x, k.y + b, 4, '#7fe0ff'); circ(c, k.x - 1, k.y - 1 + b, 1.6, '#fff'); }
   else if (k.kind === 'gold') { circ(c, k.x, k.y + b, 5, '#f3c84a'); circ(c, k.x, k.y + b, 2.5, '#fff0a8'); }
+  else if (k.kind === 'lume') {
+    // Lingering Light: a small spectral ember for the Lanternkeeper.
+    const g = c.createRadialGradient(k.x, k.y + b, 1, k.x, k.y + b, 12); g.addColorStop(0, 'rgba(200,255,240,.9)'); g.addColorStop(1, 'rgba(134,240,207,0)'); c.fillStyle = g; c.beginPath(); c.arc(k.x, k.y + b, 12, 0, TAU); c.fill();
+    c.fillStyle = '#eafff8'; c.beginPath(); c.moveTo(k.x - 3, k.y + 3 + b); c.quadraticCurveTo(k.x, k.y - 8 + b, k.x + 3, k.y + 3 + b); c.fill();
+  }
   else if (k.kind === 'heart') { c.fillStyle = '#ff5a6e'; c.beginPath(); c.arc(k.x - 4, k.y - 2 + b, 5, 0, TAU); c.arc(k.x + 4, k.y - 2 + b, 5, 0, TAU); c.fill(); c.beginPath(); c.moveTo(k.x - 9, k.y + b); c.lineTo(k.x, k.y + 10 + b); c.lineTo(k.x + 9, k.y + b); c.fill(); }
   else { c.save(); c.translate(k.x, k.y + b); c.rotate(k.t); const g = c.createRadialGradient(0, 0, 1, 0, 0, 22); g.addColorStop(0, 'rgba(243,212,138,.8)'); g.addColorStop(1, 'rgba(243,212,138,0)'); c.fillStyle = g; c.beginPath(); c.arc(0, 0, 22, 0, TAU); c.fill(); c.fillStyle = '#f3d48a'; c.beginPath(); c.moveTo(0, -11); c.lineTo(8, 0); c.lineTo(0, 11); c.lineTo(-8, 0); c.fill(); c.restore(); }
 }
@@ -733,6 +882,12 @@ function playSfx(name) {
     case 'boss': tone(55, 2.2, 'sawtooth', 0.22, -15, 0, 0.4); hiss(2, 0.3, 150, 0.4); break;
     case 'warn': tone(440, 0.12, 'square', 0.04); break;
     case 'spit': tone(300, 0.15, 'sine', 0.06, -150); break;
+    case 'block': tone(150, 0.12, 'square', 0.06, -40); hiss(0.08, 0.15, 600, 1.2); break;
+    case 'root': tone(80, 0.45, 'sawtooth', 0.12, 40); hiss(0.35, 0.2, 260, 0.6); break;
+    case 'shatter': hiss(0.25, 0.22, 6500, 2); [1760, 2350, 2960].forEach((f, i) => tone(f, 0.18, 'triangle', 0.035, -300, i * 0.03)); break;
+    case 'shield': tone(660, 0.3, 'sine', 0.07, 330); tone(990, 0.35, 'sine', 0.05, 0, 0.08); break;
+    case 'tether': tone(440, 0.4, 'sine', 0.06, -220); tone(445, 0.4, 'sine', 0.06, -222, 0.02); break;
+    case 'unlock': [523, 659, 784, 1047, 1319].forEach((f, i) => tone(f, 0.5, 'triangle', 0.09, 0, i * 0.1)); break;
   }
 }
 const MUS = { next: 0, step: 0 };
@@ -991,7 +1146,7 @@ function localInput() {
 // ---------- state ----------
 const newGame = () => ({ state: 'play', diff: 'normal', runId: '', rewards: null, chapter: 1, time: 0, boss: null, banner: null, shake: 0, winT: 0, ambT: 5, wasNight: false, t: 0, over: null, paused: false });
 let game = newGame(); game.state = 'menu';
-let players = [], me = null, world = null, enemies = [], projs = [], zones = [], pickups = [], parts = [], texts = [], fxs = [];
+let players = [], me = null, world = null, enemies = [], projs = [], zones = [], pickups = [], parts = [], texts = [], fxs = [], tethers = [];
 let night = 0, cam = { x: 0, y: 0 }, groundPat = null, nextId = 1, evQ = [];
 const net = { mode: 'solo', away: new Map(), claims: new Map(), rolled: new Set(), conns: [], host: null, handle: null, lobby: [], myId: 1, nextPid: 2, name: '', hero: 'bramble', code: '', ready: false, snapT: 0, inT: 0, out: {}, pickedSeq: -1, worker: null };
 try { net.name = localStorage.getItem('duskbound-name') || ''; } catch (e) { }
@@ -1018,14 +1173,31 @@ function newPlayer(pid, hero, name) {
     level: 1, xp: 0, gold: 0, kills: 0, tAtk: 0, tSkill: 0, tUlt: 0, iT: 0, dashT: 0, dashA: 0, dashHit: null, dashLock: 0, face: 0, swing: 0,
     ultT: 0, pulse: 0, combo: 0, flurry: null, talents: {}, h: {}, walk: 0, moving: false, healAcc: 0,
     pending: 0, choice: null, choiceSeq: 0, choiceTitle: '', down: false, rev: 0, tp: 0, remote: false,
-    aim: { x: 0, y: 0 }, in: { mx: 0, my: 0, l: false, skill: false, dash: false, ult: false, interact: false, aim: { x: 0, y: 0 } }, cds: [0, 0, 0, 0]
+    aim: { x: 0, y: 0 }, in: { mx: 0, my: 0, l: false, skill: false, dash: false, ult: false, interact: false, aim: { x: 0, y: 0 } }, cds: [0, 0, 0, 0],
+    roots: 0, lan: LANTERN_MAX, lanMax: LANTERN_MAX, shield: 0, shieldT: 0, decoy: null, decoyOn: false
   };
+}
+const dashCdOf = p => (HEROES[p.hero].dashCd || DASH_CD) * p.cdr;
+const ROOTS_MAX = 5;
+// Why an ability slot (1 = skill, 2 = dash slot) cannot be used right now, as a short HUD label; null when it can.
+function slotBlock(p, slot) {
+  if (slot === 1 && p.hero === 'mira' && !p.decoyOn) return 'NO DECOY';
+  if (p.hero === 'vespera' && p.lan < LANTERN_COST) return 'LOW';
+  return null;
 }
 const xpNeed = l => 25 + l * 20 + l * l * 2;
 const dayIdx = () => Math.min(DAYS - 1, Math.floor(game.time / CYCLE));
 const dmgOf = e => e.dmg * (1 + 0.15 * dayIdx()) * (1 + 0.5 * (game.chapter - 1)) * (1 + 0.25 * night);
 const alive = () => players.filter(p => !p.down);
-function nearestPlayer(o) { let b = null, bd = 1e9; for (const p of players) { if (p.down) continue; const d = dist(p, o); if (d < bd) { bd = d; b = p; } } return b; }
+function nearestPlayer(o, f) { let b = null, bd = 1e9; for (const p of players) { if (p.down || (f && !f(p))) continue; const d = dist(p, o); if (d < bd) { bd = d; b = p; } } return b; }
+// Who an enemy goes after: a Sentinel Rowan taunts first, then Mira's decoys distract, else the nearest player.
+function enemyTarget(e) {
+  let best = null, bd = 1e9;
+  for (const q of players) if (!q.down && q.hero === 'rowan' && q.ultT > 0) { const d = dist(q, e); if (d < 650 && d < bd) { bd = d; best = q; } }
+  if (best) return best;
+  for (const z of zones) if (z.kind === 'decoy' && z.life > 0) { const d = dist(z, e); if (d < 400 && d < bd) { bd = d; best = z; } }
+  return best || nearestPlayer(e);
+}
 const distAny = o => { let bd = 1e9; for (const p of players) bd = Math.min(bd, dist(p, o)); return bd; };
 
 // ---------- world gen ----------
@@ -1037,7 +1209,7 @@ function makeGround(p) {
   for (let i = 0; i < 150; i++) { g.strokeStyle = pick(p.spk); g.lineWidth = 1.4; const x = rand(256), y = rand(256); g.beginPath(); g.moveTo(x, y); g.lineTo(x + rand(-2, 2), y - rand(3, 7)); g.stroke(); }
   g.globalAlpha = 1; return ctx.createPattern(c, 'repeat');
 }
-function clearEntities() { enemies = []; projs = []; zones = []; pickups = []; parts = []; texts = []; fxs = []; evQ = []; }
+function clearEntities() { enemies = []; projs = []; zones = []; pickups = []; parts = []; texts = []; fxs = []; evQ = []; tethers = []; for (const p of players) { p.decoy = null; p.decoyOn = false; } }
 function genWorld() {
   const S = 3400, pal = PAL[(game.chapter - 1) % PAL.length];
   world = { S, obs: [], pois: [], pal }; groundPat = makeGround(pal); clearEntities();
@@ -1080,7 +1252,7 @@ function spawnEnemy(type, x, y, elite = false) {
   const e = {
     id: nextId++, type, x: clamp(x, 40, world.S - 40), y: clamp(y, 40, world.S - 40), r: T.r * (elite ? 1.5 : 1), hp: T.hp * hm, maxHp: T.hp * hm,
     spd: T.spd, dmg: T.dmg * (elite ? 1.4 : 1) * DIFF(game.diff).dmg * partyMul(PARTY_SCALE.dmgPerExtra), xp: T.xp * (elite ? 8 : 1), elite, state: 'chase', t: 0, cd: rand(0.5, 2), aggro: false,
-    flash: 0, slowT: 0, kbx: 0, kby: 0, poisT: 0, poisD: 0, poisTick: 0, poisBy: null, a: 0, dead: false, ph: rand(TAU), n: 0, near: false
+    flash: 0, slowT: 0, rootT: 0, tid: 0, tgt: null, kbx: 0, kby: 0, poisT: 0, poisD: 0, poisTick: 0, poisBy: null, a: 0, dead: false, ph: rand(TAU), n: 0, near: false
   };
   enemies.push(e); return e;
 }
@@ -1123,13 +1295,20 @@ function heal(p, v) {
   if (!p || p.down || p.hp <= 0) return; const before = p.hp; p.hp = Math.min(p.maxHp, p.hp + v);
   p.healAcc += p.hp - before; if (p.healAcc >= 3) { floatText(p.x, p.y - 26, '+' + Math.round(p.healAcc), '#8dff8a', 13); p.healAcc = 0; }
 }
+// o.flat: dmg is final (no multipliers or crits). o.shared: damage spread by a Soul Tether, which never spreads again.
 function hitEnemy(p, e, dmg, o = {}) {
   if (e.dead) return 0;
-  let d = dmg * p.dmgMul * (1 + p.nightDmg * night) * (p.ultT > 0 && p.hero === 'bramble' ? 1.5 : 1);
-  if (p.exec && e.hp < e.maxHp * 0.3) d *= 1 + p.exec;
-  const crit = !o.noCrit && Math.random() < p.crit + (p.hero === 'vesper' ? 0.15 * night : 0);
-  if (crit) d *= p.critMul;
+  let d = dmg, crit = false;
+  if (!o.flat) {
+    d *= p.dmgMul * (1 + p.nightDmg * night) * (p.ultT > 0 && p.hero === 'bramble' ? 1.5 : 1);
+    if (p.exec && e.hp < e.maxHp * 0.3) d *= 1 + p.exec;
+    // Blind Spot: the foe is busy with an ally or a decoy.
+    if (p.hero === 'mira' && e.aggro && e.tgt && e.tgt !== p) { d *= 1.4 + 0.2 * (p.h.glint || 0); o = Object.assign({}, o, { color: '#bff6ff' }); }
+    crit = !o.noCrit && Math.random() < p.crit + (p.hero === 'vesper' ? 0.15 * night : 0);
+    if (crit) d *= p.critMul;
+  }
   d = Math.max(1, Math.round(d)); e.hp -= d; e.flash = 0.1;
+  if (!o.shared && e.tid) shareTether(p, e, d);
   if (!e.aggro) alertPack(e);
   if (o.kb && e.type !== 'boss') { const a = angTo(p, e); e.kbx += Math.cos(a) * o.kb; e.kby += Math.sin(a) * o.kb; }
   floatText(e.x, e.y - e.r - 4, d + (crit ? '!' : ''), crit ? '#ffd24a' : o.color || '#fff', crit ? 19 : 14);
@@ -1145,8 +1324,15 @@ function hitEnemy(p, e, dmg, o = {}) {
   if (e.hp <= 0) killEnemy(e, p);
   return d;
 }
+// Soul Tether: part of a direct hit on one linked foe lands on the others, flagged so it cannot spread again.
+function shareTether(p, e, d) {
+  const g = tethers.find(g => g.id === e.tid); if (!g || g.t <= 0) return;
+  for (const q of g.list) if (q !== e && !q.dead) { addFx({ kind: 'bolt', x: e.x, y: e.y, x2: q.x, y2: q.y, life: 0.15, max: 0.15, color: '#86f0cf' }); hitEnemy(p, q, d * 0.4, { flat: true, shared: true, proc: true, quiet: true, color: '#86f0cf' }); }
+}
 function killEnemy(e, p) {
   if (e.dead) return; e.dead = true; if (p) p.kills++;
+  // Lingering Light: while a Lanternkeeper is in the party, the fallen leave embers for her lantern.
+  if (players.some(q => q.hero === 'vespera')) pickups.push({ id: nextId++, kind: 'lume', x: e.x, y: e.y, val: e.elite || e.type === 'boss' ? 20 : 6, vx: 0, vy: 0, t: rand(TAU), life: 8 });
   burst(e.x, e.y, e.type === 'wisp' ? '#8fd0ff' : '#b79bd6', e.elite || e.type === 'boss' ? 40 : 12, 240, 4); sfx('die', e);
   if (e.type === 'boss') { game.boss = null; game.winT = 2.2; shake(20); sfx('boom'); projs = projs.filter(q => q.friendly); zones = zones.filter(z => z.friendly); for (const q of enemies) if (!q.dead) { q.dead = true; burst(q.x, q.y, '#b79bd6', 8); } }
   const n = e.type === 'boss' ? 30 : e.elite ? 8 : 1 + (e.xp > 6 ? 1 : 0);
@@ -1158,9 +1344,21 @@ function killEnemy(e, p) {
 }
 function drop(kind, x, y, val) { const a = rand(TAU), v = rand(40, 170); pickups.push({ id: nextId++, kind, x, y, val, vx: Math.cos(a) * v, vy: Math.sin(a) * v, t: rand(TAU) }); }
 function alertPack(e) { e.aggro = true; for (const q of enemies) if (!q.aggro && dist(q, e) < 240) q.aggro = true; }
-function hurtPlayer(p, dmg) {
+const inShelter = p => zones.some(z => z.kind === 'shelter' && z.life > 0 && dist(z, p) < z.r + p.r);
+// src: where the blow came from (lets Rowan's shield block frontal hits).
+function hurtPlayer(p, dmg, src) {
   if (p.down || p.iT > 0 || p.hp <= 0 || game.winT > 0 || game.over) return;
-  const d = Math.max(1, Math.round(dmg * (1 - Math.min(0.6, p.armor))));
+  let raw = dmg; const sentinel = p.hero === 'rowan' && p.ultT > 0;
+  if (p.hero === 'rowan' && src && Math.abs(angDiff(angTo(p, src), p.face)) < 1.05) {
+    raw *= 0.5; ring(p.x + Math.cos(p.face) * 18, p.y + Math.sin(p.face) * 18, 26, '#d8c08a'); sfx('block', p);
+    if (p.roots < ROOTS_MAX) { p.roots++; floatText(p.x, p.y - 44, 'Blocked · root ' + p.roots, '#d8c08a', 13); } else floatText(p.x, p.y - 44, 'Blocked', '#d8c08a', 13);
+  }
+  if (inShelter(p)) raw *= 0.65;
+  let d = Math.max(1, Math.round(raw * (1 - Math.min(sentinel ? 0.8 : 0.6, p.armor + (sentinel ? 0.35 : 0)))));
+  if (p.shield > 0) {
+    const a = Math.min(p.shield, d); p.shield -= a; d -= a;
+    if (d <= 0) { p.iT = 0.55; floatText(p.x, p.y - 30, 'Absorbed', '#86f0cf', 14); burst(p.x, p.y, '#86f0cf', 8, 160); sfx('shield', null, p.id); return; }
+  }
   p.hp -= d; p.iT = 0.55; shake(9, null, p.id); sfx('hurt', null, p.id);
   floatText(p.x, p.y - 30, '-' + d, '#ff6b6b', 17); burst(p.x, p.y, '#ff6b6b', 10, 200);
   if (p.spite) { ring(p.x, p.y, 130, '#ff9b6b'); for (const e of enemies) if (!e.dead && dist(e, p) < 130 + e.r) hitEnemy(p, e, 14 * p.spite + p.dmg, { proc: true, kb: 250, color: '#ff9b6b' }); }
@@ -1169,22 +1367,25 @@ function hurtPlayer(p, dmg) {
       p.embers--; p.hp = p.maxHp * 0.5; p.iT = 2.5; banner('An Ember rekindles you', p.embers + ' remaining', 2.5, p.id); sfx('ult', p); ring(p.x, p.y, 260, '#ffb347');
       for (const e of enemies) if (!e.dead && dist(e, p) < 260) hitEnemy(p, e, 40, { proc: true, kb: 600 });
     } else {
-      p.hp = 0; p.down = true; p.rev = 0; p.flurry = null; p.dashT = 0; p.ultT = 0;
+      p.hp = 0; p.down = true; p.rev = 0; p.flurry = null; p.dashT = 0; p.ultT = 0; p.shield = 0;
       if (players.every(q => q.down)) { game.over = 'dead'; showEnd(); }
       else banner(p.name + ' has fallen', 'Stand beside them to revive.', 3);
     }
   }
 }
-function hurtNear(x, y, R, dmg) { for (const q of players) if (!q.down && Math.hypot(q.x - x, q.y - y) < R + q.r) hurtPlayer(q, dmg); }
+function hurtNear(x, y, R, dmg) { for (const q of players) if (!q.down && Math.hypot(q.x - x, q.y - y) < R + q.r) hurtPlayer(q, dmg, { x, y }); }
+// o.from: swing from this point instead of the player (Mira's reflections).
 function meleeArc(p, range, arc, dmg, o = {}) {
-  let n = 0;
-  addFx({ kind: 'arc', x: p.x, y: p.y, a: p.face, r: range, arc, color: o.color || '#fff', life: 0.14, max: 0.14 });
+  let n = 0; const s = o.from || p;
+  addFx({ kind: 'arc', x: s.x, y: s.y, a: p.face, r: range, arc, color: o.color || '#fff', life: 0.14, max: 0.14 });
   for (const e of enemies) {
     if (e.dead || !e.near) continue;
-    if (dist(e, p) < range + e.r && Math.abs(angDiff(angTo(p, e), p.face)) < arc / 2 + 0.15) { hitEnemy(p, e, dmg, o); n++; }
+    if (dist(e, s) < range + e.r && Math.abs(angDiff(angTo(s, e), p.face)) < arc / 2 + 0.15) { hitEnemy(p, e, dmg, o); n++; }
   }
   return n;
 }
+// Hall of Mirrors: three reflections stand beside and behind Mira, placed from her facing so every machine agrees.
+const mirrorSpots = p => [-1.7, 1.7, Math.PI].map(o => ({ x: p.x + Math.cos(p.face + o) * 44, y: p.y + Math.sin(p.face + o) * 44 }));
 function shoot(x, y, a, speed, o) { projs.push(Object.assign({ x, y, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed, a, r: 6, life: 1, pierce: 0, hit: new Set(), friendly: true, owner: null, color: '#fff', kind: 'bolt' }, o)); }
 
 function doAttack(p) {
@@ -1196,13 +1397,57 @@ function doAttack(p) {
     const n = 1 + (p.h.fork || 0) + (night > 0.5 ? 1 : 0);
     for (let i = 0; i < n; i++) shoot(p.x + Math.cos(p.face) * 18, p.y + Math.sin(p.face) * 18, p.face + (i - (n - 1) / 2) * 0.13, 640, { owner: p, dmg: p.dmg, life: 0.85, pierce: p.h.pierce || 0, color: '#ffb347', kind: 'fire' });
     sfx('bolt', p);
+  } else if (H === 'rowan') {
+    meleeArc(p, 118 * (p.ultT > 0 ? 1.25 : 1), 0.75, p.dmg * (p.ultT > 0 ? 1.3 : 1), { kb: 140, color: '#d8c08a' }); sfx('slash', p);
+  } else if (H === 'mira') {
+    // Shattered Cuts: cut, cut, then a wider finishing slash.
+    const fin = ++p.combo % 3 === 0, col = fin ? '#ffffff' : '#bff6ff';
+    meleeArc(p, fin ? 84 : 72, fin ? 2.2 : 1.4, p.dmg * (fin ? 1.8 : 1), { kb: fin ? 120 : 30, color: col }); sfx('blade', p);
+    if (p.ultT > 0) for (const s of mirrorSpots(p)) meleeArc(p, fin ? 84 : 72, fin ? 2.2 : 1.4, p.dmg * (fin ? 1.8 : 1) * 0.4, { from: s, quiet: true, proc: true, color: '#9ee7f2' });
+  } else if (H === 'vespera') {
+    shoot(p.x + Math.cos(p.face) * 18, p.y + Math.sin(p.face) * 18, p.face, 600, { owner: p, dmg: p.dmg, life: 0.9, r: 7, color: '#86f0cf', kind: 'ghost' }); sfx('bolt', p);
   } else {
     meleeArc(p, 80 * (1 + 0.15 * (p.h.lunar || 0)), 1.7, p.dmg, { kb: 60, color: '#d9ccff' }); sfx('blade', p);
     if (++p.combo % 3 === 0) shoot(p.x, p.y, p.face, 780, { owner: p, dmg: p.dmg * 1.3, life: 0.6, pierce: 2, color: '#e6dcff', kind: 'blade' });
   }
 }
+// Guiding Wisp's target: the living ally nearest the aim point. Only a solo Lanternkeeper may shield herself.
+function wispTarget(p) {
+  if (players.length < 2) return p;
+  let best = null, bd = 1e9;
+  for (const q of players) { if (q === p || q.down || dist(q, p) > 700) continue; const d = dist(q, p.aim); if (d < bd) { bd = d; best = q; } }
+  return best;
+}
 function doSkill(p) {
-  const H = p.hero, m = p.aim; p.tSkill = HEROES[H].skillCd * p.cdr; sfx('skill', p);
+  const H = p.hero, m = p.aim;
+  if (slotBlock(p, 1)) return;
+  if (H === 'vespera') {
+    const t = wispTarget(p); if (!t) { floatText(p.x, p.y - 34, 'No ally to guide', '#aaa', 13); p.tSkill = 0.6; return; }
+    p.lan -= LANTERN_COST; p.tSkill = HEROES[H].skillCd * p.cdr; sfx('shield', p);
+    t.shield = Math.max(t.shield, (30 + 3 * p.level) * (1 + 0.5 * (p.h.kindred || 0))); t.shieldT = 6;
+    addFx({ kind: 'bolt', x: p.x, y: p.y, x2: t.x, y2: t.y, life: 0.3, max: 0.3, color: '#86f0cf' }); ring(t.x, t.y, 40, '#86f0cf'); burst(t.x, t.y, '#c9fff0', 14, 160);
+    return;
+  }
+  p.tSkill = HEROES[H].skillCd * p.cdr; sfx('skill', p);
+  if (H === 'rowan') {
+    // Root Snare, strengthened by every Deep Roots charge.
+    const k = p.roots, tr = p.h.taproot || 0, R = 170 * (1 + 0.12 * k), T = 1.6 + 0.3 * k + 0.5 * tr;
+    ring(p.x, p.y, R, '#8a6238'); burst(p.x, p.y, '#a9c46c', 24, 340, 4); shake(5, p); sfx('root', p);
+    if (k) floatText(p.x, p.y - 44, 'Deep Roots ×' + k, '#d8c08a', 15);
+    for (const e of enemies) if (!e.dead && dist(e, p) < R + e.r) { e.rootT = e.type === 'boss' ? T * 0.4 : T; hitEnemy(p, e, p.dmg * 1.3 * (1 + 0.2 * k) * (1 + 0.4 * tr), { color: '#d8c08a' }); }
+    p.roots = 0;
+    return;
+  }
+  if (H === 'mira') {
+    // Mirror Exchange: trade places with the decoy, then shatter it where Mira stood.
+    const z = p.decoy, ox = p.x, oy = p.y;
+    addFx({ kind: 'bolt', x: ox, y: oy, x2: z.x, y2: z.y, life: 0.2, max: 0.2, color: '#9ee7f2' });
+    p.x = p.tx = z.x; p.y = p.ty = z.y; p.tp++; collideWorld(p, p.r);
+    z.life = 0; p.decoy = null; p.decoyOn = false; sfx('shatter', { x: ox, y: oy });
+    const R = 125; ring(ox, oy, R, '#9ee7f2'); burst(ox, oy, '#e8fbff', 26, 320, 4); shake(4, p);
+    for (const e of enemies) if (!e.dead && dist(e, { x: ox, y: oy }) < R + e.r) hitEnemy(p, e, p.dmg * 3.2 * (1 + 0.4 * (p.h.facets || 0)), { kb: 200, color: '#bff6ff' });
+    return;
+  }
   if (H === 'bramble') {
     const k = p.h.ring || 0, R = 150 * (1 + 0.2 * k); ring(p.x, p.y, R, '#7bc96f'); burst(p.x, p.y, '#7bc96f', 30, 380, 4); shake(5, p);
     for (const e of enemies) if (!e.dead && dist(e, p) < R + e.r) { hitEnemy(p, e, p.dmg * 2.4 * (1 + 0.5 * k), { kb: 220, color: '#9fe08a' }); e.slowT = 2.5; }
@@ -1216,12 +1461,23 @@ function doSkill(p) {
 }
 // Movement half of a dash; runs on whichever machine owns the player's position.
 function startDashMove(p, a) {
+  if (HEROES[p.hero].alt) return;
   p.dashA = a;
   if (p.hero === 'wick') { p.x += Math.cos(a) * 190; p.y += Math.sin(a) * 190; collideWorld(p, p.r); } else p.dashT = 0.18;
 }
+// The dash slot: a second skill for `alt` heroes, otherwise a dash.
 function doDash(p, a) {
-  p.dashes--; if (p.dashRe <= 0) p.dashRe = DASH_CD * p.cdr;
+  if (HEROES[p.hero].alt && slotBlock(p, 2)) return;
+  p.dashes--; if (p.dashRe <= 0) p.dashRe = dashCdOf(p);
+  if (HEROES[p.hero].alt) return doAlt(p);
   sfx('dash', p); p.dashHit = new Set(); p.iT = Math.max(p.iT, 0.3);
+  if (p.hero === 'mira') {
+    // Reflection Step leaves a decoy where Mira stood; only one per Mira.
+    if (p.decoy) p.decoy.life = 0;
+    const T = 4 + 2 * (p.h.facets || 0);
+    p.decoy = { kind: 'decoy', dec: true, friendly: true, owner: p, x: p.x, y: p.y, r: 15, life: T, max: T, color: HEROES.mira.color };
+    zones.push(p.decoy); p.decoyOn = true; burst(p.x, p.y, '#e8fbff', 10, 160);
+  }
   if (p.hero === 'wick') {
     burst(p.x, p.y, '#ffb347', 14, 200);
     zones.push({ kind: 'burn', friendly: true, owner: p, x: p.x, y: p.y, r: 55, delay: 0, life: 2, max: 2, dmg: p.dmg * 1.5, tickT: 0, color: '#ffb347' });
@@ -1229,9 +1485,34 @@ function doDash(p, a) {
   if (p.remote) { p.dashA = a; if (p.hero === 'wick') { p.x = p.tx; p.y = p.ty; } else p.dashT = 0.18; } else startDashMove(p, a);
   if (p.hero === 'wick') burst(p.x, p.y, '#ffb347', 14, 200);
 }
+function doAlt(p) {
+  const m = p.aim; sfx('skill', p);
+  if (p.hero === 'rowan') {
+    // Shelterwood: a grove at Rowan's feet where allies take less damage.
+    const k = p.h.thicket || 0, T = 6 + 2 * k;
+    zones.push({ kind: 'shelter', friendly: true, owner: p, x: p.x, y: p.y, r: 150 * (1 + 0.25 * k), delay: 0, life: T, max: T, color: '#a9c46c' });
+    ring(p.x, p.y, 150 * (1 + 0.25 * k), '#a9c46c'); burst(p.x, p.y, '#cfe89a', 20, 260, 4);
+  } else if (p.hero === 'vespera') {
+    // Soul Tether: link the foes nearest the aim point.
+    const a = angTo(p, m), d = Math.min(500, dist(p, m)), c = { x: p.x + Math.cos(a) * d, y: p.y + Math.sin(a) * d };
+    const list = enemies.filter(e => !e.dead && e.near && dist(e, c) < 220 + e.r).sort((x, y) => dist(x, c) - dist(y, c)).slice(0, 4);
+    if (list.length < 2) { floatText(p.x, p.y - 34, 'Needs two foes to tether', '#aaa', 13); p.dashes++; p.dashRe = p.dashes < p.dashMax ? p.dashRe : 0; return; }
+    p.lan -= LANTERN_COST; sfx('tether', p);
+    const g = { id: nextId++, list, t: 6 };
+    for (const e of list) { if (e.tid) { const o = tethers.find(o => o.id === e.tid); if (o) o.list = o.list.filter(q => q !== e); } e.tid = g.id; ring(e.x, e.y, e.r + 14, '#86f0cf'); }
+    tethers.push(g);
+  }
+}
 function doUlt(p) {
   const H = p.hero, m = p.aim; p.tUlt = ULT_CD * p.cdr; sfx('ult', p); shake(8, p);
   if (H === 'bramble') { p.ultT = 8; p.pulse = 0; ring(p.x, p.y, 180, '#7bc96f'); }
+  else if (H === 'rowan') { p.ultT = 8; p.pulse = 0; ring(p.x, p.y, 220, '#a9c46c'); burst(p.x, p.y, '#cfe89a', 30, 300, 5); banner('Ancient Sentinel', 'The wood rallies to you.', 2, p.id); }
+  else if (H === 'mira') { p.ultT = 7; ring(p.x, p.y, 90, '#9ee7f2'); for (const s of mirrorSpots(p)) burst(s.x, s.y, '#e8fbff', 12, 180); sfx('shatter', p); }
+  else if (H === 'vespera') {
+    // Midnight Procession: a march of spirits walks the path toward the aim point.
+    const a = angTo(p, m), sp = 260;
+    zones.push({ kind: 'proc', friendly: true, owner: p, x: p.x, y: p.y, r: 80, delay: 0, life: 2.6, max: 2.6, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, tickT: 0, color: '#86f0cf' });
+  }
   else if (H === 'wick') {
     for (let i = 0; i < 12; i++) { const a = rand(TAU), d = i === 0 ? 0 : rand(40, 210); zones.push({ kind: 'blast', friendly: true, owner: p, x: m.x + Math.cos(a) * d, y: m.y + Math.sin(a) * d, r: 88, delay: 0.5 + i * 0.2, max: 0.5 + i * 0.2, dmg: p.dmg * 4.2, color: '#ff7a2f' }); }
   } else {
@@ -1252,14 +1533,18 @@ function collideWorld(o, r) {
 }
 const dashDir = (p, inp) => (inp.mx || inp.my) ? Math.atan2(inp.my, inp.mx) : p.face;
 function walk(p, inp, dt) {
-  const sp = p.spd * p.spdMul * (p.hero === 'vesper' ? 1 + 0.15 * night : 1) * (inp.l && p.hero !== 'vesper' ? 0.8 : 1);
+  const sp = p.spd * p.spdMul * (p.hero === 'vesper' ? 1 + 0.15 * night : 1) * (inp.l && p.hero !== 'vesper' && p.hero !== 'mira' ? 0.8 : 1) * (p.hero === 'rowan' && p.ultT > 0 ? 0.85 : 1);
   p.x += inp.mx * sp * dt; p.y += inp.my * sp * dt; if (inp.mx || inp.my) p.walk += dt;
 }
 const trail = p => parts.push({ x: p.x, y: p.y, vx: 0, vy: 0, life: 0.25, max: 0.25, color: HEROES[p.hero].color, size: 9 });
 function updPlayer(p, inp, dt) {
   p.tAtk -= dt; p.tSkill -= dt; p.tUlt -= dt; p.iT -= dt; p.swing = Math.max(0, p.swing - dt * 6);
-  if (p.dashes < p.dashMax) { p.dashRe -= dt; if (p.dashRe <= 0) { p.dashes++; p.dashRe = p.dashes < p.dashMax ? DASH_CD * p.cdr : 0; } }
-  p.cds = [p.atkCd / p.asMul, HEROES[p.hero].skillCd * p.cdr, DASH_CD * p.cdr, ULT_CD * p.cdr];
+  if (p.dashes < p.dashMax) { p.dashRe -= dt; if (p.dashRe <= 0) { p.dashes++; p.dashRe = p.dashes < p.dashMax ? dashCdOf(p) : 0; } }
+  p.cds = [p.atkCd / p.asMul, HEROES[p.hero].skillCd * p.cdr, dashCdOf(p), ULT_CD * p.cdr];
+  if (p.shieldT > 0) { p.shieldT -= dt; if (p.shieldT <= 0) p.shield = 0; }
+  if (p.hero === 'vespera') p.lan = Math.min(p.lanMax, p.lan + (4 + (p.h.deepwick || 0)) * dt);
+  if (p.decoy && p.decoy.life <= 0) p.decoy = null;
+  p.decoyOn = !!p.decoy;
   if (p.down) {
     const near = players.some(q => q !== p && !q.down && dist(q, p) < 75);
     p.rev = near ? p.rev + dt : Math.max(0, p.rev - dt * 0.5);
@@ -1295,7 +1580,11 @@ function updPlayer(p, inp, dt) {
     if (inp.ult && p.tUlt <= 0) { if (p.level >= 3) doUlt(p); else floatText(p.x, p.y - 34, 'Ultimate unlocks at level 3', '#aaa', 13); }
   }
   if (!p.remote) collideWorld(p, p.r);
-  if (p.ultT > 0) { p.ultT -= dt; p.pulse -= dt; if (p.pulse <= 0) { p.pulse = 1; ring(p.x, p.y, 125, '#7bc96f'); for (const e of enemies) if (!e.dead && dist(e, p) < 125 + e.r) hitEnemy(p, e, p.dmg * 1.2, { proc: true, color: '#9fe08a', quiet: true }); } }
+  if (p.ultT > 0) {
+    p.ultT -= dt; p.pulse -= dt;
+    if (p.pulse <= 0 && p.hero === 'bramble') { p.pulse = 1; ring(p.x, p.y, 125, '#7bc96f'); for (const e of enemies) if (!e.dead && dist(e, p) < 125 + e.r) hitEnemy(p, e, p.dmg * 1.2, { proc: true, color: '#9fe08a', quiet: true }); }
+    else if (p.pulse <= 0 && p.hero === 'rowan') { p.pulse = 1.2; ring(p.x, p.y, 220, '#d8c08a'); for (const e of enemies) if (!e.dead && dist(e, p) < 650) e.aggro = true; }
+  }
   const regen = p.dayRegen * (1 - night) + (p.hero === 'bramble' ? 1.5 * (1 - night) : 0); if (regen > 0 && p.hp < p.maxHp) p.hp = Math.min(p.maxHp, p.hp + regen * dt);
   if (inp.interact) interact(p);
 }
@@ -1358,7 +1647,7 @@ function update(dt) {
     if (q.life <= 0) continue;
     if (q.friendly) {
       for (const e of enemies) if (!e.dead && e.near && !q.hit.has(e) && dist(e, q) < e.r + q.r) { q.hit.add(e); hitEnemy(q.owner, e, q.dmg, { kb: 60, color: q.color }); if (q.pierce-- <= 0) { q.life = 0; break; } }
-    } else for (const p of players) if (!p.down && dist(q, p) < p.r + q.r - 2) { if (p.iT <= 0) { hurtPlayer(p, q.dmg); q.life = 0; } break; }
+    } else for (const p of players) if (!p.down && dist(q, p) < p.r + q.r - 2) { if (p.iT <= 0) { hurtPlayer(p, q.dmg, { x: q.x - q.vx, y: q.y - q.vy }); q.life = 0; } break; }
   }
   projs = projs.filter(q => q.life > 0);
   // zones
@@ -1377,13 +1666,26 @@ function update(dt) {
       z.life -= dt; z.tickT -= dt;
       if (Math.random() < 0.5) parts.push({ x: z.x + rand(-z.r, z.r) * 0.7, y: z.y + rand(-z.r, z.r) * 0.7, vx: 0, vy: -50, life: 0.5, max: 0.5, color: z.color, size: 3 });
       if (z.tickT <= 0) { z.tickT = 0.25; for (const e of enemies) if (!e.dead && dist(e, z) < z.r + e.r) hitEnemy(z.owner, e, z.dmg * 0.25, { proc: true, color: '#ffb347', quiet: true }); }
+    } else if (z.kind === 'shelter' || z.kind === 'decoy') z.life -= dt;
+    else if (z.kind === 'proc') {
+      z.life -= dt; z.tickT -= dt; z.x += z.vx * dt; z.y += z.vy * dt;
+      if (z.tickT <= 0) {
+        z.tickT = 0.3; const o = z.owner;
+        for (const e of enemies) if (!e.dead && dist(e, z) < z.r + e.r) hitEnemy(o, e, o.dmg * 0.9, { proc: true, quiet: true, color: '#86f0cf' });
+        for (const q of players) if (!q.down && dist(q, z) < z.r + q.r) heal(q, 2 + 0.03 * q.maxHp);
+      }
     }
   }
   zones = zones.filter(z => z.kind === 'blast' ? z.life !== 0 : z.life > 0);
   // pickups — experience, gold and sigils are shared by the whole party
+  for (const g of tethers) { g.t -= dt; g.list = g.list.filter(e => !e.dead && e.tid === g.id); if (g.t <= 0 || g.list.length < 2) { for (const e of g.list) e.tid = 0; g.list = []; } }
+  tethers = tethers.filter(g => g.list.length);
   for (const k of pickups) {
     k.t += dt; k.x += k.vx * dt; k.y += k.vy * dt; k.vx *= Math.pow(0.02, dt); k.vy *= Math.pow(0.02, dt);
-    const p = nearestPlayer(k); if (!p) continue; const d = dist(k, p);
+    if (k.kind === 'lume' && (k.life -= dt) <= 0) { k.dead = true; continue; }
+    // Lantern embers only answer a Lanternkeeper; everything else goes to whoever is nearest.
+    const p = k.kind === 'lume' ? nearestPlayer(k, q => q.hero === 'vespera') : nearestPlayer(k); if (!p) continue; const d = dist(k, p);
+    if (k.kind === 'lume' && p.lan >= p.lanMax) continue;
     if (k.kind === 'heart' && p.hp >= p.maxHp) continue;
     if (d < p.pickR) { const a = angTo(k, p), v = 520 * (1 - d / (p.pickR * 1.4)) + 120; k.x += Math.cos(a) * v * dt; k.y += Math.sin(a) * v * dt; }
     if (d < 20) {
@@ -1391,6 +1693,7 @@ function update(dt) {
       if (k.kind === 'xp') { for (const q of players) gainXp(q, k.val); sfx('xp', p); }
       else if (k.kind === 'gold') { for (const q of players) q.gold += k.val; sfx('gold', p); }
       else if (k.kind === 'heart') { heal(p, k.val); sfx('heal', p); }
+      else if (k.kind === 'lume') { p.lan = Math.min(p.lanMax, p.lan + k.val); sfx('xp', p); }
       else if (k.kind === 'sigil') { for (const q of players) { q.pending++; q.choiceTitle = 'Sigil claimed'; } sfx('level'); }
     }
   }
@@ -1406,9 +1709,11 @@ function gainXp(p, v) {
 function updEnemy(e, dt) {
   e.flash -= dt;
   if (e.poisT > 0) { e.poisT -= dt; e.poisTick -= dt; if (e.poisTick <= 0) { e.poisTick = 0.5; e.hp -= e.poisD * 0.5; floatText(e.x, e.y - e.r, Math.round(e.poisD * 0.5), '#a6e36a', 12); if (e.hp <= 0) { killEnemy(e, e.poisBy); return; } } }
-  const p = nearestPlayer(e); if (!p) return;
+  // p may be a player or one of Mira's decoys (p.dec); decoys draw attacks but cannot be hurt.
+  const p = enemyTarget(e); e.tgt = p; if (!p) return;
   const d = dist(e, p);
   if (!e.aggro) { if (d < 380 + 110 * night) alertPack(e); else return; }
+  if (e.rootT > 0) e.rootT -= dt;
   e.t -= dt; e.cd -= dt;
   const slow = e.slowT > 0 ? 0.45 : 1; if (e.slowT > 0) e.slowT -= dt;
   const sp = e.spd * slow * (1 + 0.15 * night), a = angTo(e, p), ca = Math.cos(a), sa = Math.sin(a), dm = dmgOf(e);
@@ -1418,7 +1723,7 @@ function updEnemy(e, dt) {
       if (e.state === 'wind') {
         if (e.t <= 0) {
           e.state = 'rest'; e.t = 0.55; e.kbx += Math.cos(e.a) * 380; e.kby += Math.sin(e.a) * 380; addFx({ kind: 'arc', x: e.x, y: e.y, a: e.a, r: e.r + 34, arc: 1.6, color: '#d9a6ff', life: 0.14, max: 0.14 });
-          for (const q of players) if (!q.down && dist(e, q) < e.r + q.r + 38 && Math.abs(angDiff(angTo(e, q), e.a)) < 1.1) hurtPlayer(q, dm);
+          for (const q of players) if (!q.down && dist(e, q) < e.r + q.r + 38 && Math.abs(angDiff(angTo(e, q), e.a)) < 1.1) hurtPlayer(q, dm, e);
         }
       }
       else if (e.state === 'rest') { if (e.t <= 0) e.state = 'chase'; }
@@ -1446,14 +1751,14 @@ function updEnemy(e, dt) {
       break;
     case 'wisp': {
       const a2 = a + Math.sin(game.t * 3 + e.ph) * 0.7; mx = Math.cos(a2) * sp; my = Math.sin(a2) * sp;
-      if (d < e.r + p.r + 2 && e.cd <= 0) { hurtPlayer(p, dm); e.cd = 0.9; }
+      if (d < e.r + p.r + 2 && e.cd <= 0 && !p.dec) { hurtPlayer(p, dm, e); e.cd = 0.9; }
       break;
     }
     case 'boss': {
       const rage = e.hp < e.maxHp * 0.5;
       if (e.state === 'chase') {
         if (d > 80) { mx = ca * sp * (rage ? 1.25 : 1); my = sa * sp * (rage ? 1.25 : 1); }
-        if (d < e.r + p.r && e.cd <= 0) { hurtPlayer(p, dm); e.cd = 0.8; }
+        if (d < e.r + p.r && e.cd <= 0 && !p.dec) { hurtPlayer(p, dm, e); e.cd = 0.8; }
         if (e.t <= 0) {
           const r = Math.random(), tg = pick(alive()) || p;
           if (r < 0.34) { e.state = 'bwind'; e.t = 0.9; e.a = a; e.n = rage ? 2 : 0; sfx('warn', e); }
@@ -1474,6 +1779,7 @@ function updEnemy(e, dt) {
       break;
     }
   }
+  if (e.rootT > 0) mx = my = 0; // Root Snare: rooted foes still swing and spit, but cannot move
   e.x += (mx + e.kbx) * dt; e.y += (my + e.kby) * dt; const f = Math.pow(0.003, dt); e.kbx *= f; e.kby *= f;
   if (mx || my) e.dir = mx < 0 ? -1 : 1;
   collideWorld(e, e.type === 'boss' ? 20 : e.r);
@@ -1504,12 +1810,21 @@ function interact(p) {
   }
 }
 function rollChoice(p) {
-  const pool = TALENTS.filter(t => (!t.hero || t.hero === p.hero) && (p.talents[t.id] || 0) < t.max);
+  const pool = TALENTS.filter(t => (!t.hero || t.hero === p.hero) && !(t.dash && HEROES[p.hero].alt) && (p.talents[t.id] || 0) < t.max);
   if (!pool.length) { p.pending = 0; p.gold += 30; return; }
   const list = [];
   while (list.length < 3 && pool.length) { const w = pool.map(t => t.hero ? 2 : 1), tot = w.reduce((a, b) => a + b, 0); let r = rand(tot), i = 0; while (i < w.length - 1 && r > w[i]) r -= w[i++]; list.push(pool.splice(i, 1)[0]); }
   p.choice = list; p.choiceSeq++;
 }
+// ---------- character unlocks ----------
+// Unlockable heroes (data.js: `rarity`) are won as character rewards in the single chapter roll (meta.js REWARD_POOLS)
+// and saved in the profile. Unlocks from the earlier per-device save ('duskbound-unlocks') are carried over once.
+try {
+  const old = JSON.parse(localStorage.getItem('duskbound-unlocks') || 'null');
+  if (old && Array.isArray(old.heroes)) { for (const h of old.heroes) if (HEROES[h] && HEROES[h].rarity && !PROFILE.characters.includes(h)) PROFILE.characters.push(h); saveMe(); localStorage.removeItem('duskbound-unlocks'); }
+} catch (e) { }
+const unlocked = id => !!HEROES[id] && (!HEROES[id].rarity || PROFILE.characters.includes(id));
+const ownsHero = (lo, id) => !!HEROES[id] && (!HEROES[id].rarity || !!(lo && lo.characters && lo.characters.includes(id)));
 function applyPick(p, i) {
   const t = p.choice && p.choice[i]; if (!t) return;
   p.talents[t.id] = (p.talents[t.id] || 0) + 1; t.f(p); sfx('pick', null, p.id); p.pending--; p.choice = null;
@@ -1527,7 +1842,7 @@ function chapterComplete() {
     const pid = p.lo && p.lo.pid; if (!pid || seen.has(pid)) continue; seen.add(pid);
     const claim = key + ':' + pid;
     let r = net.claims.get(claim);
-    if (!r) { const roll = rollReward(p.lo); r = { claim, pid, id: p.id, name: p.name, rarity: roll.rarity, item: roll.item, ch: game.chapter, diff: game.diff, run: game.runId, final: game.over === 'final' }; net.claims.set(claim, r); }
+    if (!r) { const roll = rollReward({ ...(p.lo || {}), chapter: game.chapter }); r = { claim, pid, id: p.id, name: p.name, rarity: roll.rarity, item: roll.item, ch: game.chapter, diff: game.diff, run: game.runId, final: game.over === 'final' }; net.claims.set(claim, r); }
     list.push(r); deliverReward(r);
   }
   game.rewards = list.map(r => ({ id: r.id, name: r.name, rarity: r.rarity, item: r.item }));
@@ -1542,7 +1857,7 @@ function deliverReward(r) {
 // Runs on the player's own device: saves the reward and, after chapter 5, the campaign clear.
 function receiveReward(m) {
   if (typeof m.claim !== 'string' || !m.claim.endsWith(':' + PROFILE.id)) return;
-  const valid = m.rarity === null || (RARITIES.includes(m.rarity) && typeof m.item === 'string' && (m.item === 'keepsake' || itemAvailable(m.item, { weapons: [], talents: {}, upgrades: {}, characters: [] }) || /^u:/.test(m.item)));
+  const valid = m.rarity === null || (RARITIES.includes(m.rarity) && typeof m.item === 'string' && (m.item === 'keepsake' || itemAvailable(m.item, { weapons: [], talents: {}, upgrades: {}, characters: [], chapter: 99 }) || /^u:/.test(m.item)));
   if (!valid) return;
   if (grantReward(PROFILE, m.claim, m.rarity, m.rarity ? m.item : null, { chapter: m.ch, diff: m.diff })) {
     if (m.rarity) banner(rarityName(m.rarity) + ' reward', itemLabel(m.item), 4, me && me.id);
@@ -1562,7 +1877,7 @@ function expireAway() {
 }
 
 // ---------- netcode ----------
-const PEER_PREFIX = 'duskbound-v1-';
+const PEER_PREFIX = 'duskbound-v3-'; // bump whenever messages change, so mismatched versions never meet
 const noNetMsg = () => window.DUSK_NO_NET ? 'Online co-op is not available on this page. Solo works here; for co-op, open the downloaded duskbound.html file or a copy on your own website.' : 'Online play needs an internet connection (the networking library did not load).';
 function wrapConn(c) {
   const w = { peerId: c.peer, send: d => { try { c.send(d); } catch (e) { } }, onData: null, onClose: null, close: () => { try { c.close(); } catch (e) { } } };
@@ -1763,8 +2078,10 @@ function onClientConn(c) {
 }
 function greetClient(c, d) {
   c.pending = false;
-  const tok = typeof d.tok === 'string' ? d.tok.slice(0, 40) : '', name = cleanName(d.name, net.nextPid), hero = HEROES[d.hero] ? d.hero : 'bramble';
-  const lo = sanitizeLoadout(d.lo, hero);
+  const tok = typeof d.tok === 'string' ? d.tok.slice(0, 40) : '', name = cleanName(d.name, net.nextPid);
+  let hero = HEROES[d.hero] ? d.hero : 'bramble';
+  let lo = sanitizeLoadout(d.lo, hero);
+  if (!ownsHero(lo.valid ? lo : null, hero)) { hero = 'bramble'; lo = sanitizeLoadout(d.lo, hero); }
   if (game.state === 'lobby') {
     if (net.conns.length >= 3) return c.refuse('That party is full (4 players).');
     if (lo.valid && (lo.pid === PROFILE.id || net.lobby.some(q => q.lo && q.lo.pid === lo.pid))) return c.refuse('That profile is already in this party.');
@@ -1823,7 +2140,7 @@ function hostRecv(c, d) {
   if (!d || typeof d !== 'object') return;
   if (c.pending) { if (d.t === 'hello') greetClient(c, d); return; }
   if (!net.conns.includes(c)) return;
-  if (d.t === 'hero') { const q = net.lobby.find(q => q.id === c.pid); if (q && HEROES[d.hero] && game.state === 'lobby') { q.hero = d.hero; const lo = sanitizeLoadout(d.lo, d.hero); if (lo.valid && q.lo && lo.pid === q.lo.pid) q.lo = lo; if (!partyDiffOk(net.diff)) net.diff = bestCommonDiff(); sendLobby(); showLobby(); } }
+  if (d.t === 'hero') { const q = net.lobby.find(q => q.id === c.pid); if (q && HEROES[d.hero] && game.state === 'lobby' && ownsHero(sanitizeLoadout(d.lo, d.hero), d.hero)) { q.hero = d.hero; const lo = sanitizeLoadout(d.lo, d.hero); if (lo.valid && q.lo && lo.pid === q.lo.pid) q.lo = lo; if (!partyDiffOk(net.diff)) net.diff = bestCommonDiff(); sendLobby(); showLobby(); } }
   else if (d.t === 'i' || d.t === 'pick') {
     const p = players.find(q => q.id === c.pid); if (!p || game.state !== 'play') return;
     if (d.t === 'pick') { if (d.q === p.choiceSeq) applyPick(p, d.i | 0); return; }
@@ -1847,7 +2164,8 @@ function snapPlayer(p) {
     id: p.id, x: r1(p.x), y: r1(p.y), f: r2(p.face), hp: r1(p.hp), mh: p.maxHp, lv: p.level, xp: r1(p.xp), g: p.gold, k: p.kills, em: p.embers,
     ta: r2(Math.max(0, p.tAtk)), ts: r2(Math.max(0, p.tSkill)), tu: r2(Math.max(0, p.tUlt)), d: p.dashes, dr: r2(p.dashRe), dm: p.dashMax, cds: p.cds.map(r2),
     it: p.iT > 0 ? 1 : 0, sw: r2(p.swing), ut: r1(Math.max(0, p.ultT)), mv: p.moving ? 1 : 0, dn: p.down ? 1 : 0, rv: r2(p.rev), dt: p.dashT > 0 ? 1 : 0, tp: p.tp,
-    fl: p.flurry ? 1 : 0, sp: r1(p.spd * p.spdMul), pr: p.pickR | 0
+    fl: p.flurry ? 1 : 0, sp: r1(p.spd * p.spdMul), pr: p.pickR | 0,
+    rc: p.roots, ln: r1(p.lan), lm: p.lanMax, sh: r1(p.shield), dc: p.decoyOn ? 1 : 0
   };
 }
 function sendSnaps() {
@@ -1859,9 +2177,9 @@ function sendSnaps() {
     const nr = o => Math.abs(o.x - cp.x) < 1150 && Math.abs(o.y - cp.y) < 850;
     c.send({
       t: 's', g, P, O,
-      E: enemies.filter(e => !e.dead && nr(e)).map(e => [e.id, ETN.indexOf(e.type), e.x | 0, e.y | 0, r1(e.r), r3(Math.max(0, e.hp / e.maxHp)), e.elite ? 1 : 0, STN.indexOf(e.state), r2(e.a), e.flash > 0 ? 1 : 0, e.slowT > 0 ? 1 : 0, e.poisT > 0 ? 1 : 0, e.dir || 1]),
+      E: enemies.filter(e => !e.dead && nr(e)).map(e => [e.id, ETN.indexOf(e.type), e.x | 0, e.y | 0, r1(e.r), r3(Math.max(0, e.hp / e.maxHp)), e.elite ? 1 : 0, STN.indexOf(e.state), r2(e.a), e.flash > 0 ? 1 : 0, e.slowT > 0 ? 1 : 0, e.poisT > 0 ? 1 : 0, e.dir || 1, e.rootT > 0 ? 1 : 0, e.tid || 0]),
       Q: projs.filter(nr).map(q => [q.x | 0, q.y | 0, q.vx | 0, q.vy | 0, q.r, q.kind, q.color, r2(q.life)]),
-      Z: zones.filter(nr).map(z => [z.x | 0, z.y | 0, z.r | 0, z.kind, r2(Math.max(0, z.delay)), r2(z.max), r2(z.life || 0), z.friendly ? 1 : 0, z.lantern ? 1 : 0, z.color]),
+      Z: zones.filter(nr).map(z => [z.x | 0, z.y | 0, z.r | 0, z.kind, r2(Math.max(0, z.delay || 0)), r2(z.max), r2(z.life || 0), z.friendly ? 1 : 0, z.lantern ? 1 : 0, z.color, z.vx | 0, z.vy | 0]),
       K: pickups.filter(nr).map(k => [k.id, k.kind, k.x | 0, k.y | 0]),
       ev: evQ.filter(e => (!e.to || e.to === c.pid) && (e.x === undefined || Math.hypot(e.x - cp.x, e.y - cp.y) < 1200)).map(e => ({ k: e.k, a: e.a })),
       c: cp.choice ? { q: cp.choiceSeq, ids: cp.choice.map(t => t.id), title: cp.choiceTitle } : 0, tal: cp.talents
@@ -1921,6 +2239,7 @@ function applySnap(s) {
     p.hp = q.hp; p.maxHp = q.mh; p.level = q.lv; p.xp = q.xp; p.gold = q.g; p.kills = q.k; p.embers = q.em;
     p.tAtk = q.ta; p.tSkill = q.ts; p.tUlt = q.tu; p.dashRe = q.dr; p.dashMax = q.dm; p.cds = q.cds; if (!(p === me && p.dashLock > 0)) p.dashes = q.d;
     p.iT = q.it ? 0.2 : 0; p.swing = q.sw; p.ultT = q.ut; p.down = !!q.dn; p.rev = q.rv; p.flurry = q.fl ? 1 : null; p.spd = q.sp; p.spdMul = 1; p.pickR = q.pr;
+    p.roots = q.rc | 0; p.lan = num(q.ln); p.lanMax = num(q.lm, LANTERN_MAX); p.shield = num(q.sh); p.decoyOn = !!q.dc;
     if (p === me) { if (q.tp !== p.tp) { p.x = q.x; p.y = q.y; p.tp = q.tp; p.dashT = 0; } }
     else { p.tx = q.x; p.ty = q.y; p.face = q.f; p.moving = !!q.mv; p.dashT = q.dt ? 0.05 : 0; if (dist(p, { x: q.x, y: q.y }) > 300) { p.x = q.x; p.y = q.y; } }
   }
@@ -1929,10 +2248,10 @@ function applySnap(s) {
   enemies = s.E.map(a => {
     const e = old.get(a[0]) || { id: a[0], x: a[2], y: a[3], ph: (a[0] * 1.7) % TAU, flash: 0, near: true };
     e.type = ETN[a[1]]; e.tx = a[2]; e.ty = a[3]; e.r = a[4]; e.hp = a[5]; e.maxHp = 1; e.elite = !!a[6]; e.state = STN[a[7]]; e.a = a[8];
-    if (a[9]) e.flash = 0.1; e.slowT = a[10]; e.poisT = a[11]; e.dir = a[12]; return e;
+    if (a[9]) e.flash = 0.1; e.slowT = a[10]; e.poisT = a[11]; e.dir = a[12]; e.rootT = a[13]; e.tid = a[14]; return e;
   });
   projs = s.Q.map(a => ({ x: a[0], y: a[1], vx: a[2], vy: a[3], r: a[4], kind: a[5], color: a[6], life: a[7] }));
-  zones = s.Z.map(a => ({ x: a[0], y: a[1], r: a[2], kind: a[3], delay: a[4], max: a[5], life: a[6], friendly: !!a[7], lantern: !!a[8], color: a[9] }));
+  zones = s.Z.map(a => ({ x: a[0], y: a[1], r: a[2], kind: a[3], delay: a[4], max: a[5], life: a[6], friendly: !!a[7], lantern: !!a[8], color: a[9], vx: a[10], vy: a[11] }));
   const oldK = new Map(pickups.map(k => [k.id, k]));
   pickups = s.K.map(a => { const k = oldK.get(a[0]) || { id: a[0], x: a[2], y: a[3], t: a[0] % 7 }; k.kind = a[1]; k.tx = a[2]; k.ty = a[3]; return k; });
   for (const e of s.ev) applyEv(e);
@@ -1946,7 +2265,7 @@ function clientUpdate(dt) {
   if (!p.down && !game.over) {
     p.aim = inp.aim; p.face = angTo(p, inp.aim); p.moving = !!(inp.mx || inp.my);
     if (!p.flurry) {
-      if (inp.dash && p.dashes > 0 && p.dashT <= 0) { p.dashes--; p.dashLock = 0.4; const a = dashDir(p, inp); startDashMove(p, a); o.d = r2(a); }
+      if (inp.dash && p.dashes > 0 && p.dashT <= 0 && !(HEROES[p.hero].alt && slotBlock(p, 2))) { p.dashes--; p.dashLock = 0.4; const a = dashDir(p, inp); startDashMove(p, a); o.d = r2(a); }
       if (p.dashT > 0) { p.dashT -= dt; p.x += Math.cos(p.dashA) * 920 * dt; p.y += Math.sin(p.dashA) * 920 * dt; trail(p); } else walk(p, inp, dt);
       collideWorld(p, p.r);
     }
@@ -1959,6 +2278,7 @@ function clientUpdate(dt) {
   for (const z of zones) {
     if (z.delay > 0) { z.delay = Math.max(0.001, z.delay - dt); continue; }
     if (z.kind === 'burn') { z.life -= dt; if (Math.random() < 0.5) parts.push({ x: z.x + rand(-z.r, z.r) * 0.7, y: z.y + rand(-z.r, z.r) * 0.7, vx: 0, vy: -50, life: 0.5, max: 0.5, color: z.color, size: 3 }); }
+    else if (z.kind !== 'blast') { z.life -= dt; z.x += (z.vx || 0) * dt; z.y += (z.vy || 0) * dt; }
   }
   for (const q of pickups) { q.x += (q.tx - q.x) * k; q.y += (q.ty - q.y) * k; q.t += dt; }
   updFx(dt);
@@ -1979,13 +2299,37 @@ function drawPlayer(p) {
     if (p.rev > 0) { c.strokeStyle = '#8dff8a'; c.lineWidth = 5; c.beginPath(); c.arc(p.x, p.y, 30, -Math.PI / 2, -Math.PI / 2 + TAU * clamp(p.rev / 3, 0, 1)); c.stroke(); }
     c.textAlign = 'center'; c.font = 'bold 12px Georgia'; c.fillStyle = '#ff8a8a'; c.fillText(p === me ? 'DOWN — an ally must reach you' : 'DOWN — stand close to revive', p.x, p.y + 50);
   } else {
-    if (p.ultT > 0) { c.globalAlpha = 0.25 + Math.sin(game.t * 8) * 0.1; circ(c, p.x, p.y, 34, '#7bc96f'); c.globalAlpha = 1; }
+    const big = p.ultT > 0 && (p.hero === 'bramble' || p.hero === 'rowan');
+    if (big) { c.globalAlpha = 0.25 + Math.sin(game.t * 8) * 0.1; circ(c, p.x, p.y, p.hero === 'rowan' ? 40 : 34, HEROES[p.hero].color); c.globalAlpha = 1; }
+    if (p.ultT > 0 && p.hero === 'mira') for (const s of mirrorSpots(p)) { c.globalAlpha = 0.4 + Math.sin(game.t * 9 + s.x) * 0.1; drawHero(c, 'mira', s.x, s.y, p.face, p.walk, { moving: p.moving, swing: p.swing, ghost: true }); c.globalAlpha = 1; }
     if (p.iT > 0 && Math.floor(game.t * 20) % 2 === 0 && p.dashT <= 0) c.globalAlpha = 0.45;
-    drawHero(c, p.hero, p.x, p.y, p.face, p.walk, { moving: p.moving, swing: p.swing, scale: p.ultT > 0 ? 1.25 : 1 }); c.globalAlpha = 1;
+    drawHero(c, p.hero, p.x, p.y, p.face, p.walk, { moving: p.moving, swing: p.swing, scale: big ? (p.hero === 'rowan' ? 1.4 : 1.25) : 1, sentinel: big && p.hero === 'rowan' }); c.globalAlpha = 1;
+    if (p.shield > 0) { c.globalAlpha = 0.35 + Math.sin(game.t * 6) * 0.1; c.strokeStyle = '#86f0cf'; c.lineWidth = 3; c.beginPath(); c.arc(p.x, p.y - 4, 28, 0, TAU); c.stroke(); c.globalAlpha = 0.1; circ(c, p.x, p.y - 4, 28, '#86f0cf'); c.globalAlpha = 1; }
   }
   if (p !== me) {
     c.textAlign = 'center'; c.font = '12px Georgia'; c.fillStyle = 'rgba(0,0,0,.7)'; c.fillText(p.name, p.x + 1, p.y - 43); c.fillStyle = HEROES[p.hero].color; c.fillText(p.name, p.x, p.y - 44);
     if (!p.down) { c.fillStyle = 'rgba(0,0,0,.6)'; c.fillRect(p.x - 18, p.y - 39, 36, 4); c.fillStyle = '#6fdc7a'; c.fillRect(p.x - 18, p.y - 39, 36 * clamp(p.hp / p.maxHp, 0, 1), 4); }
+  }
+}
+function drawZone(c, z) {
+  const a = clamp(z.life / 0.5, 0, 1), t = game.t;
+  if (z.kind === 'shelter') {
+    // Shelterwood: a ring of saplings around a mossy floor.
+    c.globalAlpha = 0.18 * a; circ(c, z.x, z.y, z.r, z.color); c.globalAlpha = 0.6 * a; c.strokeStyle = z.color; c.lineWidth = 2; c.setLineDash([10, 8]); c.beginPath(); c.arc(z.x, z.y, z.r, t * 0.2, t * 0.2 + TAU); c.stroke(); c.setLineDash([]);
+    for (let i = 0; i < 8; i++) { const q = i * TAU / 8, x = z.x + Math.cos(q) * z.r * 0.92, y = z.y + Math.sin(q) * z.r * 0.92; c.fillStyle = '#5d4023'; c.fillRect(x - 2, y - 12, 4, 12); ell(c, x, y - 15, 8, 6, i % 2 ? '#a9c46c' : '#7da353'); }
+    c.globalAlpha = 1;
+  } else if (z.kind === 'decoy') {
+    c.globalAlpha = 0.55 * a; drawHero(c, 'mira', z.x, z.y, -0.5, t, { ghost: true }); c.globalAlpha = 0.5 * a;
+    c.strokeStyle = '#e8fbff'; c.lineWidth = 1; c.beginPath(); c.moveTo(z.x - 10, z.y - 22); c.lineTo(z.x - 2, z.y - 8); c.lineTo(z.x + 7, z.y - 14); c.moveTo(z.x - 2, z.y - 8); c.lineTo(z.x + 1, z.y + 6); c.stroke(); c.globalAlpha = 1;
+  } else {
+    // Midnight Procession: a slow ring of lantern spirits.
+    c.globalAlpha = 0.14 * a; circ(c, z.x, z.y, z.r, z.color);
+    for (let i = 0; i < 7; i++) {
+      const q = t * 2.2 + i * TAU / 7, x = z.x + Math.cos(q) * z.r * 0.7, y = z.y + Math.sin(q) * z.r * 0.5 - 8;
+      c.globalAlpha = 0.85 * a; const g = c.createRadialGradient(x, y, 1, x, y, 13); g.addColorStop(0, 'rgba(220,255,245,.95)'); g.addColorStop(1, 'rgba(134,240,207,0)'); c.fillStyle = g; c.beginPath(); c.arc(x, y, 13, 0, TAU); c.fill();
+      c.fillStyle = '#eafff8'; c.beginPath(); c.moveTo(x - 4, y + 3); c.quadraticCurveTo(x, y - 12, x + 4, y + 3); c.fill();
+    }
+    c.globalAlpha = 1;
   }
 }
 function render() {
@@ -1998,7 +2342,8 @@ function render() {
   const inView = (o, m = 80) => o.x > cam.x - m && o.x < cam.x + VW + m && o.y > cam.y - m && o.y < cam.y + VH + m;
   for (const z of zones) {
     if (!inView(z, 150)) continue;
-    if (z.kind === 'burn') { const a = Math.min(1, z.life / 0.5); c.globalAlpha = 0.28 * a; circ(c, z.x, z.y, z.r, z.color); c.globalAlpha = 0.7 * a; c.strokeStyle = z.color; c.lineWidth = 2; c.beginPath(); c.arc(z.x, z.y, z.r, 0, TAU); c.stroke(); c.globalAlpha = 1; if (z.lantern) { circ(c, z.x, z.y - 8, 7, '#fff1c2'); c.fillStyle = '#4a3a2a'; c.fillRect(z.x - 6, z.y - 18, 12, 3); c.fillRect(z.x - 6, z.y - 1, 12, 3); } }
+    if (z.kind === 'shelter' || z.kind === 'decoy' || z.kind === 'proc') drawZone(c, z);
+    else if (z.kind === 'burn') { const a = Math.min(1, z.life / 0.5); c.globalAlpha = 0.28 * a; circ(c, z.x, z.y, z.r, z.color); c.globalAlpha = 0.7 * a; c.strokeStyle = z.color; c.lineWidth = 2; c.beginPath(); c.arc(z.x, z.y, z.r, 0, TAU); c.stroke(); c.globalAlpha = 1; if (z.lantern) { circ(c, z.x, z.y - 8, 7, '#fff1c2'); c.fillStyle = '#4a3a2a'; c.fillRect(z.x - 6, z.y - 18, 12, 3); c.fillRect(z.x - 6, z.y - 1, 12, 3); } }
     else { const k = 1 - clamp(z.delay / z.max, 0, 1), col = z.friendly ? '255,140,60' : '220,60,255'; c.fillStyle = 'rgba(' + col + ',.16)'; c.beginPath(); c.arc(z.x, z.y, z.r, 0, TAU); c.fill(); c.fillStyle = 'rgba(' + col + ',.35)'; c.beginPath(); c.arc(z.x, z.y, z.r * k, 0, TAU); c.fill(); c.strokeStyle = 'rgba(' + col + ',.9)'; c.lineWidth = 2; c.beginPath(); c.arc(z.x, z.y, z.r, 0, TAU); c.stroke(); }
   }
   for (const k of pickups) if (inView(k)) drawPickup(k);
@@ -2009,6 +2354,11 @@ function render() {
   for (const q of players) if (inView(q, 120)) list.push([q.y, 3, q]);
   list.sort((a, b) => a[0] - b[0]);
   for (const [, k, o] of list) { if (k === 0) drawPoi(o); else if (k === 1) drawObs(o); else if (k === 2) drawEnemy(o); else drawPlayer(o); }
+  // Soul Tethers: a chain of spectral light through each linked group.
+  const groups = {}; for (const e of enemies) if (e.tid && !e.dead) (groups[e.tid] = groups[e.tid] || []).push(e);
+  c.strokeStyle = '#86f0cf'; c.lineWidth = 2; c.globalAlpha = 0.55 + Math.sin(game.t * 7) * 0.2;
+  for (const id in groups) { const g = groups[id]; if (g.length < 2) continue; c.beginPath(); c.moveTo(g[0].x, g[0].y); for (let i = 1; i < g.length; i++) c.lineTo(g[i].x, g[i].y); c.stroke(); }
+  c.globalAlpha = 1;
   for (const q of projs) {
     if (!inView(q)) continue; c.save(); c.translate(q.x, q.y); c.rotate(Math.atan2(q.vy, q.vx));
     if (q.kind === 'blade') { c.fillStyle = q.color; c.beginPath(); c.moveTo(12, 0); c.lineTo(-8, -4); c.lineTo(-4, 0); c.lineTo(-8, 4); c.fill(); }
@@ -2048,13 +2398,20 @@ function drawHUD() {
   c.fillStyle = '#2a1c22'; rr(c, bx, by, bw, 20, 4); c.fill(); c.fillStyle = '#d64545'; rr(c, bx, by, Math.max(6, bw * clamp(p.hp / p.maxHp, 0, 1)), 20, 4); c.fill();
   c.fillStyle = '#fff'; c.font = '13px Georgia'; c.textAlign = 'center'; c.fillText(Math.ceil(p.hp) + ' / ' + p.maxHp, bx + bw / 2, by + 15);
   c.fillStyle = '#1c2430'; rr(c, bx, by + 28, bw, 9, 3); c.fill(); c.fillStyle = '#7fe0ff'; rr(c, bx, by + 28, Math.max(4, bw * clamp(p.xp / xpNeed(p.level), 0, 1)), 9, 3); c.fill();
-  const cd = p.cds, ab = [[T('LMB'), T(H2.names[0]), p.tAtk, cd[0], true], [T('RMB'), T(H2.names[1]), p.tSkill, cd[1], true], [T('SPACE'), T(H2.names[2]) + (p.dashMax > 1 ? ' ×' + p.dashes : ''), p.dashes > 0 ? 0 : p.dashRe, cd[2], true], ['Q', T(H2.names[3]), p.tUlt, cd[3], p.level >= 3]];
+  // Hero resources, under the experience bar.
+  c.textAlign = 'left'; c.font = '12px Georgia';
+  if (p.hero === 'rowan') { c.fillStyle = '#d8c08a'; c.fillText(T('Deep Roots') + ' ' + '●'.repeat(p.roots) + '○'.repeat(Math.max(0, ROOTS_MAX - p.roots)), bx, by + 52); }
+  else if (p.hero === 'vespera') { c.fillStyle = '#86f0cf'; c.fillText(T('Lantern'), bx, by + 52); c.fillStyle = '#16302a'; rr(c, bx + 52, by + 44, bw - 52, 8, 3); c.fill(); c.fillStyle = '#86f0cf'; rr(c, bx + 52, by + 44, Math.max(4, (bw - 52) * clamp(p.lan / p.lanMax, 0, 1)), 8, 3); c.fill(); }
+  else if (p.hero === 'mira') { c.fillStyle = p.decoyOn ? '#bff6ff' : '#6d7f86'; c.fillText(T(p.decoyOn ? 'Decoy standing' : 'No decoy — dash to leave one'), bx, by + 52); }
+  if (p.shield > 0) { c.fillStyle = '#86f0cf'; c.textAlign = 'right'; c.fillText(T('Shield') + ' ' + Math.ceil(p.shield), bx + bw, by + 52); c.textAlign = 'left'; }
+  const b1 = slotBlock(p, 1), b2 = H2.alt ? slotBlock(p, 2) : null;
+  const cd = p.cds, ab = [[T('LMB'), T(H2.names[0]), p.tAtk, cd[0], true], [T('RMB'), T(H2.names[1]), p.tSkill, cd[1], !b1, b1 && T(b1)], [T('SPACE'), T(H2.names[2]) + (p.dashMax > 1 ? ' ×' + p.dashes : ''), p.dashes > 0 ? 0 : p.dashRe, cd[2], !b2, b2 && T(b2)], ['Q', T(H2.names[3]), p.tUlt, cd[3], p.level >= 3, T('Lv 3')]];
   const s = 58, gap = 12, ax = W / 2 - (s * 4 + gap * 3) / 2, ay = H - s - 30;
   if (!TU) ab.forEach((a, i) => {
     const x = ax + i * (s + gap); c.fillStyle = 'rgba(8,8,16,.8)'; rr(c, x, ay, s, s, 8); c.fill();
     const ready = a[2] <= 0 && a[4]; c.strokeStyle = ready ? H2.color : '#4a4370'; c.lineWidth = 2; rr(c, x, ay, s, s, 8); c.stroke();
     if (a[2] > 0 && a[3] > 0.5) { c.fillStyle = 'rgba(120,110,170,.45)'; c.beginPath(); c.moveTo(x + s / 2, ay + s / 2); c.arc(x + s / 2, ay + s / 2, s * 0.42, -Math.PI / 2, -Math.PI / 2 + TAU * clamp(a[2] / a[3], 0, 1)); c.fill(); }
-    c.textAlign = 'center'; c.font = 'bold 14px Georgia'; c.fillStyle = a[4] ? (ready ? '#fff' : '#8a84a8') : '#55506e'; c.fillText(a[4] ? a[0] : T('Lv 3'), x + s / 2, ay + s / 2 + 1);
+    const lab = a[4] ? a[0] : a[5]; c.textAlign = 'center'; c.font = 'bold ' + (lab.length > 5 ? 10 : 14) + 'px Georgia'; c.fillStyle = a[4] ? (ready ? '#fff' : '#8a84a8') : '#55506e'; c.fillText(lab, x + s / 2, ay + s / 2 + 1);
     if (a[2] > 0.5 && a[3] > 0.5) { c.font = '12px Georgia'; c.fillStyle = '#f3d48a'; c.fillText(a[2].toFixed(0), x + s / 2, ay + s / 2 + 17); }
     c.font = '11px Georgia'; c.fillStyle = '#b9b3d4'; c.fillText(a[1], x + s / 2, ay + s + 14);
   });
@@ -2102,7 +2459,9 @@ function drawTouchUI() {
   };
   const B = H - Math.max(SA.b - 8, 0); stick(touch.move, SA.l + 100 * u, B - 95 * u); stick(touch.aim, W - SA.r - 100 * u, B - 90 * u);
   const np = !p.down && nearPoi(p), use = !!(np && poiPrompt(np));
-  const info = { skill: ['SKILL', p.tSkill, p.cds[1], true], dash: ['DASH' + (p.dashMax > 1 ? ' ' + p.dashes : ''), p.dashes > 0 ? 0 : p.dashRe, p.cds[2], true], ult: [p.level >= 3 ? 'ULT' : 'Lv 3', p.tUlt, p.cds[3], p.level >= 3], f: ['USE', 0, 0, use], menu: [net.mode === 'solo' ? 'II' : '🎙', 0, 0, true], fs: ['⛶', 0, 0, true], talk: [Voice.transmitting() ? '● ' + T('TALK') : T('TALK'), 0, 0, true] };
+  const b1 = slotBlock(p, 1), alt = HEROES[p.hero].alt, b2 = alt ? slotBlock(p, 2) : null;
+  const info = { skill: [b1 || 'SKILL', p.tSkill, p.cds[1], !b1], dash: [b2 || (alt ? 'SKILL 2' : 'DASH') + (p.dashMax > 1 ? ' ' + p.dashes : ''), p.dashes > 0 ? 0 : p.dashRe, p.cds[2], !b2], ult: [p.level >= 3 ? 'ULT' : 'Lv 3', p.tUlt, p.cds[3], p.level >= 3], f: ['USE', 0, 0, use],
+    menu: [net.mode === 'solo' ? 'II' : '🎙', 0, 0, true], fs: ['⛶', 0, 0, true], talk: [Voice.transmitting() ? '● ' + T('TALK') : T('TALK'), 0, 0, true] };
   c.textAlign = 'center'; c.textBaseline = 'middle';
   for (const b of touchButtons()) {
     const [label, t, cd, on] = info[b.id], ready = on && t <= 0;
@@ -2116,11 +2475,11 @@ function drawTouchUI() {
 
 // ---------- screens ----------
 const controlsHtml = () => touch.on
-  ? L('<div class="controls"><b>Left thumb</b> move · <b>Right thumb</b> drag to aim and attack, or hold to auto-target · <b>Buttons</b> skill, dash, ultimate (Lv 3), use, <b>II</b> pause',
-      '<div class="controls"><b>左手拇指</b> 移動 · <b>右手拇指</b> 拖曳瞄準並攻擊，或按住自動鎖定 · <b>按鈕</b> 技能、衝刺、絕招（3 級）、使用、<b>II</b> 暫停') +
+  ? L('<div class="controls"><b>Left thumb</b> move · <b>Right thumb</b> drag to aim and attack, or hold to auto-target · <b>Buttons</b> skill, dash (Rowan, Vespera: second skill), ultimate (Lv 3), use, <b>II</b> pause',
+      '<div class="controls"><b>左手拇指</b> 移動 · <b>右手拇指</b> 拖曳瞄準並攻擊，或按住自動鎖定 · <b>按鈕</b> 技能、衝刺（羅文、薇斯佩拉：第二技能）、絕招（3 級）、使用、<b>II</b> 暫停') +
     '</div>'
-  : L('<div class="controls"><b>WASD</b> move · <b>Mouse</b> aim · <b>LMB</b> attack · <b>RMB</b>/<b>E</b> skill · <b>Space</b> dash · <b>Q</b> ultimate (Lv 3) · <b>F</b> interact · <b>1</b>-<b>3</b> pick boon · <b>M</b> mute</div>',
-      '<div class="controls"><b>WASD</b> 移動 · <b>滑鼠</b> 瞄準 · <b>左鍵</b> 攻擊 · <b>右鍵</b>/<b>E</b> 技能 · <b>空白鍵</b> 衝刺 · <b>Q</b> 絕招（3 級） · <b>F</b> 互動 · <b>1</b>-<b>3</b> 選擇祝福 · <b>M</b> 靜音</div>');
+  : L('<div class="controls"><b>WASD</b> move · <b>Mouse</b> aim · <b>LMB</b> attack · <b>RMB</b>/<b>E</b> skill · <b>Space</b> dash (Rowan, Vespera: second skill) · <b>Q</b> ultimate (Lv 3) · <b>F</b> interact · <b>1</b>-<b>3</b> pick boon · <b>M</b> mute</div>',
+      '<div class="controls"><b>WASD</b> 移動 · <b>滑鼠</b> 瞄準 · <b>左鍵</b> 攻擊 · <b>右鍵</b>/<b>E</b> 技能 · <b>空白鍵</b> 衝刺（羅文、薇斯佩拉：第二技能） · <b>Q</b> 絕招（3 級） · <b>F</b> 互動 · <b>1</b>-<b>3</b> 選擇祝福 · <b>M</b> 靜音</div>');
 // Full screen: Android and iPad browsers can do it for a page; iPhone Safari only does it for video, so there the way
 // is to add the game to the Home Screen (manifest.webmanifest makes it open full screen, without browser bars).
 const DE = document.documentElement, IPHONE = /iPhone|iPod/.test(navigator.userAgent);
@@ -2181,15 +2540,21 @@ function show(html, soft) { overlay.className = soft ? 'soft' : ''; overlay.inne
 function hide() { overlay.className = 'hidden'; overlay.innerHTML = ''; document.body.classList.remove('menu'); }
 function heroCards(sel, compact) {
   let h = '<div class="cards">';
-  Object.keys(HEROES).forEach((id, i) => { const H2 = HEROES[id]; h += '<div class="card' + (id === sel ? ' sel' : '') + (compact ? ' compact' : '') + '" data-hero="' + id + '"><span class="key">' + (i + 1) + '</span><canvas width="170" height="' + (compact ? 96 : 120) + '" data-p="' + id + '"></canvas><div class="tag" style="color:' + H2.color + '">' + T(H2.title) + '</div><h3>' + T(H2.name) + '</h3>' + (compact ? '' : '<p><i>' + T(H2.blurb) + '</i></p>') + '<ul>' + H2.kit.map(k => '<li>' + T(k) + '</li>').join('') + '</ul></div>'; });
+  Object.keys(HEROES).forEach((id, i) => {
+    const H2 = HEROES[id], R = H2.rarity && RARITY[H2.rarity], open = unlocked(id);
+    const rar = R ? '<span class="rar" style="color:' + R.color + ';border-color:' + R.color + '">' + T(RARITY_NAMES[H2.rarity]) + '</span>' : '';
+    const body = open ? (compact ? '' : '<p><i>' + T(H2.blurb) + '</i></p>') + '<ul>' + H2.kit.map(k => '<li>' + T(k) + '</li>').join('') + '</ul>'
+      : '<p class="lock">' + L('Locked. Can be won as a ' + RARITY_NAMES[H2.rarity] + ' chapter reward from Chapter ' + R.chapter + ' on.', '未解鎖。從第 ' + R.chapter + ' 章起，可在章節獎勵中以' + T(RARITY_NAMES[H2.rarity]) + '獎勵獲得。') + '</p>';
+    h += '<div class="card' + (id === sel ? ' sel' : '') + (compact ? ' compact' : '') + (open ? '' : ' locked') + '" data-hero="' + id + '"><span class="key">' + (open ? i + 1 : '🔒') + '</span><canvas width="170" height="' + (compact ? 96 : 120) + '" data-p="' + id + '"></canvas><div class="tag" style="color:' + H2.color + '">' + T(H2.title) + '</div><h3>' + T(H2.name) + rar + '</h3>' + body + '</div>';
+  });
   return h + '</div>';
 }
 function bindHeroCards(cb) {
-  overlay.querySelectorAll('canvas[data-p]').forEach(cn => { const g = cn.getContext('2d'), s = cn.height < 110 ? 2.1 : 2.6; drawHero(g, cn.dataset.p, 85, cn.height * 0.65, -0.5, 0, { scale: s }); });
+  overlay.querySelectorAll('canvas[data-p]').forEach(cn => { const g = cn.getContext('2d'), s = cn.height < 110 ? 2.1 : 2.6; drawHero(g, cn.dataset.p, 85, cn.height * 0.65, -0.5, 0, { scale: s, ghost: !unlocked(cn.dataset.p) }); });
   overlay.querySelectorAll('.card').forEach(cd => cd.onclick = () => cb(cd.dataset.hero));
 }
 function selectHero(id) {
-  if (!HEROES[id]) return; net.hero = id;
+  if (!unlocked(id)) return; net.hero = id;
   if (game.state === 'menu') { overlay.querySelectorAll('.card').forEach(cd => cd.classList.toggle('sel', cd.dataset.hero === id)); return; }
   if (game.state !== 'lobby') return;
   const q = net.lobby.find(q => q.id === net.myId); if (q) q.hero = id;
@@ -2365,9 +2730,9 @@ async function showVoice(back, soft) {
 const muteLabel = () => AU.muted ? L('Unmute', '取消靜音') : L('Mute', '靜音');
 function onKey(k) {
   if (k === 'm' && AU.ctx) { AU.muted = !AU.muted; AU.master.gain.value = AU.muted ? 0 : 0.55; }
-  const n = '123'.indexOf(k);
+  const n = '123456789'.indexOf(k);
   if (n >= 0 && (game.state === 'menu' || game.state === 'lobby')) selectHero(Object.keys(HEROES)[n]);
-  else if (n >= 0 && game.state === 'play') chooseTalent(n);
+  else if (n >= 0 && n < 3 && game.state === 'play') chooseTalent(n);
   else if ((k === 'p' || k === 'escape') && game.state === 'play' && net.mode !== 'solo' && !game.over && overlay.className === 'hidden') showVoice(hide, true);
   else if ((k === 'p' || k === 'escape') && game.state === 'play' && net.mode === 'solo' && !game.over && !(me && me.choice)) {
     game.paused = !game.paused;

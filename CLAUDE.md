@@ -48,6 +48,12 @@ page by republishing `dist/artifact.html` to the URL above.
   play a difficulty every member has unlocked.
 - Profiles use a random installation id (no device id exists on the web); rejoin needs the host's per-session
   secret plus the same profile; no host migration.
-- Chapters 4–5 are placeholders (new palettes, existing enemies/boss). The character reward pool is empty until a
-  fourth hero exists.
+- Chapters 4–5 are placeholders (new palettes, existing enemies/boss).
+- Six heroes: Bramble, Wick, Vesper (everyone has them) and the unlockable Rowan (Green), Mira (Blue), Vespera
+  (Purple). They are character rewards inside the one chapter roll (`c:<id>` in `REWARD_POOLS`), winnable from
+  Chapter 1 / 2 / 3; there is no separate character roll. Unlocks live in the profile (`PROFILE.characters`); the
+  host only lets a guest play a hero their profile owns. Rowan and Vespera cast a second skill from the dash slot.
+- Network messages changed: `PEER_PREFIX` is `duskbound-v3-`. Bump it whenever messages change.
+- Work happens on a branch, then a pull request into `main`. Pull before starting, so PC and phone sessions don't
+  drift apart again.
 - Every user-facing string needs a Traditional Chinese version.

@@ -51,11 +51,12 @@ const WEAPONS = {
 // Starting talents: begin every run with 1 rank of this boon (ids from TALENTS in data.js).
 const START_TALENT_CAP = 1;
 // Reward pools per rarity. Item ids: 'u:<upgrade>:<amount>', 'w:<weapon>', 't:<talent>', 'c:<character>'.
-// Characters: no heroes beyond the three starters exist yet, so the character pools are empty (see DESIGN notes).
+// Characters ('c:<hero>'): the unlockable heroes from data.js, in the tier their `rarity` names, winnable from the
+// chapter RARITY[...].chapter on.
 const REWARD_POOLS = {
-  green: ['u:hp:4', 'u:dmg:2', 'u:spd:2', 'u:gold:10'],
-  blue: ['u:hp:8', 'u:dmg:4', 'u:crit:2', 't:keen', 't:quick', 't:fleet', 't:hearty'],
-  purple: ['w:thornmaul', 'w:cinderglass', 'w:mothfang', 't:eye', 't:leech', 't:tinker', 't:chain', 't:ember'],
+  green: ['u:hp:4', 'u:dmg:2', 'u:spd:2', 'u:gold:10', 'c:rowan'],
+  blue: ['u:hp:8', 'u:dmg:4', 'u:crit:2', 't:keen', 't:quick', 't:fleet', 't:hearty', 'c:mira'],
+  purple: ['w:thornmaul', 'w:cinderglass', 'w:mothfang', 't:eye', 't:leech', 't:tinker', 't:chain', 't:ember', 'c:vespera'],
   yellow: ['w:elderbough', 'w:sunlantern', 'w:duskneedles', 't:step', 't:exec'],
   red: ['w:gloamantler', 'w:starwick', 'w:eclipseedge', 'u:dmg:10', 'u:hp:20']
 };
@@ -83,7 +84,8 @@ function itemAvailable(id, inv) {
   if (k === 'w') return !!WEAPONS[a] && !(inv.weapons || []).includes(a);
   if (k === 't') return (inv.talents && inv.talents[a] || 0) < START_TALENT_CAP;
   if (k === 'u') return !!UPGRADES[a] && (inv.upgrades && inv.upgrades[a] || 0) + Number(b) <= UPGRADES[a].cap;
-  if (k === 'c') return !(inv.characters || []).includes(a);
+  if (k === 'c') { const H = typeof HEROES !== 'undefined' && HEROES[a], R = H && typeof RARITY !== 'undefined' && RARITY[H.rarity];
+    return !!H && !(inv.characters || []).includes(a) && (!R || (inv.chapter || 0) >= R.chapter); }
   return false;
 }
 // The single reward for one player: a rarity from one roll, then one item from that rarity's pool.
@@ -188,7 +190,7 @@ function itemLabel(item) {
   if (k === 'w') return 'Weapon: ' + WEAPONS[a].name;
   if (k === 't') { const t = typeof TALENTS !== 'undefined' && TALENTS.find(t => t.id === a); return 'Starting talent: ' + (t ? t.name : a); }
   if (k === 'u') return 'Upgrade: ' + UPGRADES[a].name + ' +' + b + UPGRADES[a].unit;
-  if (k === 'c') return 'Character: ' + a;
+  if (k === 'c') return 'Character: ' + (typeof HEROES !== 'undefined' && HEROES[a] ? HEROES[a].name : a);
   return item;
 }
 if (typeof module !== 'undefined') module.exports = { CHAPTERS, DIFFICULTIES, PARTY_SCALE, REWARD_ODDS, REWARD_POOLS, REWARD_FALLBACK, RARITIES, UPGRADES, WEAPONS, START_TALENT_CAP,

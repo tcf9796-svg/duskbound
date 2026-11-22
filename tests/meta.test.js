@@ -64,4 +64,13 @@ ok(lo.weapon === null && lo.upgrades.dmg === 30, 'loadout: unowned weapon droppe
 const code = M.exportProfile(p3), back = M.importProfile(code);
 ok(back && back.id === p3.id && back.weapons[0] === 'thornmaul', 'backup code round trip');
 ok(M.importProfile('garbage') === null, 'bad backup code rejected');
+// --- unlockable heroes are character rewards inside the single roll, gated by their first chapter
+ok(M.REWARD_POOLS.green.includes('c:rowan') && M.REWARD_POOLS.blue.includes('c:mira') && M.REWARD_POOLS.purple.includes('c:vespera'), 'heroes sit in the Green/Blue/Purple pools');
+const ci = ch => ({ weapons: [], talents: {}, upgrades: {}, characters: [], chapter: ch });
+ok(M.itemAvailable('c:rowan', ci(1)) && !M.itemAvailable('c:mira', ci(1)) && M.itemAvailable('c:mira', ci(2)) && !M.itemAvailable('c:vespera', ci(2)) && M.itemAvailable('c:vespera', ci(3)), 'each hero only from its first chapter (Rowan 1, Mira 2, Vespera 3)');
+ok(!M.itemAvailable('c:rowan', { ...ci(5), characters: ['rowan'] }) && !M.itemAvailable('c:nobody', ci(5)), 'owned or unknown heroes are never offered');
+{ let got = null; for (let i = 0; i < 400 && got !== 'c:rowan'; i++) got = M.rollReward(ci(1), (() => { const s = [0.1, Math.random()]; return () => s.shift(); })()).item; ok(got === 'c:rowan', 'a Green roll can award Rowan'); }
+const hp = M.newProfile(); M.grantReward(hp, 'r:1:' + hp.id, 'green', 'c:rowan', { chapter: 1 });
+ok(hp.characters.includes('rowan') && M.itemLabel('c:rowan') === 'Character: Rowan', 'hero reward unlocks the character for the profile');
+ok(M.sanitizeProfile({ ...hp }).characters.includes('rowan'), 'unlocked hero survives a reload');
 console.log((fails ? 'FAILED ' + fails : 'all passed') + ' (' + n + ' checks)'); process.exit(fails ? 1 : 0);
