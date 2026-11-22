@@ -22,8 +22,8 @@ const DIFFICULTIES = [
 const PARTY_SCALE = { hpPerExtra: 0.6, dmgPerExtra: 0, ambushPerExtra: 0.35, graceSeconds: 120 };
 
 // Chapter reward odds in basis points (1/100 of a percent): one roll per player per chapter, mutually exclusive.
-// Whatever is left over up to 10000 is "no reward" (here 5150 = 51.5%).
-const REWARD_ODDS = [['green', 3000], ['blue', 1000], ['purple', 500], ['yellow', 250], ['red', 100]];
+// Whatever is left over up to 10000 is "no reward" (currently 0: every chapter completion gives one reward).
+const REWARD_ODDS = [['green', 4500], ['blue', 3000], ['purple', 1500], ['yellow', 700], ['red', 300]];
 const RARITIES = ['green', 'blue', 'purple', 'yellow', 'red'];
 const RARITY_NAMES = { green: 'Green', blue: 'Blue', purple: 'Purple', yellow: 'Yellow', red: 'Red' };
 const RARITY_COLORS = { green: '#7bd96f', blue: '#6fb6ff', purple: '#c27bff', yellow: '#f3d048', red: '#ff5a5a' };

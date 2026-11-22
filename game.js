@@ -91,7 +91,8 @@ function toggleAuto() {
   if (me) texts.push({ x: me.x, y: me.y - 46, s: autoAtk ? 'Auto attack on' : 'Auto attack off', color: '#f3d48a', size: 14, life: 1.2 }); // local only
   playSfx('pick');
 }
-function autoTarget(p) { let best = null, bd = AUTO_RANGE; for (const e of enemies) { if (e.dead) continue; const d = dist(e, p); if (d < bd) { bd = d; best = e; } } return best; }
+const targetable = e => !e.dead && !e.invuln && !['rod', 'pillar', 'brazier'].includes(e.type) && !(e.type === 'boss' && game.boss && game.boss.hidden);
+function autoTarget(p) { let best = null, bd = AUTO_RANGE; for (const e of enemies) { if (!targetable(e)) continue; const d = dist(e, p); if (d < bd) { bd = d; best = e; } } return best; }
 function touchButtons() {
   const u = touchU(), R = W - SA.r, B = H - Math.max(SA.b - 8, 0), hs = hudScale();
   return [{ id: 'skill', key: 'e', x: R - 205 * u, y: B - 62 * u, r: 30 * u }, { id: 'dash', key: ' ', x: R - 190 * u, y: B - 140 * u, r: 30 * u },
@@ -132,7 +133,7 @@ function touchInput() {
   if (s && dl > 12) { touch.aimA = Math.atan2(dy, dx); const d = 120 + 280 * clamp(dl / R, 0, 1); aim = { x: p.x + Math.cos(touch.aimA) * d, y: p.y + Math.sin(touch.aimA) * d }; }
   else {
     // not dragging the aim stick: lock on to the nearest enemy, else face the way we are walking
-    let best = null, bd = 460; for (const e of enemies) { if (e.dead) continue; const d = dist(e, p); if (d < bd) { bd = d; best = e; } }
+    let best = null, bd = 460; for (const e of enemies) { if (!targetable(e)) continue; const d = dist(e, p); if (d < bd) { bd = d; best = e; } }
     if (best) { touch.aimA = angTo(p, best); aim = { x: best.x, y: best.y }; }
     else { if (mx || my) touch.aimA = Math.atan2(my, mx); aim = { x: p.x + Math.cos(touch.aimA) * 200, y: p.y + Math.sin(touch.aimA) * 200 }; }
   }
@@ -164,7 +165,7 @@ const setDiff = d => { if (!PROFILE.unlocked.includes(d)) return; net.diff = d; 
 // Players counted for scaling: everyone in the session, including disconnected players whose slot is still held.
 const partyN = () => Math.max(1, players.length + (net.mode === 'host' ? net.away.size : 0));
 const partyMul = per => 1 + per * (partyN() - 1);
-const ETN = ['husk', 'spitter', 'ram', 'bloat', 'wisp', 'boss'], STN = ['chase', 'wind', 'rest', 'charge', 'fuse', 'bwind', 'bcharge', 'ring', 'slam'];
+const ETN = ['husk', 'spitter', 'ram', 'bloat', 'wisp', 'boss', 'sapling', 'orb', 'vcore', 'pillar', 'split', 'mask', 'cage', 'bind', 'rod', 'brazier'], STN = ['b_tel', 'b_act', 'b_rec', 'b_hide', 'chase', 'wind', 'rest', 'charge', 'fuse', 'bwind', 'bcharge', 'ring', 'slam'];
 const DASH_CD = 2.2, ULT_CD = 40;
 
 function newPlayer(pid, hero, name) {
@@ -212,7 +213,7 @@ function makeGround(p) {
   for (let i = 0; i < 150; i++) { g.strokeStyle = pick(p.spk); g.lineWidth = 1.4; const x = rand(256), y = rand(256); g.beginPath(); g.moveTo(x, y); g.lineTo(x + rand(-2, 2), y - rand(3, 7)); g.stroke(); }
   g.globalAlpha = 1; return ctx.createPattern(c, 'repeat');
 }
-function clearEntities() { enemies = []; projs = []; zones = []; pickups = []; parts = []; texts = []; fxs = []; evQ = []; tethers = []; for (const p of players) { p.decoy = null; p.decoyOn = false; } }
+function clearEntities() { hazards = []; game.arena = null; enemies = []; projs = []; zones = []; pickups = []; parts = []; texts = []; fxs = []; evQ = []; tethers = []; for (const p of players) { p.decoy = null; p.decoyOn = false; } }
 function genWorld() {
   const S = 3400, pal = PAL[(game.chapter - 1) % PAL.length];
   world = { S, obs: [], pois: [], pal }; groundPat = makeGround(pal); clearEntities();
@@ -263,8 +264,8 @@ function spawnBoss() {
   if (game.boss || game.winT > 0) return;
   const p = pick(alive()) || players[0], a = rand(TAU);
   const e = spawnEnemy('boss', p.x + Math.cos(a) * 520, p.y + Math.sin(a) * 520);
-  e.aggro = true; e.t = 2; game.boss = e; world.pois[0].used = true;
-  banner('THE GLOAM STAG', 'It has come for what you carry.', 4); sfx('boss'); shake(14);
+  e.aggro = true; game.boss = e; world.pois[0].used = true; hazards = []; makeBoss(e);
+  banner(e.cfg.name, e.cfg.title, 4); sfx('boss'); shake(14);
 }
 
 // ---------- effects (mirrored to guests as events) ----------
@@ -310,10 +311,12 @@ function hitEnemy(p, e, dmg, o = {}) {
     crit = !o.noCrit && Math.random() < p.crit + (p.hero === 'vesper' ? 0.15 * night : 0);
     if (crit) d *= p.critMul;
   }
-  d = Math.max(1, Math.round(d)); e.hp -= d; e.flash = 0.1;
+  if (e.invuln) { if (!o.quiet) floatText(e.x, e.y - e.r - 4, T('Immune'), '#9a96b8', 12); return 0; }
+  if (e.armor) d *= 1 - e.armor; if (e.vuln) d *= BOSS_VULN;
+  d = Math.max(1, Math.round(d)); if (bossLinkHit(e, d)) { e.flash = 0.1; floatText(e.x, e.y - e.r - 4, d, '#9ff0ff', 15); return d; } e.hp -= d; e.flash = 0.1;
   if (!o.shared && e.tid) shareTether(p, e, d);
   if (!e.aggro) alertPack(e);
-  if (o.kb && e.type !== 'boss') { const a = angTo(p, e); e.kbx += Math.cos(a) * o.kb; e.kby += Math.sin(a) * o.kb; }
+  if (o.kb && e.type !== 'boss' && !e.anchor) { const a = angTo(p, e); e.kbx += Math.cos(a) * o.kb; e.kby += Math.sin(a) * o.kb; }
   floatText(e.x, e.y - e.r - 4, d + (crit ? '!' : ''), crit ? '#ffd24a' : o.color || '#fff', crit ? 19 : 14);
   if (!o.quiet) sfx(crit ? 'crit' : 'hit', e);
   burst(e.x, e.y, o.color || '#e8e2d0', 3, 120, 2.5);
@@ -333,11 +336,13 @@ function shareTether(p, e, d) {
   for (const q of g.list) if (q !== e && !q.dead) { addFx({ kind: 'bolt', x: e.x, y: e.y, x2: q.x, y2: q.y, life: 0.15, max: 0.15, color: '#86f0cf' }); hitEnemy(p, q, d * 0.4, { flat: true, shared: true, proc: true, quiet: true, color: '#86f0cf' }); }
 }
 function killEnemy(e, p) {
-  if (e.dead) return; e.dead = true; if (p) p.kills++;
+  if (e.dead) return; e.dead = true;
+  if (e.noDrop) { burst(e.x, e.y, '#d9c8a0', 14, 220, 4); sfx('die', e); return; } // boss arena objects: no loot, no kill credit, never end the chapter
+  if (p) p.kills++;
   // Lingering Light: while a Lanternkeeper is in the party, the fallen leave embers for her lantern.
   if (players.some(q => q.hero === 'vespera')) pickups.push({ id: nextId++, kind: 'lume', x: e.x, y: e.y, val: e.elite || e.type === 'boss' ? 20 : 6, vx: 0, vy: 0, t: rand(TAU), life: 8 });
   burst(e.x, e.y, e.type === 'wisp' ? '#8fd0ff' : '#b79bd6', e.elite || e.type === 'boss' ? 40 : 12, 240, 4); sfx('die', e);
-  if (e.type === 'boss') { game.boss = null; game.winT = 2.2; shake(20); sfx('boom'); projs = projs.filter(q => q.friendly); zones = zones.filter(z => z.friendly); for (const q of enemies) if (!q.dead) { q.dead = true; burst(q.x, q.y, '#b79bd6', 8); } }
+  if (e.type === 'boss') { banner(T(e.cfg ? e.cfg.name : 'boss') + ' ' + L('is defeated', '已被擊敗'), e.cfg ? e.cfg.title : '', 2.4); hazards = []; game.arena = null; game.boss = null; game.winT = 2.2; shake(20); sfx('boom'); projs = projs.filter(q => q.friendly); zones = zones.filter(z => z.friendly); for (const q of enemies) if (!q.dead) { q.dead = true; burst(q.x, q.y, '#b79bd6', 8); } }
   const n = e.type === 'boss' ? 30 : e.elite ? 8 : 1 + (e.xp > 6 ? 1 : 0);
   for (let i = 0; i < n; i++) drop('xp', e.x, e.y, e.xp / n);
   if (e.elite || Math.random() < 0.35) drop('gold', e.x, e.y, e.elite ? 15 : randi(1, 4));
@@ -393,6 +398,7 @@ function shoot(x, y, a, speed, o) { projs.push(Object.assign({ x, y, vx: Math.co
 
 function doAttack(p) {
   const H = p.hero; p.tAtk = p.atkCd / p.asMul; p.swing = 1;
+  const cg = cageOn(p); if (cg && cg.type === 'cage') { hitEnemy(p, cg, p.dmg * 1.2, { color: '#d9b26a' }); sfx('hit', p); return; }
   if (H === 'bramble') {
     const n = meleeArc(p, 98 * (1 + 0.3 * (p.h.wide || 0)) * (p.ultT > 0 ? 1.25 : 1), 2.3, p.dmg, { kb: 170, color: '#9fe08a' });
     if (p.ultT > 0 && n) heal(p, 2 * n); sfx('slash', p);
@@ -537,7 +543,7 @@ function collideWorld(o, r) {
 const dashDir = (p, inp) => (inp.mx || inp.my) ? Math.atan2(inp.my, inp.mx) : p.face;
 function walk(p, inp, dt) {
   const sp = p.spd * p.spdMul * (p.hero === 'vesper' ? 1 + 0.15 * night : 1) * (inp.l && p.hero !== 'vesper' && p.hero !== 'mira' ? 0.8 : 1) * (p.hero === 'rowan' && p.ultT > 0 ? 0.85 : 1);
-  p.x += inp.mx * sp * dt; p.y += inp.my * sp * dt; if (inp.mx || inp.my) p.walk += dt;
+  const sl = bindSlow(p); p.x += inp.mx * sp * sl * dt; p.y += inp.my * sp * sl * dt; if (inp.mx || inp.my) p.walk += dt;
 }
 const trail = p => parts.push({ x: p.x, y: p.y, vx: 0, vy: 0, life: 0.25, max: 0.25, color: HEROES[p.hero].color, size: 9 });
 function updPlayer(p, inp, dt) {
@@ -566,6 +572,7 @@ function updPlayer(p, inp, dt) {
       if (p.h.bulwark) heal(p, 4 * p.h.bulwark);
     }
   } else if (!p.remote) walk(p, inp, dt);
+  if (!p.remote) bossLocalMove(p, dt);
   if (p.flurry) {
     const f = p.flurry; p.iT = Math.max(p.iT, 0.25); f.t -= dt;
     if (f.t <= 0) {
@@ -648,7 +655,7 @@ function update(dt) {
   const act = enemies.filter(e => e.near && !e.dead && e.aggro);
   for (let i = 0; i < act.length; i++) for (let j = i + 1; j < act.length; j++) {
     const a = act[i], b = act[j], dx = b.x - a.x, dy = b.y - a.y, mm = a.r + b.r; if (Math.abs(dx) > mm || Math.abs(dy) > mm) continue;
-    const d = Math.hypot(dx, dy) || 0.01; if (d < mm) { const push = (mm - d) / 2, wa = a.type === 'boss' ? 0 : 1, wb = b.type === 'boss' ? 0 : 1; a.x -= dx / d * push * wa; a.y -= dy / d * push * wa; b.x += dx / d * push * wb; b.y += dy / d * push * wb; }
+    const d = Math.hypot(dx, dy) || 0.01; if (d < mm) { const push = (mm - d) / 2, wa = a.type === 'boss' || a.anchor ? 0 : 1, wb = b.type === 'boss' || b.anchor ? 0 : 1; a.x -= dx / d * push * wa; a.y -= dy / d * push * wa; b.x += dx / d * push * wb; b.y += dy / d * push * wb; }
   }
   // projectiles
   for (const q of projs) {
@@ -688,6 +695,7 @@ function update(dt) {
     }
   }
   zones = zones.filter(z => z.kind === 'blast' ? z.life !== 0 : z.life > 0);
+  updHazards(dt, true);
   // pickups — experience, gold and sigils are shared by the whole party
   for (const g of tethers) { g.t -= dt; g.list = g.list.filter(e => !e.dead && e.tid === g.id); if (g.t <= 0 || g.list.length < 2) { for (const e of g.list) e.tid = 0; g.list = []; } }
   tethers = tethers.filter(g => g.list.length);
@@ -765,7 +773,9 @@ function updEnemy(e, dt) {
       if (d < e.r + p.r + 2 && e.cd <= 0 && !p.dec) { hurtPlayer(p, dm, e); e.cd = 0.9; }
       break;
     }
-    case 'boss': {
+    case 'boss': { [mx, my] = bossThink(e, dt, p); break; }
+    case 'sapling': case 'orb': case 'vcore': case 'pillar': case 'split': case 'mask': case 'cage': case 'bind': case 'rod': case 'brazier': [mx, my] = summonThink(e, dt, p); break;
+    case 'oldboss': {
       const rage = e.hp < e.maxHp * 0.5;
       if (e.state === 'chase') {
         if (d > 80) { mx = ca * sp * (rage ? 1.25 : 1); my = sa * sp * (rage ? 1.25 : 1); }
@@ -790,6 +800,7 @@ function updEnemy(e, dt) {
       break;
     }
   }
+  if (e.anchor || e.hidden) mx = my = 0, e.kbx = e.kby = 0;
   if (e.rootT > 0) mx = my = 0; // Root Snare: rooted foes still swing and spit, but cannot move
   e.x += (mx + e.kbx) * dt; e.y += (my + e.kby) * dt; const f = Math.pow(0.003, dt); e.kbx *= f; e.kby *= f;
   if (mx || my) e.dir = mx < 0 ? -1 : 1;
@@ -799,7 +810,7 @@ function nearPoi(p) { let best = null, bd = 80; for (const o of world.pois) { if
 const merchCost = o => 40 + 30 * o.uses;
 function poiPrompt(o) {
   switch (o.kind) {
-    case 'altar': return o.used ? null : 'Stand in the ring for ' + UNSEAL_TIME + ' s to unseal the Gloam Stag';
+    case 'altar': return o.used ? null : 'Stand in the ring for ' + UNSEAL_TIME + ' s to unseal ' + bossCfg(game.chapter).name;
     case 'spring': return o.used ? null : 'Drink from the spring';
     case 'chest': return o.used ? null : 'Open cache';
     case 'shrine': return o.used ? null : 'Pray at the wayshrine';
@@ -887,7 +898,7 @@ function expireAway() {
 }
 
 // ---------- netcode ----------
-const PEER_PREFIX = 'duskbound-v4-'; // bump whenever messages change, so mismatched versions never meet
+const PEER_PREFIX = 'duskbound-v5-'; // bump whenever messages change, so mismatched versions never meet
 const noNetMsg = () => window.DUSK_NO_NET ? 'Online co-op is not available on this page. Solo works here; for co-op, open the downloaded duskbound.html file or a copy on your own website.' : 'Online play needs an internet connection (the networking library did not load).';
 function wrapConn(c) {
   const w = { peerId: c.peer, send: d => { try { c.send(d); } catch (e) { } }, onData: null, onClose: null, close: () => { try { c.close(); } catch (e) { } } };
@@ -1180,7 +1191,7 @@ function snapPlayer(p) {
 }
 function sendSnaps() {
   if (!net.conns.length || !world) return;
-  const b = game.boss, g = [r1(game.time), game.chapter, game.wasNight ? 1 : 0, b ? [b.x | 0, b.y | 0, r3(b.hp / b.maxHp)] : 0, game.over || 0];
+  const b = game.boss, g = [r1(game.time), game.chapter, game.wasNight ? 1 : 0, b ? [b.x | 0, b.y | 0, r3(b.hp / b.maxHp), b.phase || 1, r2(b.armor || 0), b.hidden ? 1 : 0, game.arena ? game.arena.x | 0 : 0, game.arena ? game.arena.y | 0 : 0, b.state === 'b_rec' ? 1 : 0] : 0, game.over || 0];
   const P = players.map(snapPlayer), O = world.pois.map(o => [o.used ? 1 : 0, o.uses || 0, r2(o.unseal || 0)]);
   for (const c of net.conns) {
     const cp = players.find(p => p.id === c.pid); if (!cp || !c.inGame) continue;
@@ -1189,6 +1200,7 @@ function sendSnaps() {
       t: 's', g, P, O,
       E: enemies.filter(e => !e.dead && nr(e)).map(e => [e.id, ETN.indexOf(e.type), e.x | 0, e.y | 0, r1(e.r), r3(Math.max(0, e.hp / e.maxHp)), e.elite ? 1 : 0, STN.indexOf(e.state), r2(e.a), e.flash > 0 ? 1 : 0, e.slowT > 0 ? 1 : 0, e.poisT > 0 ? 1 : 0, e.dir || 1, e.rootT > 0 ? 1 : 0, e.tid || 0]),
       Q: projs.filter(nr).map(q => [q.x | 0, q.y | 0, q.vx | 0, q.vy | 0, q.r, q.kind, q.color, r2(q.life)]),
+      X: hazards.filter(h => Math.abs(h.x - cp.x) < 1700 && Math.abs(h.y - cp.y) < 1400 || h.k === 'tsunami' || h.k === 'wall' || h.k === 'beam').map(hzSnap),
       Z: zones.filter(nr).map(z => [z.x | 0, z.y | 0, z.r | 0, z.kind, r2(Math.max(0, z.delay || 0)), r2(z.max), r2(z.life || 0), z.friendly ? 1 : 0, z.lantern ? 1 : 0, z.color, z.vx | 0, z.vy | 0]),
       K: pickups.filter(nr).map(k => [k.id, k.kind, k.x | 0, k.y | 0]),
       ev: evQ.filter(e => (!e.to || e.to === c.pid) && (e.x === undefined || Math.hypot(e.x - cp.x, e.y - cp.y) < 1200)).map(e => ({ k: e.k, a: e.a })),
@@ -1241,7 +1253,9 @@ function clientRecv(d) {
 }
 function applySnap(s) {
   const g = s.g; game.time = g[0]; game.chapter = g[1]; game.wasNight = !!g[2];
-  game.boss = g[3] ? { x: g[3][0], y: g[3][1], hp: g[3][2], maxHp: 1 } : null;
+  game.boss = g[3] ? { x: g[3][0], y: g[3][1], hp: g[3][2], maxHp: 1, phase: g[3][3], armor: g[3][4], hidden: !!g[3][5], vuln: !!g[3][8] } : null;
+  game.arena = g[3] ? { x: g[3][6], y: g[3][7] } : null;
+  hazards = (s.X || []).map(hzFromSnap);
   if ((g[4] || null) !== game.over) { game.over = g[4] || null; if (game.over) showEnd(); else hide(); }
   players = players.filter(p => s.P.some(q => q.id === p.id));
   for (const q of s.P) {
@@ -1277,7 +1291,7 @@ function clientUpdate(dt) {
     if (!p.flurry) {
       if (inp.dash && p.dashes > 0 && p.dashT <= 0 && !(HEROES[p.hero].alt && slotBlock(p, 2))) { p.dashes--; p.dashLock = 0.4; const a = dashDir(p, inp); startDashMove(p, a); o.d = r2(a); }
       if (p.dashT > 0) { p.dashT -= dt; p.x += Math.cos(p.dashA) * 920 * dt; p.y += Math.sin(p.dashA) * 920 * dt; trail(p); } else walk(p, inp, dt);
-      collideWorld(p, p.r);
+      bossLocalMove(p, dt); collideWorld(p, p.r);
     }
     if (inp.skill) { o.r = 1; net.skillHold = 0.2; } if (inp.ult) o.q = 1; if (inp.interact) o.i = 1;
   }
@@ -1291,6 +1305,7 @@ function clientUpdate(dt) {
     else if (z.kind !== 'blast') { z.life -= dt; z.x += (z.vx || 0) * dt; z.y += (z.vy || 0) * dt; }
   }
   for (const q of pickups) { q.x += (q.tx - q.x) * k; q.y += (q.ty - q.y) * k; q.t += dt; }
+  updHazards(dt, false); // keep warnings and moving hazards smooth between snapshots
   updFx(dt);
   net.inT -= dt; net.skillHold = (net.skillHold || 0) - dt;
   if (net.inT <= 0 && net.host) {
@@ -1362,6 +1377,7 @@ function render() {
     else if (z.kind === 'burn') { const a = Math.min(1, z.life / 0.5); c.globalAlpha = 0.28 * a; circ(c, z.x, z.y, z.r, z.color); c.globalAlpha = 0.7 * a; c.strokeStyle = z.color; c.lineWidth = 2; c.beginPath(); c.arc(z.x, z.y, z.r, 0, TAU); c.stroke(); c.globalAlpha = 1; if (z.lantern) { circ(c, z.x, z.y - 8, 7, '#fff1c2'); c.fillStyle = '#4a3a2a'; c.fillRect(z.x - 6, z.y - 18, 12, 3); c.fillRect(z.x - 6, z.y - 1, 12, 3); } }
     else { const k = 1 - clamp(z.delay / z.max, 0, 1), col = z.friendly ? '255,140,60' : '220,60,255'; c.fillStyle = 'rgba(' + col + ',.16)'; c.beginPath(); c.arc(z.x, z.y, z.r, 0, TAU); c.fill(); c.fillStyle = 'rgba(' + col + ',.35)'; c.beginPath(); c.arc(z.x, z.y, z.r * k, 0, TAU); c.fill(); c.strokeStyle = 'rgba(' + col + ',.9)'; c.lineWidth = 2; c.beginPath(); c.arc(z.x, z.y, z.r, 0, TAU); c.stroke(); }
   }
+  drawArena(c); drawHazards(c); // boss arena outline, warnings and active hazards
   for (const k of pickups) if (inView(k)) drawPickup(k);
   const list = [];
   for (const o of world.pois) if (inView(o, 120)) list.push([o.y, 0, o]);
@@ -1488,9 +1504,9 @@ function drawHUD() {
   const mxp = cx + cw * clamp(game.time / TOTAL, 0, 1); c.fillStyle = '#fff'; c.beginPath(); c.moveTo(mxp, cy + 10); c.lineTo(mxp - 6, cy + 19); c.lineTo(mxp + 6, cy + 19); c.fill(); c.fillRect(mxp - 1, cy - 3, 2, 14);
   c.textAlign = 'center'; c.font = '14px Georgia';
   const ct = game.time % CYCLE, isN = ct >= DAY;
-  if (game.boss) { c.fillStyle = '#ff8ae0'; c.fillText(T('The Gloam Stag hunts you'), W / 2, cy + 36); }
-  else { c.fillStyle = isN ? '#b6b6ff' : '#f3d48a'; c.fillText(LANG === 'zh' ? '第 ' + (dayIdx() + 1) + (isN ? ' 夜 · ' + fmtTime(CYCLE - ct) + ' 後黎明' : ' 天 · ' + fmtTime(DAY - ct) + ' 後入夜') + '   —   雄鹿將於 ' + fmtTime(TOTAL - game.time) + ' 後甦醒'
-    : (isN ? 'Night ' : 'Day ') + (dayIdx() + 1) + ' · ' + (isN ? 'dawn in ' + fmtTime(CYCLE - ct) : 'dusk in ' + fmtTime(DAY - ct)) + '   —   the Stag wakes in ' + fmtTime(TOTAL - game.time), W / 2, cy + 36); }
+  if (game.boss) { c.fillStyle = '#ff8ae0'; c.fillText(L(bossCfg(game.chapter).name + ' hunts you', T(bossCfg(game.chapter).name) + '正在獵殺你'), W / 2, cy + 36); }
+  else { c.fillStyle = isN ? '#b6b6ff' : '#f3d48a'; c.fillText(LANG === 'zh' ? '第 ' + (dayIdx() + 1) + (isN ? ' 夜 · ' + fmtTime(CYCLE - ct) + ' 後黎明' : ' 天 · ' + fmtTime(DAY - ct) + ' 後入夜') + '   —   ' + T(bossCfg(game.chapter).name) + '將於 ' + fmtTime(TOTAL - game.time) + ' 後甦醒'
+    : (isN ? 'Night ' : 'Day ') + (dayIdx() + 1) + ' · ' + (isN ? 'dawn in ' + fmtTime(CYCLE - ct) : 'dusk in ' + fmtTime(DAY - ct)) + '   —   ' + bossCfg(game.chapter).name + ' wakes in ' + fmtTime(TOTAL - game.time), W / 2, cy + 36); }
   c.textAlign = 'left'; c.font = '13px Georgia'; c.fillStyle = '#a9a3c4'; c.fillText(T('Chapter ' + game.chapter) + '/' + CHAPTERS + ' · ' + T(world.pal.name) + ' · ' + T(DIFF(game.diff).name), 20, 28); c.fillText(L('Slain: ', '擊殺：') + p.kills, 20, 46);
   // party
   let py = TU ? (W < 760 ? 220 : 176) : 70;
@@ -1502,7 +1518,19 @@ function drawHUD() {
     if (q.down) { c.fillStyle = '#ff8a8a'; c.textAlign = 'right'; c.fillText(T('DOWN'), 196, py); c.textAlign = 'left'; }
     py += 42;
   }
-  if (game.boss) { const e = game.boss, w = Math.max(150, Math.min(620, W - (TU ? 560 : 80))), x = W / 2 - w / 2, y = TU && W < 700 ? 140 : 92; c.fillStyle = 'rgba(8,8,16,.8)'; rr(c, x - 4, y - 4, w + 8, 22, 5); c.fill(); c.fillStyle = e.hp < e.maxHp * 0.5 ? '#ff5ad6' : '#a66bff'; rr(c, x, y, Math.max(6, w * clamp(e.hp / e.maxHp, 0, 1)), 14, 4); c.fill(); }
+  if (game.boss) {
+    const e = game.boss, C = bossCfg(game.chapter), w = Math.max(150, Math.min(620, W - (TU ? 560 : 80))), x = W / 2 - w / 2, y = TU && W < 700 ? 140 : 92, f = clamp(e.hp / e.maxHp, 0, 1);
+    c.fillStyle = 'rgba(8,8,16,.8)'; rr(c, x - 4, y - 18, w + 8, 36, 5); c.fill();
+    c.fillStyle = e.phase === 2 ? '#ff5ad6' : C.color; rr(c, x, y, Math.max(6, w * f), 14, 4); c.fill();
+    c.fillStyle = 'rgba(255,255,255,.5)'; c.fillRect(x + w * BOSS_PHASE2 - 1, y - 2, 2, 18); // phase 2 threshold
+    if (e.armor > 0) { c.fillStyle = 'rgba(200,220,255,.35)'; rr(c, x, y, Math.max(6, w * f), 5, 2); c.fill(); }
+    c.font = 'bold 12px Georgia'; c.textAlign = 'left'; c.fillStyle = '#f3d48a'; c.fillText(T(C.name) + ' · ' + T(C.title), x, y - 5);
+    c.textAlign = 'right'; c.fillStyle = e.vuln ? '#ffe07a' : '#d8d2ee';
+    c.fillText((e.vuln ? T('VULNERABLE') + ' · ' : e.armor > 0 ? T('Armor') + ' ' + Math.round(e.armor * 100) + '% · ' : '') + T('Phase') + ' ' + (e.phase || 1) + '/2', x + w, y - 5); c.textAlign = 'left';
+    // arena-wide warnings always show on screen, under the health bar
+    const ts = hazards.find(h => h.k === 'tsunami' && h.tel > 0);
+    if (ts) { const k = 0.5 + 0.5 * Math.sin(game.t * 10); c.textAlign = 'center'; c.font = 'bold 20px Georgia'; c.fillStyle = 'rgba(0,0,0,.65)'; c.fillText(T('Reach a raised platform!') + ' ' + ts.tel.toFixed(1), W / 2 + 1, y + 41); c.fillStyle = 'rgba(' + (180 + 60 * k | 0) + ',240,255,1)'; c.fillText(T('Reach a raised platform!') + ' ' + ts.tel.toFixed(1), W / 2, y + 40); c.textAlign = 'left'; }
+  }
   const ms = TU ? 112 : 160, mx = W - ms - 18, my = 18, k = ms / world.S;
   c.fillStyle = 'rgba(8,8,16,.75)'; rr(c, mx - 4, my - 4, ms + 8, ms + 8, 6); c.fill(); c.fillStyle = world.pal.base; c.globalAlpha = 0.6; c.fillRect(mx, my, ms, ms); c.globalAlpha = 1;
   const colr = { altar: '#c27bff', spring: '#4fb6e8', chest: '#f3c84a', shrine: '#e8e2d0', merchant: '#ff8a8a', camp: '#ff8a3a' };
@@ -1531,9 +1559,10 @@ function drawTouchUI() {
   const info = { skill: [b1 || 'SKILL', p.tSkill, p.cds[1], !b1], dash: [b2 || (alt ? 'SKILL 2' : 'DASH') + (p.dashMax > 1 ? ' ' + p.dashes : ''), p.dashes > 0 ? 0 : p.dashRe, p.cds[2], !b2], ult: [p.level >= 3 ? 'ULT' : 'Lv 3', p.tUlt, p.cds[3], p.level >= 3], f: ['USE', 0, 0, use],
     menu: [net.mode === 'solo' ? 'II' : '🎙', 0, 0, true], fs: ['⛶', 0, 0, true], auto: [autoAtk ? 'AUTO ✓' : 'AUTO', 0, 0, autoAtk], talk: [Voice.transmitting() ? '● ' + T('TALK') : T('TALK'), 0, 0, true] };
   c.textAlign = 'center'; c.textBaseline = 'middle';
+  const warnUp = hazards.some(h => h.tel > 0);
   for (const b of touchButtons()) {
     const [label, t, cd, on] = info[b.id], ready = on && t <= 0;
-    c.globalAlpha = on ? 0.9 : 0.35; circ(c, b.x, b.y, b.r, 'rgba(8,8,16,.62)');
+    c.globalAlpha = (on ? 0.9 : 0.35) * (warnUp ? 0.55 : 1); circ(c, b.x, b.y, b.r, 'rgba(8,8,16,.62)');
     if (t > 0 && cd > 0.5) { c.fillStyle = 'rgba(120,110,170,.5)'; c.beginPath(); c.moveTo(b.x, b.y); c.arc(b.x, b.y, b.r, -Math.PI / 2, -Math.PI / 2 + TAU * clamp(t / cd, 0, 1)); c.fill(); }
     if (b.id === 'auto') c.globalAlpha = autoAtk ? 0.95 : 0.6;
     c.strokeStyle = ready ? (b.id === 'f' || b.id === 'auto' ? '#f3d48a' : col) : '#4a4370'; c.lineWidth = 2.5; c.beginPath(); c.arc(b.x, b.y, b.r, 0, TAU); c.stroke();
@@ -1633,7 +1662,7 @@ function selectHero(id) {
 function saveName() { const el = $('nm'); if (el) { net.name = el.value.trim().slice(0, 14); try { localStorage.setItem('duskbound-name', net.name); } catch (e) { } } }
 function showMenu(msg) {
   game.state = 'menu'; game.over = null; me = null; players = [];
-  show('<h1>DUSKBOUND</h1><div class="sub">' + L('Three days. Three nights. Then the Gloam Stag wakes.<br>Roam the wood alone or with up to three friends, and be ready when it comes for you.', '三個白晝，三個黑夜，然後幽暮雄鹿將會甦醒。<br>獨自或與最多三位朋友一同漫遊森林，在它找上你之前做好準備。') + '</div>' + heroCards(net.hero) +
+  show('<h1>DUSKBOUND</h1><div class="sub">' + L('Three days. Three nights. Then the guardian of each land wakes.<br>Roam the wood alone or with up to three friends, and be ready when it comes for you.', '三個白晝，三個黑夜，然後每片土地的守護者將會甦醒。<br>獨自或與最多三位朋友一同漫遊森林，在它找上你之前做好準備。') + '</div>' + heroCards(net.hero) +
     '<div class="row"><input id="nm" maxlength="14" placeholder="' + L('Your name', '你的名字') + '" value="' + esc(net.name) + '"><button id="solo">' + L('Play solo', '單人遊玩') + '</button><button id="hostb">' + L('Host co-op', '開設合作房') + '</button><span class="sep"></span><input id="code" maxlength="5" placeholder="' + L('CODE', '代碼') + '" autocomplete="off" value="' + esc(lastRoom()) + '"><button id="joinb">' + L('Join', '加入') + '</button></div>' +
     '<div class="row">' + diffSelect('diffsel', d => PROFILE.unlocked.includes(d)) + '<button id="profb" class="ghost">' + L('Profile', '個人檔案') + '</button></div>' +
     '<div id="msg">' + esc(T(msg) || '') + '</div>' + controlsHtml() + '<button id="lang" class="ghost langbtn">' + (LANG === 'zh' ? '🌐 English' : '🌐 繁體中文') + '</button>' + fsButtonHtml());
@@ -1744,8 +1773,8 @@ function showEnd() {
   const rw = game.rewards ? '<div class="stats"><b>' + L('Chapter reward', '章節獎勵') + '</b><br>' + game.rewards.map(r => esc(r.name) + ' — ' + (r.rarity ? '<span style="color:' + RARITY_COLORS[r.rarity] + '">' + T(RARITY_NAMES[r.rarity]) + '</span> · ' + esc(T(itemLabel(r.item))) : L('No reward', '沒有獎勵'))).join('<br>') + '</div>' : '';
   const guest = net.mode === 'client', wait = '<div class="wait">' + L('Waiting for the host…', '等待房主…') + '</div><button id="leave" class="ghost">' + L('Leave party', '離開隊伍') + '</button>';
   if (game.over === 'dead') show('<h2>' + L('The dusk takes you', '你被暮色吞沒') + '</h2><div class="sub">' + L('The wood closes over another lantern.', '森林又吞沒了一盞燈火。') + '</div>' + st + rw + (guest ? wait : '<button id="again">' + (net.mode === 'host' ? L('Back to the lobby', '回到大廳') : L('Try again', '再試一次')) + '</button>'), true);
-  else if (game.over === 'win') show('<h2>' + L('The Stag falls', '雄鹿倒下了') + '</h2><div class="sub">' + L('…but its shadow runs ahead of you, deeper in. ' + PAL[game.chapter % PAL.length].name + ' awaits, and everything there is stronger.', '…但它的影子已先一步奔向更深處。' + T(PAL[game.chapter % PAL.length].name) + '在等著你，那裡的一切都更加強大。') + '</div>' + st + rw + (guest ? wait : '<button id="next">' + L('Press on', '繼續前進') + '</button>'), true);
-  else show('<h1>' + L('DAWN', '黎明') + '</h1><div class="sub">' + L('The last Gloam Stag is ash on the wind. For the first time in an age, morning comes and stays.', '最後一頭幽暮雄鹿化為風中灰燼。漫長歲月以來，晨光第一次降臨並且留了下來。') + '</div>' + st + rw + (guest ? wait : '<button id="again">' + (net.mode === 'host' ? L('Back to the lobby', '回到大廳') : L('Play again', '再玩一次')) + '</button>'));
+  else if (game.over === 'win') show('<h2>' + L(bossCfg(game.chapter).name + ' falls', T(bossCfg(game.chapter).name) + '倒下了') + '</h2><div class="sub">' + L('The path runs deeper. ' + PAL[game.chapter % PAL.length].name + ' awaits — and ' + bossCfg(game.chapter + 1).name + ', who is stronger still.', '道路通往更深處。' + T(PAL[game.chapter % PAL.length].name) + '在等著你，還有更加強大的' + T(bossCfg(game.chapter + 1).name) + '。') + '</div>' + st + rw + (guest ? wait : '<button id="next">' + L('Press on', '繼續前進') + '</button>'), true);
+  else show('<h1>' + L('DAWN', '黎明') + '</h1><div class="sub">' + L('Nezha lowers his spear: the divine trial is won. For the first time in an age, morning comes and stays.', '哪吒放下火尖槍：神之試煉已經通過。漫長歲月以來，晨光第一次降臨並且留了下來。') + '</div>' + st + rw + (guest ? wait : '<button id="again">' + (net.mode === 'host' ? L('Back to the lobby', '回到大廳') : L('Play again', '再玩一次')) + '</button>'));
   if ($('again')) $('again').onclick = endRun;
   if ($('next')) $('next').onclick = nextChapter;
   if ($('leave')) $('leave').onclick = () => { leaveNet(); showMenu(); };

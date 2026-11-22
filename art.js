@@ -68,6 +68,8 @@ function drawHero(c, id, x, y, face, t, o = {}) {
   c.restore();
 }
 function drawEnemy(e) {
+  if (e.type === 'boss') return drawBossBody(ctx, e); // chapter bosses (bosses.js)
+  if (SUMMONS.has(e.type)) return drawSummon(ctx, e);
   const c = ctx, r = e.r, t = game.t + e.ph, fl = e.dir || 1;
   c.save(); c.translate(e.x, e.y);
   ell(c, 0, r * 0.8, r, r * 0.38, 'rgba(0,0,0,.3)');

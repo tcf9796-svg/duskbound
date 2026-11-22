@@ -37,6 +37,8 @@ node tests/e2e/auto.test.js
 node tests/e2e/unseal.test.js
 node tests/e2e/downed.test.js
 node tests/e2e/touchmode.test.js
+node tests/e2e/bosses.test.js
+node tests/e2e/bosses-coop.test.js
 ```
 
 When changing any `.js` file: bump `?v=N` on every script tag in `index.html`, rebuild `dist/`, run the tests.
@@ -47,20 +49,24 @@ page by republishing `dist/artifact.html` to the URL above.
 
 - Phones first: landscape layout, safe areas (notch), touch controls, iPhone Safari quirks (audio session switches
   to `play-and-record` only while the mic is on; menus are sticky so a swipe hides Safari's bars).
-- Host is authoritative. Rewards: one roll per player per chapter (green 30 / blue 10 / purple 5 / yellow 2.5 /
-  red 1 / none 51.5 %), claims keyed `run:chapter:profile`, never rerolled.
+- Host is authoritative. Rewards: one roll per player per chapter (green 45 / blue 30 / purple 15 / yellow 7 /
+  red 3 %, no "no reward"), claims keyed `run:chapter:profile`, never rerolled; boss phases and summons never roll.
 - Difficulty: Normal → Nightmare → Hell → Inferno; a five-chapter clear unlocks only the next; a party may only
   play a difficulty every member has unlocked.
 - Profiles use a random installation id (no device id exists on the web); rejoin needs the host's per-session
   secret plus the same profile; no host migration.
-- Chapters 4–5 are placeholders (new palettes, existing enemies/boss).
+- Chapter bosses (`bosses.js`, balance in `BOSSES`): Elderoot (original tree guardian, not Marvel's Groot), Poseidon,
+  Gorath, Raivolt, Nezha, getting harder in that order. Telegraph every damaging attack (>= 0.4 s), keep safe gaps,
+  apply difficulty and party scaling once and no chapter multiplier, keep every boss beatable solo with the starting
+  heroes. Host runs the boss; guests apply pull/cage/slow locally. See DESIGN.md "Chapter bosses".
+- Chapters 4–5 biomes are placeholders (palettes only).
 - Six heroes: Bramble, Wick, Vesper (everyone has them) and the unlockable Rowan (Green), Mira (Blue), Vespera
   (Purple). They are character rewards inside the one chapter roll (`c:<id>` in `REWARD_POOLS`), winnable from
   Chapter 1 / 2 / 3; there is no separate character roll. Unlocks live in the profile (`PROFILE.characters`); the
   host only lets a guest play a hero their profile owns. Rowan and Vespera cast a second skill from the dash slot.
 - The boss is unsealed early by standing in the altar ring for `UNSEAL_TIME` (5 s, `data.js`), not by pressing F;
   any living player counts, the host keeps the time, progress drains when the ring is empty.
-- Network messages changed: `PEER_PREFIX` is `duskbound-v4-`. Bump it whenever messages change.
+- Network messages changed: `PEER_PREFIX` is `duskbound-v5-`. Bump it whenever messages change.
 - Work happens on a branch, then a pull request into `main`. Pull before starting, so PC and phone sessions don't
   drift apart again.
 - Every user-facing string needs a Traditional Chinese version.

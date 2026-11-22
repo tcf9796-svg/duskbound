@@ -12,7 +12,7 @@ const { launch, checker } = require('./harness');
   // F next to the altar no longer summons the boss
   await A.evaluate(() => { const a = world.pois[0]; me.x = a.x + 70; me.y = a.y; }); await A.keyboard.press('f'); await A.waitForTimeout(300);
   ok(!(await alt()).boss, 'pressing F at the altar does nothing now');
-  ok(await A.evaluate(() => poiPrompt(world.pois[0])) === 'Stand in the ring for 5 s to unseal the Gloam Stag', 'prompt explains the ring');
+  ok(await A.evaluate(() => poiPrompt(world.pois[0])) === 'Stand in the ring for 5 s to unseal Elderoot', 'prompt explains the ring (names this chapter’s boss)');
   // stand in the ring 2.5 s, step out: progress drains, no boss
   await A.evaluate(() => { const a = world.pois[0]; me.x = me.tx = a.x; me.y = me.ty = a.y + 10; });
   await A.waitForTimeout(2500); let s = await alt();
@@ -27,7 +27,7 @@ const { launch, checker } = require('./harness');
   await A.waitForTimeout(4000); ok(!(await alt()).boss, '4 s: still sealed');
   await A.waitForTimeout(1600); s = await alt();
   ok(s.boss && s.used, '5 s in the ring: the Gloam Stag is unsealed');
-  ok(await A.evaluate(() => game.banner && game.banner.text) === 'THE GLOAM STAG', 'boss banner shown');
+  ok(await A.evaluate(() => game.banner && game.banner.text) === 'Elderoot', 'boss intro banner shown');
   ok(await A.evaluate(() => poiPrompt(world.pois[0])) === null, 'altar spent afterwards');
   // co-op: the guest stands in the ring
   const Ho = await H.player('Hal'), G = await H.player('Gus');
@@ -41,7 +41,7 @@ const { launch, checker } = require('./harness');
   ok(await G.evaluate(() => !!game.boss) && await Ho.evaluate(() => !!game.boss), 'co-op: the Stag is unsealed for everyone');
   // Chinese
   await G.evaluate(() => setLang('zh'));
-  ok(await G.evaluate(() => T('Stand in the ring for 5 s to unseal the Gloam Stag') === '站在法陣中 5 秒即可解封幽暮雄鹿' && T('Unsealing') === '解封中'), 'Traditional Chinese');
+  ok(await G.evaluate(() => T('Stand in the ring for 5 s to unseal Elderoot') === '站在法陣中 5 秒即可解封古根' && T('Unsealing') === '解封中'), 'Traditional Chinese');
   const errs = H.pages.flatMap(p => p.errors || []); ok(errs.length === 0, 'no page errors ' + JSON.stringify(errs));
   await H.close(); process.exit(ok.done() ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });

@@ -56,7 +56,11 @@ const ET = {
   ram: { r: 18, hp: 62, spd: 74, dmg: 16, xp: 10 },
   bloat: { r: 16, hp: 28, spd: 128, dmg: 22, xp: 7 },
   wisp: { r: 9, hp: 10, spd: 172, dmg: 5, xp: 2 },
-  boss: { r: 46, hp: 1500, spd: 120, dmg: 24, xp: 150 }
+  boss: { r: 46, hp: 1500, spd: 120, dmg: 24, xp: 150 }, // chapter bosses override these (bosses.js BOSSES)
+  // boss arena objects (bosses.js): health and damage are set when they appear
+  sapling: { r: 14, hp: 1, spd: 0, dmg: 0, xp: 0 }, orb: { r: 18, hp: 1, spd: 0, dmg: 0, xp: 0 }, vcore: { r: 16, hp: 1, spd: 0, dmg: 0, xp: 0 },
+  pillar: { r: 18, hp: 1, spd: 0, dmg: 0, xp: 0 }, split: { r: 26, hp: 1, spd: 110, dmg: 0, xp: 0 }, mask: { r: 20, hp: 1, spd: 0, dmg: 0, xp: 0 },
+  cage: { r: 24, hp: 1, spd: 0, dmg: 0, xp: 0 }, bind: { r: 20, hp: 1, spd: 0, dmg: 0, xp: 0 }, rod: { r: 10, hp: 1, spd: 0, dmg: 0, xp: 0 }, brazier: { r: 18, hp: 1, spd: 0, dmg: 0, xp: 0 }
 };
 const TALENTS = [
   { id: 'keen', name: 'Keen Edge', desc: '+15% damage.', max: 5, f: p => p.dmgMul += 0.15 },
@@ -98,8 +102,8 @@ const PAL = [
   { name: 'The Drowned Mire', base: '#27404a', spk: ['#31525a', '#1f343c', '#3f6a66'], tree: ['#1f3040', '#2c4c5a', '#467478'], rock: '#5a5f73' },
   { name: 'The Ashen Reach', base: '#43322f', spk: ['#54403a', '#352624', '#6a4a3c'], tree: ['#251a1a', '#472823', '#70392a'], rock: '#7a6c62' },
   // Chapters 4-5: PLACEHOLDER biomes. New palettes only; they reuse the existing enemies and the Gloam Stag boss.
-  { name: 'The Frostfen', placeholder: true, base: '#2c3d4a', spk: ['#3a5060', '#22323d', '#4a6676'], tree: ['#1c2c38', '#2e4656', '#48687a'], rock: '#8a96a3' },
-  { name: 'The Hollow Crown', placeholder: true, base: '#3a2c40', spk: ['#4a3852', '#2a2030', '#5c4466'], tree: ['#22172a', '#3c2848', '#5a3a6a'], rock: '#6e6478' }
+  { name: 'The Storm Heights', placeholder: true, base: '#2e3148', spk: ['#3b3f5c', '#232638', '#4b4f72'], tree: ['#1d2033', '#2f3350', '#4a4f78'], rock: '#8a8fa8' },
+  { name: 'The Ember Court', placeholder: true, base: '#46261f', spk: ['#5a3026', '#331a15', '#6e3a28'], tree: ['#2a1410', '#4a2218', '#7a3420'], rock: '#7a6258' }
 ];
 const DAY = 65, NIGHT = 45, CYCLE = DAY + NIGHT, DAYS = 3, TOTAL = CYCLE * DAYS;
 // Unsealing the boss early: a living player must stand inside the altar ring (UNSEAL_RADIUS) for UNSEAL_TIME seconds.

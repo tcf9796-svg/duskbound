@@ -9,19 +9,19 @@ let fails = 0, n = 0;
 const ok = (cond, msg) => { n++; if (!cond) { fails++; console.log('FAIL', msg); } };
 const store = () => { const d = {}; return { getItem: k => k in d ? d[k] : null, setItem: (k, v) => { d[k] = String(v); }, raw: d }; };
 
-// --- odds: total 100%, no-reward share is 51.5%
+// --- odds: total 100% (45/30/15/7/3), no 'no reward' share
 const { sum, none } = M.checkOdds();
-ok(sum === 4850 && none === 5150 && sum + none === 10000, 'odds total 10000 bp with 5150 bp for no reward');
+ok(sum === 10000 && none === 0, 'odds total exactly 10000 bp (100%), no "no reward" share');
 const pct = Object.fromEntries(M.REWARD_ODDS.map(([r, bp]) => [r, bp / 100]));
-ok(pct.green === 30 && pct.blue === 10 && pct.purple === 5 && pct.yellow === 2.5 && pct.red === 1, 'exact table 30/10/5/2.5/1');
+ok(pct.green === 45 && pct.blue === 30 && pct.purple === 15 && pct.yellow === 7 && pct.red === 3, 'exact table 45/30/15/7/3');
 // --- roll boundaries (one draw 0..9999)
-const B = [[0, 'green'], [2999, 'green'], [3000, 'blue'], [3999, 'blue'], [4000, 'purple'], [4499, 'purple'], [4500, 'yellow'], [4749, 'yellow'], [4750, 'red'], [4849, 'red'], [4850, null], [9999, null]];
+const B = [[0, 'green'], [4499, 'green'], [4500, 'blue'], [7499, 'blue'], [7500, 'purple'], [8999, 'purple'], [9000, 'yellow'], [9699, 'yellow'], [9700, 'red'], [9999, 'red']];
 for (const [x, want] of B) ok(M.rarityFor(x) === want, 'boundary ' + x + ' -> ' + want);
 // exhaustive count over every draw
 const count = {}; for (let x = 0; x < 10000; x++) { const r = M.rarityFor(x) || 'none'; count[r] = (count[r] || 0) + 1; }
-ok(count.green === 3000 && count.blue === 1000 && count.purple === 500 && count.yellow === 250 && count.red === 100 && count.none === 5150, 'exhaustive draw counts ' + JSON.stringify(count));
+ok(count.green === 4500 && count.blue === 3000 && count.purple === 1500 && count.yellow === 700 && count.red === 300 && !count.none, 'exhaustive draw counts ' + JSON.stringify(count));
 // rng edge: 0 and just under 1
-ok(M.rollRarity(() => 0) === 'green' && M.rollRarity(() => 0.9999999) === null, 'rng edges');
+ok(M.rollRarity(() => 0) === 'green' && M.rollRarity(() => 0.9999999) === 'red', 'rng edges');
 // --- one roll -> at most one item, from that rarity's pool
 const inv = { weapons: [], talents: {}, upgrades: {}, characters: [] };
 for (let i = 0; i < 2000; i++) {
@@ -32,7 +32,7 @@ for (let i = 0; i < 2000; i++) {
 }
 // owned items are skipped; fully owned pool falls back to an upgrade of the same rarity
 const own = { weapons: Object.keys(M.WEAPONS), talents: { step: 1, exec: 1 }, upgrades: {}, characters: [] };
-const y = M.rollReward(own, (() => { const s = [0.46, 0.5]; return () => s.shift(); })());
+const y = M.rollReward(own, (() => { const s = [0.95, 0.5]; return () => s.shift(); })());
 ok(y.rarity === 'yellow' && M.REWARD_FALLBACK.yellow.includes(y.item), 'yellow with everything owned -> fallback upgrade, got ' + JSON.stringify(y));
 // --- profiles survive restart; ids are stable
 const st = store(); const p1 = M.loadProfile(st); const p2 = M.loadProfile(st);

@@ -62,15 +62,19 @@ a single integer draw 0..9999 against `REWARD_ODDS` (basis points, mutually excl
 
 | Rarity | Odds | Draws |
 |---|---|---|
-| Green | 30% | 0–2999 |
-| Blue | 10% | 3000–3999 |
-| Purple | 5% | 4000–4499 |
-| Yellow | 2.5% | 4500–4749 |
-| Red | 1% | 4750–4849 |
-| No reward | 51.5% | 4850–9999 |
+| Green | 45% | 0–4499 |
+| Blue | 30% | 4500–7499 |
+| Purple | 15% | 7500–8999 |
+| Yellow | 7% | 9000–9699 |
+| Red | 3% | 9700–9999 |
+| No reward | 0% | — |
+
+(Changed from 30/10/5/2.5/1 with 51.5% no reward; the requested 50/30/15/7/3 totalled 105%, so Green was set to
+45% to make exactly 100% — every completion gives one reward. "No reward" stays supported in code at 0%.)
 
 Then one item is picked from that rarity's pool (`REWARD_POOLS`), skipping items the player already owns or has
-capped; if nothing is left, a same-rarity upgrade from `REWARD_FALLBACK` is given instead. "No reward" is final.
+capped; if nothing is left, a same-rarity upgrade from `REWARD_FALLBACK` is given instead. Boss difficulty never
+changes these odds, and boss phases, summons and other kills never trigger a roll — only completing the chapter.
 
 - **Per-player rolls:** the existing design had no chapter or party rewards (only in-run boons), so each player
   rolls separately.
@@ -98,10 +102,71 @@ reconnect to a host that is still running.
 
 ## Campaign: five chapters
 
-Chapters 1–3 are the original biomes. **Chapters 4–5 are placeholders:** new colour palettes ("The Frostfen",
-"The Hollow Crown", marked `placeholder: true` in `data.js`, shown as "Chapter N (preview)") that reuse the
-existing enemies and the Gloam Stag boss. Missing for them: unique enemy types, a new boss (or boss variants), map
-features, music and art.
+Chapters 1–3 are the original biomes. **Chapters 4–5 biomes are placeholders:** new colour palettes ("The Storm
+Heights", "The Ember Court", marked `placeholder: true` in `data.js`, shown as "Chapter N (preview)") with the existing
+roaming enemies. Each chapter now has its own boss (see "Chapter bosses"). Still missing for chapters 4–5: unique
+roaming enemy types, map features, music and art.
+
+## Chapter bosses
+
+`bosses.js`. One boss per chapter, run by the host (AI, damage, phases, victory); guests get the boss's phase,
+armour and visibility plus every nearby hazard in each snapshot (`X`), and apply pull / cage / slow effects to their
+own hero locally. Everything tunable is in `BOSSES` at the top of `bosses.js`.
+
+**Shared rules.** Every damaging attack is telegraphed first (dashed outline and a growing fill; it turns solid
+with a white edge when it deals damage) for at least 0.4 s; ring and wall attacks keep visible safe gaps; arena
+warnings (the tsunami) also show on screen under the health bar; touch buttons fade while a warning is up so it
+stays visible. After each attack the boss recovers (gold ring, "VULNERABLE", +25% damage taken). Phase 2 starts
+once, at 50% health, with a 1.6 s invulnerable transition. Summons and arena objects never drop loot or end the
+chapter; cages, bindings and whirlpool cores always expire. Hazards are capped at 60. On defeat (or restart /
+next chapter) all hazards, summons and projectiles are removed. No mechanic needs an unlockable hero or an
+element: cages break to any attack (including the trapped player's own), and the rest is positioning.
+
+**Scaling, applied once each.** Boss health = `hp` x difficulty `hp` x party scaling; damage = `dmg` x difficulty
+`dmg` x party scaling. The general chapter and time-of-day enemy multipliers are not applied to bosses — the boss
+table *is* the chapter tuning. Party size is fixed when the boss appears, so disconnects/rejoins never change or
+reset its health, and a rejoining player is sent the fight in progress (same boss, same health, no duplicate).
+
+**Balance (Normal, solo).** Sized against the heroes: 95–170 HP, roughly 30–40 damage per second at level 1,
+about 2–4x that by Chapters 1–5 from levels and boons. Targets: about 45–90 s fights for a solo player who dodges;
+big hits about a fifth of a hero's health.
+
+| Ch | Boss | HP | Base hit | Speed | Pause between attacks | Recovery |
+|---|---|---|---|---|---|---|
+| 1 | Elderoot, Guardian of the Forest (original design) | 2200 | 22 | 90 | 1.8–2.6 s | 1.8 s |
+| 2 | Poseidon, Sovereign of the Tides | 3400 | 26 | 105 | 1.6–2.3 s | 1.5 s |
+| 3 | Gorath, the Shifting Colossus | 4600 | 31 | 95 | 1.4–2.1 s | 1.4 s |
+| 4 | Raivolt, the Storm Sovereign | 6000 | 35 | 120 | 1.2–1.8 s | 1.1 s |
+| 5 | Nezha, the Blazing Lotus Prince | 8000 | 40 | 150 | 1.0–1.5 s | 1.3 s |
+
+Phase 2 shortens pauses to 75% and recoveries to 85%.
+
+1. **Elderoot** (the requested "Groot" is a Marvel character, so this is an original living-tree guardian with the
+   same design brief): Branch Hammer (slam, then expanding shockwaves with three gaps), Root Pursuit (roots run along
+   marked paths), Vine Prison (a breakable cage), Thorn Volley (marked fan of spikes). Phase 2 *Ancient Growth*:
+   bigger, bark armour 15% + 10% per sapling (max 50%); up to 4 saplings heal 1.2%/s each, capped at 20% of his
+   health per fight and 4 waves. Destroy saplings to stop the healing and strip the armour.
+2. **Poseidon**: Trident Breaker (three marked thrusts, then a widening wave), Tidal Crossing (walls of water from
+   alternating sides, each with a safe gap), Whirlpool Prison (pulls you in; destroy its core to end it), Ocean's
+   Judgment (raised platforms appear near every player 3.6 s before the tsunami; his armour collapses for 5 s after).
+   Water armour = 15% per tide orb (3 orbs, back every 28 s). Phase 2 *Avatar of the Deep* adds marked sea-horse charges.
+3. **Gorath**: Boulder Throw (marked landing spots), Seismic Slam (two sets of fissure lines), Colossus Charge
+   (marked line). 45% stone armour; bait a charge into a pillar to stun him and break the armour for 7 s (pillars come
+   back when fewer than 2 remain). Phase 2 *The Colossus Splits*: every 30 s he splits into three bodies; only the
+   one leaving a crystal trail is real, and hits on it land on Gorath; he re-forms after taking 15% damage or 18 s.
+4. **Raivolt**: Storm Sweep (three rotating beams, rotation shown by arrows), Lightning Mark (marked strikes;
+   standing next to a grounding rod protects you), Chain Lightning (jumps to anyone within 230 of the struck player —
+   spread out; solo it's a single dodgeable strike). Phase 2 *The Masks Take Flight*: three masks circle him and fire
+   marked beams (at most two at once); each mask adds 20% armour, and destroying one interrupts him.
+5. **Nezha**: Fire-Tipped Spear 火尖槍 (marked thrusts ending in a slam), Wind-Fire Wheels 風火輪 (a marked dash that
+   leaves burning trails — bait it into a lit stone brazier to stagger him; braziers relight after 15 s), Universe Ring
+   乾坤圈 (thrown out and back; both passes hit), Red Sash 混天綾 (a sweep that binds — break the binding), Blazing Lotus
+   (petals ignite in waves, one safe petal that moves each wave). Phase 2 *Lotus Ascension*: six spectral arms, longer
+   combos, spear finishers throw the ring too.
+
+**Placeholders.** Boss and arena-object art is simple original shapes drawn in code; no sprite art, animation sets or
+boss-specific music/sounds yet (they reuse the game's synthesized effects). Chapters 4–5 still use placeholder
+biomes (new palettes "The Storm Heights" and "The Ember Court", existing roaming enemies).
 
 ## Full screen
 
