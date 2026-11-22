@@ -65,7 +65,8 @@ addEventListener('keydown', e => {
 addEventListener('keyup', e => { const k = e.key.toLowerCase(); keys[k] = false; if (k === 'v') Voice.setTalking(false); });
 addEventListener('keydown', e => { if (e.key.toLowerCase() === 'v' && !(e.target && e.target.tagName === 'INPUT') && !e.repeat) Voice.setTalking(true); });
 cv.addEventListener('mousemove', e => { mouse.x = e.clientX; mouse.y = e.clientY; });
-cv.addEventListener('mousedown', e => { initAudio(); if (touch.on) { touch.on = false; touch.move = touch.aim = null; resize(); } if (e.button === 0) mouse.l = true; if (e.button === 2) { mouse.r = true; pressed.rmb = true; } });
+cv.addEventListener('mousedown', e => { initAudio();
+  if (!touch.on && e.button === 0 && hudAuto && e.clientX >= hudAuto.x && e.clientX <= hudAuto.x + hudAuto.w && e.clientY >= hudAuto.y && e.clientY <= hudAuto.y + hudAuto.h) { toggleAuto(); return; } if (touch.on) { touch.on = false; touch.move = touch.aim = null; resize(); } if (e.button === 0) mouse.l = true; if (e.button === 2) { mouse.r = true; pressed.rmb = true; } });
 addEventListener('mouseup', e => { if (e.button === 0) mouse.l = false; if (e.button === 2) mouse.r = false; });
 addEventListener('contextmenu', e => e.preventDefault());
 addEventListener('blur', () => { for (const k in keys) keys[k] = false; mouse.l = mouse.r = false; });
@@ -73,10 +74,23 @@ const mouseWorld = () => ({ x: cam.x + mouse.x / zoom, y: cam.y + mouse.y / zoom
 const touchU = () => clamp(Math.min(W - SA.l - SA.r, H - SA.t - SA.b) / 400, 0.8, 1.25);
 // HUD scale on phones, and the safe right/bottom edges the touch controls are laid out against.
 const hudScale = () => touch.on ? clamp(Math.min((W - SA.l - SA.r) / 900, (H - SA.t - SA.b) / 480), 0.7, 1) : 1;
+// Auto attack (local player only): while on, the normal attack fires by itself whenever an enemy is within AUTO_RANGE,
+// aimed at the nearest one, unless the player is aiming by hand (aim stick dragged / mouse held). Remembered per device.
+// It only sets this player's own input, so it works the same for the host, a guest and solo.
+const AUTO_RANGE = 460;
+let autoAtk = (() => { try { return localStorage.getItem('duskbound-auto') === '1'; } catch (e) { return false; } })();
+let hudAuto = null; // where the desktop AUTO box was drawn (screen pixels), for clicks
+function toggleAuto() {
+  autoAtk = !autoAtk; try { localStorage.setItem('duskbound-auto', autoAtk ? '1' : '0'); } catch (e) { }
+  if (me) texts.push({ x: me.x, y: me.y - 46, s: autoAtk ? 'Auto attack on' : 'Auto attack off', color: '#f3d48a', size: 14, life: 1.2 }); // local only
+  playSfx('pick');
+}
+function autoTarget(p) { let best = null, bd = AUTO_RANGE; for (const e of enemies) { if (e.dead) continue; const d = dist(e, p); if (d < bd) { bd = d; best = e; } } return best; }
 function touchButtons() {
   const u = touchU(), R = W - SA.r, B = H - Math.max(SA.b - 8, 0), hs = hudScale();
   return [{ id: 'skill', key: 'e', x: R - 205 * u, y: B - 62 * u, r: 30 * u }, { id: 'dash', key: ' ', x: R - 190 * u, y: B - 140 * u, r: 30 * u },
   { id: 'ult', key: 'q', x: R - 118 * u, y: B - 196 * u, r: 30 * u }, { id: 'f', key: 'f', x: R - 42 * u, y: B - 210 * u, r: 26 * u },
+  { id: 'auto', key: '', x: R - 272 * u, y: B - 112 * u, r: 24 * u },
   // left of the minimap: pause in solo, mute in co-op
   { id: 'menu', key: '', x: R - 156 * hs, y: SA.t + 38 * hs, r: 18 * hs }].concat(fsAvailable() && !isFS() && (canFS() || barsShowing()) ? [{ id: 'fs', key: '', x: R - 156 * hs, y: SA.t + 84 * hs, r: 18 * hs }] : []).concat(Voice.micTrack && Voice.mode === 'ptt' && net.mode !== 'solo' ? [{ id: 'talk', key: '', x: SA.l + 44 * u, y: B - 205 * u, r: 28 * u }] : []);
 }
@@ -92,7 +106,7 @@ cv.addEventListener('touchstart', e => {
   e.preventDefault(); initAudio(); if (!touch.on) { touch.on = true; resize(); }
   for (const t of e.changedTouches) {
     const x = t.clientX, y = t.clientY, b = touchButtons().find(b => Math.hypot(x - b.x, y - b.y) < b.r * 1.25);
-    if (b) { if (b.id === 'menu') touchMenu(); else if (b.id === 'talk') { touch.talk = t.identifier; Voice.setTalking(true); } else if (b.id === 'fs') touch.fs = t.identifier; else pressed[b.key] = true; }
+    if (b) { if (b.id === 'menu') touchMenu(); else if (b.id === 'talk') { touch.talk = t.identifier; Voice.setTalking(true); } else if (b.id === 'fs') touch.fs = t.identifier; else if (b.id === 'auto') toggleAuto(); else pressed[b.key] = true; }
     else if (x < W * 0.45) { if (!touch.move) touch.move = { id: t.identifier, x0: x, y0: y, x, y }; }
     else if (!touch.aim) touch.aim = { id: t.identifier, x0: x, y0: y, x, y };
   }
@@ -116,13 +130,14 @@ function touchInput() {
     if (best) { touch.aimA = angTo(p, best); aim = { x: best.x, y: best.y }; }
     else { if (mx || my) touch.aimA = Math.atan2(my, mx); aim = { x: p.x + Math.cos(touch.aimA) * 200, y: p.y + Math.sin(touch.aimA) * 200 }; }
   }
-  return { mx, my, l: !!s, skill: !!pressed.e, dash: !!pressed[' '], ult: !!pressed.q, interact: !!pressed.f, aim };
+  return { mx, my, l: !!s || (autoAtk && !!autoTarget(p)), skill: !!pressed.e, dash: !!pressed[' '], ult: !!pressed.q, interact: !!pressed.f, aim };
 }
 function localInput() {
   if (touch.on && me) return touchInput();
   let mx = (keys.d || keys.arrowright ? 1 : 0) - (keys.a || keys.arrowleft ? 1 : 0), my = (keys.s || keys.arrowdown ? 1 : 0) - (keys.w || keys.arrowup ? 1 : 0);
   const ml = Math.hypot(mx, my); if (ml) { mx /= ml; my /= ml; }
-  return { mx, my, l: mouse.l, skill: !!(pressed.rmb || pressed.e || mouse.r), dash: !!pressed[' '], ult: !!pressed.q, interact: !!pressed.f, aim: mouseWorld() };
+  const tgt = autoAtk && me && !mouse.l ? autoTarget(me) : null;
+  return { mx, my, l: mouse.l || !!tgt, skill: !!(pressed.rmb || pressed.e || mouse.r), dash: !!pressed[' '], ult: !!pressed.q, interact: !!pressed.f, aim: tgt ? { x: tgt.x, y: tgt.y } : mouseWorld() };
 }
 
 // ---------- state ----------
@@ -1397,6 +1412,15 @@ function drawHUD() {
     if (a[2] > 0.5 && a[3] > 0.5) { c.font = '12px Georgia'; c.fillStyle = '#f3d48a'; c.fillText(a[2].toFixed(0), x + s / 2, ay + s / 2 + 17); }
     c.font = '11px Georgia'; c.fillStyle = '#b9b3d4'; c.fillText(a[1], x + s / 2, ay + s + 14);
   });
+  hudAuto = null;
+  if (!TU) {
+    const x = ax + 4 * (s + gap); c.fillStyle = autoAtk ? 'rgba(60,48,20,.85)' : 'rgba(8,8,16,.8)'; rr(c, x, ay, s, s, 8); c.fill();
+    c.strokeStyle = autoAtk ? '#f3d48a' : '#4a4370'; c.lineWidth = 2; rr(c, x, ay, s, s, 8); c.stroke();
+    c.textAlign = 'center'; c.font = 'bold 13px Georgia'; c.fillStyle = autoAtk ? '#f3d48a' : '#8a84a8'; c.fillText(T('AUTO'), x + s / 2, ay + s / 2 - 2);
+    c.font = '11px Georgia'; c.fillText(autoAtk ? T('on') + ' · R' : T('off') + ' · R', x + s / 2, ay + s / 2 + 14);
+    c.fillStyle = '#b9b3d4'; c.fillText(T('Auto attack'), x + s / 2, ay + s + 14);
+    hudAuto = { x: SA.l + x * hs, y: SA.t + ay * hs, w: s * hs, h: s * hs };
+  }
   const cw = Math.min(460, W - 380), cx = W / 2 - cw / 2, cy = 22;
   c.fillStyle = 'rgba(8,8,16,.75)'; rr(c, cx - 12, cy - 12, cw + 24, 58, 8); c.fill();
   for (let i = 0; i < DAYS; i++) { const x0 = cx + cw * (i * CYCLE) / TOTAL, wd = cw * DAY / TOTAL, wn = cw * NIGHT / TOTAL; c.fillStyle = '#e0b75a'; c.fillRect(x0, cy, wd - 1, 8); c.fillStyle = '#4a4aa8'; c.fillRect(x0 + wd, cy, wn - 1, 8); }
@@ -1443,13 +1467,14 @@ function drawTouchUI() {
   const np = !p.down && nearPoi(p), use = !!(np && poiPrompt(np));
   const b1 = slotBlock(p, 1), alt = HEROES[p.hero].alt, b2 = alt ? slotBlock(p, 2) : null;
   const info = { skill: [b1 || 'SKILL', p.tSkill, p.cds[1], !b1], dash: [b2 || (alt ? 'SKILL 2' : 'DASH') + (p.dashMax > 1 ? ' ' + p.dashes : ''), p.dashes > 0 ? 0 : p.dashRe, p.cds[2], !b2], ult: [p.level >= 3 ? 'ULT' : 'Lv 3', p.tUlt, p.cds[3], p.level >= 3], f: ['USE', 0, 0, use],
-    menu: [net.mode === 'solo' ? 'II' : '🎙', 0, 0, true], fs: ['⛶', 0, 0, true], talk: [Voice.transmitting() ? '● ' + T('TALK') : T('TALK'), 0, 0, true] };
+    menu: [net.mode === 'solo' ? 'II' : '🎙', 0, 0, true], fs: ['⛶', 0, 0, true], auto: [autoAtk ? 'AUTO ✓' : 'AUTO', 0, 0, autoAtk], talk: [Voice.transmitting() ? '● ' + T('TALK') : T('TALK'), 0, 0, true] };
   c.textAlign = 'center'; c.textBaseline = 'middle';
   for (const b of touchButtons()) {
     const [label, t, cd, on] = info[b.id], ready = on && t <= 0;
     c.globalAlpha = on ? 0.9 : 0.35; circ(c, b.x, b.y, b.r, 'rgba(8,8,16,.62)');
     if (t > 0 && cd > 0.5) { c.fillStyle = 'rgba(120,110,170,.5)'; c.beginPath(); c.moveTo(b.x, b.y); c.arc(b.x, b.y, b.r, -Math.PI / 2, -Math.PI / 2 + TAU * clamp(t / cd, 0, 1)); c.fill(); }
-    c.strokeStyle = ready ? (b.id === 'f' ? '#f3d48a' : col) : '#4a4370'; c.lineWidth = 2.5; c.beginPath(); c.arc(b.x, b.y, b.r, 0, TAU); c.stroke();
+    if (b.id === 'auto') c.globalAlpha = autoAtk ? 0.95 : 0.6;
+    c.strokeStyle = ready ? (b.id === 'f' || b.id === 'auto' ? '#f3d48a' : col) : '#4a4370'; c.lineWidth = 2.5; c.beginPath(); c.arc(b.x, b.y, b.r, 0, TAU); c.stroke();
     c.font = 'bold ' + Math.round(11 * u) + 'px Georgia'; c.fillStyle = ready ? '#fff' : '#8a84a8'; c.fillText(t > 0.5 && cd > 0.5 ? Math.ceil(t) : T(label), b.x, b.y);
   }
   c.globalAlpha = 1; c.textBaseline = 'alphabetic';
@@ -1457,11 +1482,11 @@ function drawTouchUI() {
 
 // ---------- screens ----------
 const controlsHtml = () => touch.on
-  ? L('<div class="controls"><b>Left thumb</b> move · <b>Right thumb</b> drag to aim and attack, or hold to auto-target · <b>Buttons</b> skill, dash (Rowan, Vespera: second skill), ultimate (Lv 3), use, <b>II</b> pause',
-      '<div class="controls"><b>左手拇指</b> 移動 · <b>右手拇指</b> 拖曳瞄準並攻擊，或按住自動鎖定 · <b>按鈕</b> 技能、衝刺（羅文、薇斯佩拉：第二技能）、絕招（3 級）、使用、<b>II</b> 暫停') +
+  ? L('<div class="controls"><b>Left thumb</b> move · <b>Right thumb</b> drag to aim and attack, or hold to auto-target · <b>Buttons</b> skill, dash (Rowan, Vespera: second skill), ultimate (Lv 3), use, <b>AUTO</b> automatic attacks, <b>II</b> pause',
+      '<div class="controls"><b>左手拇指</b> 移動 · <b>右手拇指</b> 拖曳瞄準並攻擊，或按住自動鎖定 · <b>按鈕</b> 技能、衝刺（羅文、薇斯佩拉：第二技能）、絕招（3 級）、使用、<b>自動</b> 自動攻擊、<b>II</b> 暫停') +
     '</div>'
-  : L('<div class="controls"><b>WASD</b> move · <b>Mouse</b> aim · <b>LMB</b> attack · <b>RMB</b>/<b>E</b> skill · <b>Space</b> dash (Rowan, Vespera: second skill) · <b>Q</b> ultimate (Lv 3) · <b>F</b> interact · <b>1</b>-<b>3</b> pick boon · <b>M</b> mute</div>',
-      '<div class="controls"><b>WASD</b> 移動 · <b>滑鼠</b> 瞄準 · <b>左鍵</b> 攻擊 · <b>右鍵</b>/<b>E</b> 技能 · <b>空白鍵</b> 衝刺（羅文、薇斯佩拉：第二技能） · <b>Q</b> 絕招（3 級） · <b>F</b> 互動 · <b>1</b>-<b>3</b> 選擇祝福 · <b>M</b> 靜音</div>');
+  : L('<div class="controls"><b>WASD</b> move · <b>Mouse</b> aim · <b>LMB</b> attack · <b>RMB</b>/<b>E</b> skill · <b>Space</b> dash (Rowan, Vespera: second skill) · <b>Q</b> ultimate (Lv 3) · <b>F</b> interact · <b>R</b> auto attack · <b>1</b>-<b>3</b> pick boon · <b>M</b> mute</div>',
+      '<div class="controls"><b>WASD</b> 移動 · <b>滑鼠</b> 瞄準 · <b>左鍵</b> 攻擊 · <b>右鍵</b>/<b>E</b> 技能 · <b>空白鍵</b> 衝刺（羅文、薇斯佩拉：第二技能） · <b>Q</b> 絕招（3 級） · <b>F</b> 互動 · <b>R</b> 自動攻擊 · <b>1</b>-<b>3</b> 選擇祝福 · <b>M</b> 靜音</div>');
 // Full screen: Android and iPad browsers can do it for a page; iPhone Safari only does it for video, so there the way
 // is to add the game to the Home Screen (manifest.webmanifest makes it open full screen, without browser bars).
 const DE = document.documentElement, IPHONE = /iPhone|iPod/.test(navigator.userAgent);
@@ -1711,6 +1736,7 @@ async function showVoice(back, soft) {
 }
 const muteLabel = () => AU.muted ? L('Unmute', '取消靜音') : L('Mute', '靜音');
 function onKey(k) {
+  if (k === 'r' && game.state === 'play' && me && !game.over) toggleAuto();
   if (k === 'm' && AU.ctx) { AU.muted = !AU.muted; AU.master.gain.value = AU.muted ? 0 : 0.55; }
   const n = '123456789'.indexOf(k);
   if (n >= 0 && (game.state === 'menu' || game.state === 'lobby')) selectHero(Object.keys(HEROES)[n]);

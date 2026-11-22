@@ -32,6 +32,8 @@ node tests/e2e/voice.test.js
 node tests/e2e/peer.test.js
 node tests/e2e/mic.test.js
 node tests/e2e/fullscreen.test.js
+node tests/e2e/heroes.test.js
+node tests/e2e/auto.test.js
 ```
 
 When changing any `.js` file: bump `?v=N` on every script tag in `index.html`, rebuild `dist/`, run the tests.
