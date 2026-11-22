@@ -62,7 +62,8 @@ addEventListener('keydown', e => {
   if (k === ' ' || k === 'tab') e.preventDefault();
   onKey(k);
 });
-addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+addEventListener('keyup', e => { const k = e.key.toLowerCase(); keys[k] = false; if (k === 'v') Voice.setTalking(false); });
+addEventListener('keydown', e => { if (e.key.toLowerCase() === 'v' && !(e.target && e.target.tagName === 'INPUT') && !e.repeat) Voice.setTalking(true); });
 cv.addEventListener('mousemove', e => { mouse.x = e.clientX; mouse.y = e.clientY; });
 cv.addEventListener('mousedown', e => { initAudio(); if (touch.on) { touch.on = false; touch.move = touch.aim = null; resize(); } if (e.button === 0) mouse.l = true; if (e.button === 2) { mouse.r = true; pressed.rmb = true; } });
 addEventListener('mouseup', e => { if (e.button === 0) mouse.l = false; if (e.button === 2) mouse.r = false; });
@@ -77,14 +78,14 @@ function touchButtons() {
   return [{ id: 'skill', key: 'e', x: R - 205 * u, y: B - 62 * u, r: 30 * u }, { id: 'dash', key: ' ', x: R - 190 * u, y: B - 140 * u, r: 30 * u },
   { id: 'ult', key: 'q', x: R - 118 * u, y: B - 196 * u, r: 30 * u }, { id: 'f', key: 'f', x: R - 42 * u, y: B - 210 * u, r: 26 * u },
   // left of the minimap: pause in solo, mute in co-op
-  { id: 'menu', key: '', x: R - 156 * hs, y: SA.t + 38 * hs, r: 18 * hs }];
+  { id: 'menu', key: '', x: R - 156 * hs, y: SA.t + 38 * hs, r: 18 * hs }].concat(Voice.micTrack && Voice.mode === 'ptt' && net.mode !== 'solo' ? [{ id: 'talk', key: '', x: SA.l + 44 * u, y: B - 205 * u, r: 28 * u }] : []);
 }
-function touchMenu() { if (net.mode === 'solo') onKey('p'); else onKey('m'); }
+function touchMenu() { if (net.mode === 'solo') onKey('p'); else if (game.state === 'play' && !game.over) showVoice(hide, true); }
 cv.addEventListener('touchstart', e => {
   e.preventDefault(); initAudio(); if (!touch.on) { touch.on = true; resize(); }
   for (const t of e.changedTouches) {
     const x = t.clientX, y = t.clientY, b = touchButtons().find(b => Math.hypot(x - b.x, y - b.y) < b.r * 1.25);
-    if (b) { if (b.id === 'menu') touchMenu(); else pressed[b.key] = true; }
+    if (b) { if (b.id === 'menu') touchMenu(); else if (b.id === 'talk') { touch.talk = t.identifier; Voice.setTalking(true); } else pressed[b.key] = true; }
     else if (x < W * 0.45) { if (!touch.move) touch.move = { id: t.identifier, x0: x, y0: y, x, y }; }
     else if (!touch.aim) touch.aim = { id: t.identifier, x0: x, y0: y, x, y };
   }
@@ -94,7 +95,7 @@ cv.addEventListener('touchmove', e => {
   for (const t of e.changedTouches) for (const s of [touch.move, touch.aim]) if (s && s.id === t.identifier) { s.x = t.clientX; s.y = t.clientY; }
 }, { passive: false });
 function touchEnd(e) {
-  for (const t of e.changedTouches) { if (touch.move && touch.move.id === t.identifier) touch.move = null; if (touch.aim && touch.aim.id === t.identifier) touch.aim = null; }
+  for (const t of e.changedTouches) { if (touch.talk === t.identifier) { touch.talk = null; Voice.setTalking(false); } if (touch.move && touch.move.id === t.identifier) touch.move = null; if (touch.aim && touch.aim.id === t.identifier) touch.aim = null; }
 }
 cv.addEventListener('touchend', touchEnd); cv.addEventListener('touchcancel', touchEnd);
 function touchInput() {
@@ -694,23 +695,24 @@ function expireAway() {
 const PEER_PREFIX = 'duskbound-v1-';
 const noNetMsg = () => window.DUSK_NO_NET ? 'Online co-op is not available on this page. Solo works here; for co-op, open the downloaded duskbound.html file or a copy on your own website.' : 'Online play needs an internet connection (the networking library did not load).';
 function wrapConn(c) {
-  const w = { send: d => { try { c.send(d); } catch (e) { } }, onData: null, onClose: null, close: () => { try { c.close(); } catch (e) { } } };
+  const w = { peerId: c.peer, send: d => { try { c.send(d); } catch (e) { } }, onData: null, onClose: null, close: () => { try { c.close(); } catch (e) { } } };
   c.on('data', d => w.onData && w.onData(d)); c.on('close', () => w.onClose && w.onClose()); c.on('error', () => w.onClose && w.onClose());
   return w;
 }
 // Transport: WebRTC data channels brokered by the public PeerJS signalling server. Replaceable for tests.
 let NetT = {
   ok: () => typeof Peer !== 'undefined' && !window.DUSK_NO_NET,
+  voice: true,
   host(code, h) {
     const peer = new Peer(PEER_PREFIX + code);
     peer.on('open', () => h.open()); peer.on('connection', c => c.on('open', () => h.conn(wrapConn(c)))); peer.on('error', e => h.error(e.type || 'error'));
-    return { close: () => peer.destroy() };
+    return { close: () => peer.destroy(), peer, peerId: PEER_PREFIX + code };
   },
   join(code, h) {
     const peer = new Peer();
     peer.on('open', () => { const c = peer.connect(PEER_PREFIX + code, { reliable: true, serialization: 'json' }); c.on('open', () => h.open(wrapConn(c))); });
     peer.on('error', e => h.error(e.type || 'error'));
-    return { close: () => peer.destroy() };
+    return { close: () => peer.destroy(), peer };
   }
 };
 // Transport 2: claude.ai's live room, for the claude.ai build where WebRTC is blocked.
@@ -843,6 +845,7 @@ function makeRoomNet() {
 if (window.DUSK_NO_NET && window.claude && typeof window.claude.use === 'function') { NetT = makeRoomNet(); NetT.hint = ' of this same page (it must be shared with them)'; }
 function genCode() { const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let s = ''; for (let i = 0; i < 5; i++) s += pick(A); return s; }
 function leaveNet() {
+  Voice.stop();
   if (net.handle) { try { net.handle.close(); } catch (e) { } }
   net.handle = null; net.host = null; net.conns = []; net.lobby = []; net.mode = 'solo'; net.ready = false; net.myId = 1;
 }
@@ -913,7 +916,7 @@ function rejoinClient(c, p) {
   players.push(p);
   c.send(worldMsg(p.id));
   for (const q of net.conns) if (q !== c && q.inGame) q.send({ t: 'roster', players: roster() });
-  banner(p.name + ' rejoined the party', '', 2.5);
+  banner(p.name + ' rejoined the party', '', 2.5); sendVoice();
   // results they missed while away: same claims, so nothing is rolled again
   for (const r of net.claims.values()) if (r.id === p.id) deliverReward(r);
   if (game.rewards) c.send({ t: 'rewards', ch: game.chapter, list: game.rewards });
@@ -928,10 +931,16 @@ function dropClient(c) {
     // keep the hero (level, boons, gold) so they can come back to this run
     if (p && p.tok) { net.away.set(p.tok, { p, since: Date.now() }); banner(p.name + ' lost connection', 'They can rejoin with room code ' + net.code + ' within ' + Math.round(PARTY_SCALE.graceSeconds / 60) + ' min', 3.5); }
     else if (entry) banner(entry.name + ' left the party', '', 2.5);
+    sendVoice();
     if (!game.over && players.every(q => q.down)) { game.over = 'dead'; showEnd(); }
   }
 }
-function sendLobby() { const pl = net.lobby.map(q => ({ id: q.id, name: q.name, hero: q.hero, unl: q.id === 1 ? PROFILE.unlocked : (q.lo && q.lo.unlocked) || ['normal'] })); for (const c of net.conns) c.send({ t: 'lobby', you: c.pid, code: net.code, diff: net.diff, players: pl }); }
+function voiceRoster() { return NetT.voice && net.handle && net.handle.peerId ? [{ id: 1, peer: net.handle.peerId }].concat(net.conns.filter(c => c.peerId && (c.inGame || game.state === 'lobby')).map(c => ({ id: c.pid, peer: c.peerId }))) : []; }
+function sendVoice() {
+  if (net.mode !== 'host' || !NetT.voice || !net.handle) return; const list = voiceRoster();
+  Voice.start(net.handle.peer, 1); Voice.sync(list); for (const c of net.conns) c.send({ t: 'vroster', list });
+}
+function sendLobby() { setTimeout(sendVoice, 0); const pl = net.lobby.map(q => ({ id: q.id, name: q.name, hero: q.hero, unl: q.id === 1 ? PROFILE.unlocked : (q.lo && q.lo.unlocked) || ['normal'] })); for (const c of net.conns) c.send({ t: 'lobby', you: c.pid, code: net.code, diff: net.diff, players: pl }); }
 function hostRecv(c, d) {
   if (!d || typeof d !== 'object') return;
   if (c.pending) { if (d.t === 'hello') greetClient(c, d); return; }
@@ -1009,6 +1018,7 @@ function clientRecv(d) {
   if (d.t === 'no') netFail(d.why);
   else if (d.t === 'secret' && /^[a-z0-9]{24}$/.test(d.s)) { try { localStorage.setItem('duskbound-rejoin', JSON.stringify({ code: d.code, s: d.s, t: Date.now() })); } catch (e) { } }
   else if (d.t === 'reward') receiveReward(d);
+  else if (d.t === 'vroster' && Array.isArray(d.list) && NetT.voice && net.handle && net.handle.peer) { Voice.start(net.handle.peer, net.myId); Voice.sync(d.list.filter(r => r && Number.isInteger(r.id) && typeof r.peer === 'string').slice(0, 4)); }
   else if (d.t === 'rewards' && Array.isArray(d.list)) { game.rewards = d.list.slice(0, 4); if (game.over) showEnd(); }
   else if (d.t === 'lobby') { players = []; net.myId = d.you; net.lobby = d.players; net.code = d.code; net.diff = DIFF(d.diff).id; game = newGame(); game.state = 'lobby'; me = null; showLobby(); }
   else if (d.t === 'world') {
@@ -1155,7 +1165,7 @@ function drawHUD() {
   c.textAlign = 'left'; c.textBaseline = 'alphabetic';
   const bx = 24, by = TU ? (W < 760 ? 132 : 88) : H - 74, bw = TU ? 220 : 300;
   c.fillStyle = 'rgba(8,8,16,.75)'; rr(c, bx - 8, by - 30, bw + 16, 88, 8); c.fill();
-  c.font = '15px Georgia'; c.fillStyle = H2.color; c.fillText(T(H2.name) + ' · ' + L('Lv ', '等級 ') + p.level, bx, by - 10);
+  c.font = '15px Georgia'; c.fillStyle = H2.color; c.fillText((Voice.transmitting() ? '🎙 ' : '') + T(H2.name) + ' · ' + L('Lv ', '等級 ') + p.level, bx, by - 10);
   c.textAlign = 'right'; c.fillStyle = '#f3c84a'; c.fillText('◈ ' + p.gold + '   ✦ ' + p.embers, bx + bw, by - 10); c.textAlign = 'left';
   c.fillStyle = '#2a1c22'; rr(c, bx, by, bw, 20, 4); c.fill(); c.fillStyle = '#d64545'; rr(c, bx, by, Math.max(6, bw * clamp(p.hp / p.maxHp, 0, 1)), 20, 4); c.fill();
   c.fillStyle = '#fff'; c.font = '13px Georgia'; c.textAlign = 'center'; c.fillText(Math.ceil(p.hp) + ' / ' + p.maxHp, bx + bw / 2, by + 15);
@@ -1185,7 +1195,7 @@ function drawHUD() {
   for (const q of players) {
     if (q === p) continue;
     c.fillStyle = 'rgba(8,8,16,.7)'; rr(c, 14, py - 14, 190, 34, 6); c.fill();
-    c.font = '13px Georgia'; c.fillStyle = HEROES[q.hero].color; c.fillText(q.name + ' · ' + L('Lv ', '等級 ') + q.level, 22, py);
+    c.font = '13px Georgia'; c.fillStyle = HEROES[q.hero].color; c.fillText(q.name + ' · ' + L('Lv ', '等級 ') + q.level + (Voice.level(q.id) > 0.02 ? '  🔊' : ''), 22, py);
     c.fillStyle = '#2a1c22'; c.fillRect(22, py + 6, 174, 7); c.fillStyle = q.down ? '#777' : '#d64545'; c.fillRect(22, py + 6, 174 * (q.down ? clamp(q.rev / 3, 0, 1) : clamp(q.hp / q.maxHp, 0, 1)), 7);
     if (q.down) { c.fillStyle = '#ff8a8a'; c.textAlign = 'right'; c.fillText(T('DOWN'), 196, py); c.textAlign = 'left'; }
     py += 42;
@@ -1214,7 +1224,7 @@ function drawTouchUI() {
   };
   const B = H - Math.max(SA.b - 8, 0); stick(touch.move, SA.l + 100 * u, B - 95 * u); stick(touch.aim, W - SA.r - 100 * u, B - 90 * u);
   const np = !p.down && nearPoi(p), use = !!(np && poiPrompt(np));
-  const info = { skill: ['SKILL', p.tSkill, p.cds[1], true], dash: ['DASH' + (p.dashMax > 1 ? ' ' + p.dashes : ''), p.dashes > 0 ? 0 : p.dashRe, p.cds[2], true], ult: [p.level >= 3 ? 'ULT' : 'Lv 3', p.tUlt, p.cds[3], p.level >= 3], f: ['USE', 0, 0, use], menu: [net.mode === 'solo' ? 'II' : (AU.muted ? '🔇' : '♪'), 0, 0, true] };
+  const info = { skill: ['SKILL', p.tSkill, p.cds[1], true], dash: ['DASH' + (p.dashMax > 1 ? ' ' + p.dashes : ''), p.dashes > 0 ? 0 : p.dashRe, p.cds[2], true], ult: [p.level >= 3 ? 'ULT' : 'Lv 3', p.tUlt, p.cds[3], p.level >= 3], f: ['USE', 0, 0, use], menu: [net.mode === 'solo' ? 'II' : '🎙', 0, 0, true], talk: [Voice.transmitting() ? '● ' + T('TALK') : T('TALK'), 0, 0, true] };
   c.textAlign = 'center'; c.textBaseline = 'middle';
   for (const b of touchButtons()) {
     const [label, t, cd, on] = info[b.id], ready = on && t <= 0;
@@ -1297,8 +1307,8 @@ function showLobby() {
   for (const q of net.lobby) h += '<div><span style="color:' + HEROES[q.hero].color + '">●</span> ' + esc(q.name) + (q.id === net.myId ? L(' (you)', '（你）') : '') + (q.id === 1 ? L(' — host', ' — 房主') : '') + ' <i>' + T(HEROES[q.hero].name) + '</i> · ' + L('up to ', '最高 ') + T(DIFF(unlocksOf(q).slice(-1)[0]).name) + '</div>';
   h += '</div><div class="row">' + (host ? diffSelect('diffsel', partyDiffOk) + '<span class="wait">' + L('Only difficulties every player has unlocked.', '只能選擇所有人都已解鎖的難度。') + '</span>'
     : '<span class="wait">' + L('Difficulty: ', '難度：') + T(DIFF(net.diff).name) + '</span>') + '</div>';
-  h += heroCards(net.hero, true) + '<div class="row">' + (host ? '<button id="start">' + (net.lobby.length > 1 ? L('Set out (' + net.lobby.length + ' players)', '出發（' + net.lobby.length + ' 人）') : L('Set out alone', '獨自出發')) + '</button>' : '<span class="wait">' + L('Waiting for the host to set out…', '等待房主出發…') + '</span>') + '<button id="leave" class="ghost">' + L('Leave', '離開') + '</button></div>';
-  show(h); bindHeroCards(selectHero);
+  h += heroCards(net.hero, true) + '<div class="row">' + (host ? '<button id="start">' + (net.lobby.length > 1 ? L('Set out (' + net.lobby.length + ' players)', '出發（' + net.lobby.length + ' 人）') : L('Set out alone', '獨自出發')) + '</button>' : '<span class="wait">' + L('Waiting for the host to set out…', '等待房主出發…') + '</span>') + (NetT.voice ? '<button id="voiceb" class="ghost">🎙 ' + L('Voice', '語音') + '</button>' : '') + '<button id="leave" class="ghost">' + L('Leave', '離開') + '</button></div>';
+  show(h); bindHeroCards(selectHero); if ($('voiceb')) $('voiceb').onclick = () => showVoice(showLobby);
   if (host) { $('start').onclick = startHosted; $('diffsel').onchange = e => { if (partyDiffOk(e.target.value)) { setDiff(e.target.value); sendLobby(); } showLobby(); }; }
   $('leave').onclick = () => { leaveNet(); showMenu(); };
 }
@@ -1404,12 +1414,38 @@ function nextChapter() {
   hide(); banner(world.pal.name, chapterSub(), 4); sfx('dawn');
   if (net.mode === 'host') sendWorld();
 }
+// Voice & sound panel. In co-op play it opens over the running game (soft) and does not pause.
+async function showVoice(back, soft) {
+  const nameOf = pid => { const q = players.find(p => p.id === pid) || net.lobby.find(q => q.id === pid); return q ? q.name : '#' + pid; };
+  let h = '<h2>' + L('Voice & sound', '語音與音效') + '</h2>';
+  if (!NetT.voice || !Voice.supported()) h += '<div class="sub">' + L('Voice chat needs the GitHub Pages version of the game (direct connections). It is not available on this page.', '語音聊天需要 GitHub Pages 版本（直接連線），此頁面無法使用。') + '</div>';
+  else {
+    const devs = Voice.micStream ? await Voice.devices() : [];
+    h += '<div class="row"><button id="vmic"' + (Voice.micStream ? ' class="ghost"' : '') + '>' + (Voice.micStream ? L('Turn microphone off', '關閉麥克風') : L('Turn microphone on', '開啟麥克風')) + '</button>' +
+      '<select id="vmode"><option value="ptt"' + (Voice.mode === 'ptt' ? ' selected' : '') + '>' + L('Push to talk', '按住說話') + '</option><option value="open"' + (Voice.mode === 'open' ? ' selected' : '') + '>' + L('Open mic', '持續開麥') + '</option></select>' +
+      (devs.length ? '<select id="vdev">' + devs.map((d, i) => '<option value="' + esc(d.deviceId) + '"' + (d.deviceId === Voice.micId ? ' selected' : '') + '>' + esc(d.label || L('Microphone ', '麥克風 ') + (i + 1)) + '</option>').join('') + '</select>' : '') + '</div>';
+    h += '<div class="wait">' + (Voice.error ? L('Microphone not available (' + Voice.error + '). Check the browser’s permission for this site.', '無法使用麥克風（' + Voice.error + '）。請檢查瀏覽器對此網站的權限。') :
+      Voice.micStream ? (Voice.mode === 'ptt' ? L('Hold V (keyboard) or the TALK button (touch) to talk.', '按住 V 鍵（鍵盤）或 TALK 按鈕（觸控）說話。') : L('Everyone hears you while the mic is on.', '麥克風開啟時大家都聽得到你。')) : L('You can hear others without a microphone.', '不開麥克風也能聽到其他人。')) + '</div>';
+    const others = Voice.roster.filter(r => r.id !== Voice.myId);
+    h += '<div class="stats prof">' + (others.length ? others.map(r => { const v = Voice.calls.get(r.id); return '<div class="vrow">' + esc(nameOf(r.id)) + ' <i>' + (v && v.stream ? L('connected', '已連線') : L('connecting…', '連線中…')) + '</i> ' +
+      '<button class="ghost vmute" data-pid="' + r.id + '">' + (v && v.muted ? L('Unmute', '取消靜音') : L('Mute', '靜音')) + '</button> <input type="range" class="vvol" data-pid="' + r.id + '" min="0" max="2" step="0.05" value="' + (v ? v.vol : 1) + '"></div>'; }).join('') : '<i>' + L('No one else here yet.', '目前沒有其他人。') + '</i>') + '</div>';
+  }
+  h += '<div class="row"><button id="vsfx" class="ghost">' + L('Game sound: ', '遊戲音效：') + (AU.muted ? L('off', '關') : L('on', '開')) + '</button><button id="vback">' + L('Close', '關閉') + '</button></div>';
+  show(h, soft);
+  $('vback').onclick = () => back(); $('vsfx').onclick = () => { initAudio(); onKey('m'); showVoice(back, soft); };
+  if ($('vmic')) $('vmic').onclick = async () => { if (Voice.micStream) await Voice.disableMic(); else await Voice.enableMic(Voice.micId); showVoice(back, soft); };
+  if ($('vmode')) $('vmode').onchange = e => { Voice.setMode(e.target.value); showVoice(back, soft); };
+  if ($('vdev')) $('vdev').onchange = async e => { await Voice.enableMic(e.target.value); showVoice(back, soft); };
+  document.querySelectorAll('.vmute').forEach(b => b.onclick = () => { const pid = +b.dataset.pid, v = Voice.calls.get(pid); Voice.setMuted(pid, !(v && v.muted)); showVoice(back, soft); });
+  document.querySelectorAll('.vvol').forEach(r => r.oninput = () => Voice.setVolume(+r.dataset.pid, +r.value));
+}
 const muteLabel = () => AU.muted ? L('Unmute', '取消靜音') : L('Mute', '靜音');
 function onKey(k) {
   if (k === 'm' && AU.ctx) { AU.muted = !AU.muted; AU.master.gain.value = AU.muted ? 0 : 0.55; }
   const n = '123'.indexOf(k);
   if (n >= 0 && (game.state === 'menu' || game.state === 'lobby')) selectHero(Object.keys(HEROES)[n]);
   else if (n >= 0 && game.state === 'play') chooseTalent(n);
+  else if ((k === 'p' || k === 'escape') && game.state === 'play' && net.mode !== 'solo' && !game.over && overlay.className === 'hidden') showVoice(hide, true);
   else if ((k === 'p' || k === 'escape') && game.state === 'play' && net.mode === 'solo' && !game.over && !(me && me.choice)) {
     game.paused = !game.paused;
     if (game.paused) {
