@@ -161,7 +161,7 @@ const HEROES = {
   vespera: {
     name: 'Vespera', title: 'The Lanternkeeper', color: '#86f0cf', hp: 100, spd: 225, dmg: 12, atkCd: 0.38, skillCd: 10, dashes: 1, dashCd: 12, alt: true, rarity: 'purple',
     blurb: 'A cloaked traveller swinging a haunted lantern on a chain. The lost follow her light; so does everything else.',
-    kit: ['<b>Attack</b> — Ghostlight: a spectral bolt', '<b>Skill</b> — Guiding Wisp: shield the ally nearest your aim (yourself when solo). 30 energy', '<b>Space</b> — Soul Tether: link up to 4 foes; 40% of direct damage to one spreads to the rest. 30 energy', '<b>Ultimate</b> — Midnight Procession: spirits march toward your aim, harming foes and healing allies', '<b>Trait</b> — Lingering Light: the fallen leave embers that restore lantern energy'],
+    kit: ['<b>Attack</b> — Ghostlight: a spectral bolt', '<b>Skill</b> — Guiding Wisp: shield the ally nearest your aim (yourself when solo). 30 energy', '<b>Space</b> — Soul Tether: link up to 4 foes; 40% of direct damage to one spreads to the rest. 30 energy', '<b>Ultimate</b> — Midnight Procession: spirits set out toward your aim and hunt down the nearest foes, harming them and healing allies they pass', '<b>Trait</b> — Lingering Light: the fallen leave embers that restore lantern energy'],
     names: ['Ghostlight', 'Guiding Wisp', 'Soul Tether', 'Midnight Procession']
   }
 };
@@ -312,7 +312,7 @@ const ZH = {
   "<b>Attack</b> — Ghostlight: a spectral bolt": "<b>攻擊</b> — 鬼火：發射幽靈光彈",
   "<b>Skill</b> — Guiding Wisp: shield the ally nearest your aim (yourself when solo). 30 energy": "<b>技能</b> — 引路幽光：為瞄準方向最近的隊友加上護盾（單人時為自己）。消耗 30 能量",
   "<b>Space</b> — Soul Tether: link up to 4 foes; 40% of direct damage to one spreads to the rest. 30 energy": "<b>空白鍵</b> — 魂鏈：連結最多 4 名敵人；對其中一名的直接傷害有 40% 擴散至其他人。消耗 30 能量",
-  "<b>Ultimate</b> — Midnight Procession: spirits march toward your aim, harming foes and healing allies": "<b>絕招</b> — 午夜行列：亡魂朝瞄準方向前進，傷害敵人並治療隊友",
+  "<b>Ultimate</b> — Midnight Procession: spirits set out toward your aim and hunt down the nearest foes, harming them and healing allies they pass": "<b>絕招</b> — 午夜行列：亡魂朝瞄準方向出發，追蹤最近的敵人，傷害敵人並治療途經的隊友",
   "<b>Trait</b> — Lingering Light: the fallen leave embers that restore lantern energy": "<b>特性</b> — 殘光：倒下的敵人會留下恢復燈籠能量的餘燼",
   "A cloaked traveller swinging a haunted lantern on a chain. The lost follow her light; so does everything else.": "披著斗篷的旅人，鏈上搖晃著一盞鬧鬼的燈籠。迷途者追隨她的光，其他東西也是。",
   "Rowan": "羅文",
@@ -2126,9 +2126,9 @@ function doUlt(p) {
   else if (H === 'rowan') { p.ultT = 8; p.pulse = 0; ring(p.x, p.y, 220, '#a9c46c'); burst(p.x, p.y, '#cfe89a', 30, 300, 5); banner('Ancient Sentinel', 'The wood rallies to you.', 2, p.id); }
   else if (H === 'mira') { p.ultT = 7; ring(p.x, p.y, 90, '#9ee7f2'); for (const s of mirrorSpots(p)) burst(s.x, s.y, '#e8fbff', 12, 180); sfx('shatter', p); }
   else if (H === 'vespera') {
-    // Midnight Procession: a march of spirits walks the path toward the aim point.
+    // Midnight Procession: a march of spirits, launched toward the aim point, that then hunts the nearest foes.
     const a = angTo(p, m), sp = 260;
-    zones.push({ kind: 'proc', friendly: true, owner: p, x: p.x, y: p.y, r: 80, delay: 0, life: 2.6, max: 2.6, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, tickT: 0, color: '#86f0cf' });
+    zones.push({ kind: 'proc', friendly: true, owner: p, x: p.x, y: p.y, r: 80, delay: 0, life: 3.2, max: 3.2, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, tickT: 0, color: '#86f0cf' });
   }
   else if (H === 'wick') {
     for (let i = 0; i < 12; i++) { const a = rand(TAU), d = i === 0 ? 0 : rand(40, 210); zones.push({ kind: 'blast', friendly: true, owner: p, x: m.x + Math.cos(a) * d, y: m.y + Math.sin(a) * d, r: 88, delay: 0.5 + i * 0.2, max: 0.5 + i * 0.2, dmg: p.dmg * 4.2, color: '#ff7a2f' }); }
@@ -2294,6 +2294,10 @@ function update(dt) {
       if (z.tickT <= 0) { z.tickT = 0.25; for (const e of enemies) if (!e.dead && dist(e, z) < z.r + e.r) hitEnemy(z.owner, e, z.dmg * 0.25, { proc: true, color: '#ffb347', quiet: true }); }
     } else if (z.kind === 'shelter' || z.kind === 'decoy') z.life -= dt;
     else if (z.kind === 'proc') {
+      // Guided: locks on to the nearest foe (within 700) and turns toward it, picking the next one when it falls.
+      // With nothing to chase it keeps flying straight. Guests just follow the velocity in the snapshots.
+      if (!z.tgt || !targetable(z.tgt)) { let b = null, bd = 700; for (const e of enemies) { if (!targetable(e)) continue; const d = dist(e, z); if (d < bd) { bd = d; b = e; } } z.tgt = b; }
+      if (z.tgt) { const sp = Math.hypot(z.vx, z.vy) || 260, cur = Math.atan2(z.vy, z.vx), na = cur + clamp(angDiff(angTo(z, z.tgt), cur), -4.5 * dt, 4.5 * dt); z.vx = Math.cos(na) * sp; z.vy = Math.sin(na) * sp; }
       z.life -= dt; z.tickT -= dt; z.x += z.vx * dt; z.y += z.vy * dt;
       if (z.tickT <= 0) {
         z.tickT = 0.3; const o = z.owner;

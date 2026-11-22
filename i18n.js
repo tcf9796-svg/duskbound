@@ -73,7 +73,7 @@ const ZH = {
   "<b>Attack</b> — Ghostlight: a spectral bolt": "<b>攻擊</b> — 鬼火：發射幽靈光彈",
   "<b>Skill</b> — Guiding Wisp: shield the ally nearest your aim (yourself when solo). 30 energy": "<b>技能</b> — 引路幽光：為瞄準方向最近的隊友加上護盾（單人時為自己）。消耗 30 能量",
   "<b>Space</b> — Soul Tether: link up to 4 foes; 40% of direct damage to one spreads to the rest. 30 energy": "<b>空白鍵</b> — 魂鏈：連結最多 4 名敵人；對其中一名的直接傷害有 40% 擴散至其他人。消耗 30 能量",
-  "<b>Ultimate</b> — Midnight Procession: spirits march toward your aim, harming foes and healing allies": "<b>絕招</b> — 午夜行列：亡魂朝瞄準方向前進，傷害敵人並治療隊友",
+  "<b>Ultimate</b> — Midnight Procession: spirits set out toward your aim and hunt down the nearest foes, harming them and healing allies they pass": "<b>絕招</b> — 午夜行列：亡魂朝瞄準方向出發，追蹤最近的敵人，傷害敵人並治療途經的隊友",
   "<b>Trait</b> — Lingering Light: the fallen leave embers that restore lantern energy": "<b>特性</b> — 殘光：倒下的敵人會留下恢復燈籠能量的餘燼",
   "A cloaked traveller swinging a haunted lantern on a chain. The lost follow her light; so does everything else.": "披著斗篷的旅人，鏈上搖晃著一盞鬧鬼的燈籠。迷途者追隨她的光，其他東西也是。",
   "Rowan": "羅文",
