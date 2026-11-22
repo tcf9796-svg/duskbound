@@ -30,6 +30,7 @@ inline "$PEER" > dist/duskbound.html
 # claude.ai wraps the page in its own document, so drop the outer tags and pin the dark colour scheme.
 printf 'window.DUSK_NO_NET = true;\n' > dist/nonet.tmp.js
 inline dist/nonet.tmp.js \
+  | grep -v -e 'rel="manifest"' -e 'rel="apple-touch-icon"' \
   | grep -v -x -e '<!doctype html>' -e '<html lang="en">' -e '<head>' -e '</head>' -e '<body>' -e '</body>' -e '</html>' \
   | awk '{ print } /^<style>$/ && !done { print "  :root{color-scheme:dark}"; done = 1 }' > dist/artifact.html
 rm dist/nonet.tmp.js

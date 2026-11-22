@@ -1152,10 +1152,28 @@ function drawTouchUI() {
 const controlsHtml = () => touch.on
   ? L('<div class="controls"><b>Left thumb</b> move · <b>Right thumb</b> drag to aim and attack, or hold to auto-target · <b>Buttons</b> skill, dash, ultimate (Lv 3), use, <b>II</b> pause',
       '<div class="controls"><b>左手拇指</b> 移動 · <b>右手拇指</b> 拖曳瞄準並攻擊，或按住自動鎖定 · <b>按鈕</b> 技能、衝刺、絕招（3 級）、使用、<b>II</b> 暫停') +
-    (IOS && !STANDALONE ? L('<br>For full screen on iPhone: Share → <b>Add to Home Screen</b>, then open it from there.', '<br>iPhone 全螢幕：分享 → <b>加入主畫面</b>，再從主畫面開啟。') : '') + '</div>'
+    '</div>'
   : L('<div class="controls"><b>WASD</b> move · <b>Mouse</b> aim · <b>LMB</b> attack · <b>RMB</b>/<b>E</b> skill · <b>Space</b> dash · <b>Q</b> ultimate (Lv 3) · <b>F</b> interact · <b>1</b>-<b>3</b> pick boon · <b>M</b> mute</div>',
       '<div class="controls"><b>WASD</b> 移動 · <b>滑鼠</b> 瞄準 · <b>左鍵</b> 攻擊 · <b>右鍵</b>/<b>E</b> 技能 · <b>空白鍵</b> 衝刺 · <b>Q</b> 絕招（3 級） · <b>F</b> 互動 · <b>1</b>-<b>3</b> 選擇祝福 · <b>M</b> 靜音</div>');
-const goFull = () => { try { if (touch.on && !document.fullscreenElement && document.documentElement.requestFullscreen) { const r = document.documentElement.requestFullscreen(); if (r && r.catch) r.catch(() => { }); } } catch (e) { } };
+// Full screen: Android and iPad browsers can do it for a page; iPhone Safari only does it for video, so there the way
+// is to add the game to the Home Screen (manifest.webmanifest makes it open full screen, without browser bars).
+const DE = document.documentElement, IPHONE = /iPhone|iPod/.test(navigator.userAgent);
+const canFS = () => !IPHONE && !!(DE.requestFullscreen || DE.webkitRequestFullscreen);
+const isFS = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+function goFull() {
+  if (!touch.on || !canFS() || isFS()) return;
+  try { const r = (DE.requestFullscreen || DE.webkitRequestFullscreen).call(DE); if (r && r.catch) r.catch(() => { }); } catch (e) { }
+}
+// Shown on the title screen when the game is not already full screen.
+const fsButtonHtml = () => STANDALONE || isFS() || !(touch.on || IOS) || window.DUSK_NO_NET ? '' : '<button id="fsb" class="ghost fsbtn">⛶ ' + L('Full screen', '全螢幕') + '</button>';
+function onFsButton(back) {
+  if (canFS()) { goFull(); setTimeout(back, 300); return; }
+  show('<h2>' + L('Full screen on iPhone', 'iPhone 全螢幕') + '</h2><ol class="steps">' + L(
+    '<li>Tap <b>Share</b> — in Safari it is in the bottom bar (or under <b>⋯</b>); in Chrome, at the top right.</li><li>Choose <b>Add to Home Screen</b>, then <b>Add</b>.</li><li>Open <b>Duskbound</b> from your Home Screen. It runs full screen, with no browser bars.</li>',
+    '<li>點選<b>分享</b> — Safari 在下方工具列（或在 <b>⋯</b> 裡）；Chrome 在右上角。</li><li>選擇<b>加入主畫面</b>，再點<b>加入</b>。</li><li>從主畫面開啟 <b>Duskbound</b>，就會以全螢幕執行，沒有瀏覽器工具列。</li>') +
+    '</ol><div class="sub">' + L('Your name and language need setting again there; co-op works the same.', '在主畫面版本中需要重新設定名字與語言；合作模式照常可用。') + '</div><button id="fsok">' + L('Got it', '知道了') + '</button>');
+  $('fsok').onclick = back;
+}
 function show(html, soft) { overlay.className = soft ? 'soft' : ''; overlay.innerHTML = html; }
 function hide() { overlay.className = 'hidden'; overlay.innerHTML = ''; }
 function heroCards(sel, compact) {
@@ -1180,7 +1198,8 @@ function showMenu(msg) {
   game.state = 'menu'; game.over = null; me = null; players = [];
   show('<h1>DUSKBOUND</h1><div class="sub">' + L('Three days. Three nights. Then the Gloam Stag wakes.<br>Roam the wood alone or with up to three friends, and be ready when it comes for you.', '三個白晝，三個黑夜，然後幽暮雄鹿將會甦醒。<br>獨自或與最多三位朋友一同漫遊森林，在它找上你之前做好準備。') + '</div>' + heroCards(net.hero) +
     '<div class="row"><input id="nm" maxlength="14" placeholder="' + L('Your name', '你的名字') + '" value="' + esc(net.name) + '"><button id="solo">' + L('Play solo', '單人遊玩') + '</button><button id="hostb">' + L('Host co-op', '開設合作房') + '</button><span class="sep"></span><input id="code" maxlength="5" placeholder="' + L('CODE', '代碼') + '" autocomplete="off" value="' + esc(lastRoom()) + '"><button id="joinb">' + L('Join', '加入') + '</button></div>' +
-    '<div id="msg">' + esc(T(msg) || '') + '</div>' + controlsHtml() + '<button id="lang" class="ghost langbtn">' + (LANG === 'zh' ? '🌐 English' : '🌐 繁體中文') + '</button>');
+    '<div id="msg">' + esc(T(msg) || '') + '</div>' + controlsHtml() + '<button id="lang" class="ghost langbtn">' + (LANG === 'zh' ? '🌐 English' : '🌐 繁體中文') + '</button>' + fsButtonHtml());
+  if ($('fsb')) $('fsb').onclick = () => { saveName(); onFsButton(() => showMenu(msg)); };
   $('lang').onclick = () => { saveName(); setLang(LANG === 'zh' ? 'en' : 'zh'); showMenu(msg); };
   bindHeroCards(selectHero);
   $('solo').onclick = () => { saveName(); goFull(); startSolo(); };

@@ -9,6 +9,8 @@
 <meta name="apple-mobile-web-app-title" content="Duskbound">
 <meta name="format-detection" content="telephone=no">
 <meta name="theme-color" content="#0b0d14">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
 <title>Duskbound</title>
 <style>
   html,body{margin:0;height:100%;background:#0b0d14;overflow:hidden;font-family:Georgia,'Times New Roman',serif;color:#e8e2d0;
@@ -67,10 +69,13 @@
   .wait{color:#a9a3c4;font-style:italic;margin-top:14px}
   .stats{color:#c9c4dc;font-size:15px;line-height:1.8;margin-top:6px}
   /* Language switch: always in the title screen's top corner. */
+  .fsbtn{position:fixed;z-index:5;top:max(10px,env(safe-area-inset-top));left:max(12px,env(safe-area-inset-left));font-size:14px;padding:6px 12px;background:rgba(20,19,31,.85)}
+  .steps{text-align:left;max-width:520px;line-height:1.7;font-size:16px;color:#e8e2d0;margin:4px 0 6px;padding-left:22px}
+  .steps b{color:#f3d48a;font-weight:normal}
   .langbtn{position:fixed;z-index:5;top:max(10px,env(safe-area-inset-top));right:max(12px,env(safe-area-inset-right));font-size:14px;padding:6px 12px;background:rgba(20,19,31,.85)}
   /* Phones in landscape: must stay after the base rules so it wins. */
   @media (max-height:540px){
-    .langbtn{font-size:12px;padding:4px 9px;top:max(6px,env(safe-area-inset-top))}
+    .langbtn,.fsbtn{font-size:12px;padding:4px 9px;top:max(6px,env(safe-area-inset-top))} .steps{font-size:13px;line-height:1.5}
     #overlay .cards{flex-wrap:nowrap;max-width:100%} #overlay .card{flex:0 1 190px;min-width:0;box-sizing:border-box}
     #overlay{padding-top:max(10px,env(safe-area-inset-top));padding-bottom:max(10px,env(safe-area-inset-bottom))}
     h1{font-size:30px;letter-spacing:6px} h2{font-size:20px;margin-bottom:2px}
@@ -96,10 +101,10 @@
 <div id="rotate"><div><span class="rt1">Turn your phone sideways</span><br><span class="rt2" style="color:#a9a3c4;font-size:15px;font-style:italic">Duskbound plays best in landscape.</span><br><button id="rotok" type="button" style="margin-top:16px">Play upright anyway</button></div></div>
 <script>document.getElementById('rotok').onclick = function () { document.body.classList.add('upright'); };</script>
 <script async src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="data.js?v=7"></script>
-<script src="i18n.js?v=7"></script>
-<script src="art.js?v=7"></script>
-<script src="audio.js?v=7"></script>
-<script src="game.js?v=7"></script>
+<script src="data.js?v=8"></script>
+<script src="i18n.js?v=8"></script>
+<script src="art.js?v=8"></script>
+<script src="audio.js?v=8"></script>
+<script src="game.js?v=8"></script>
 </body>
 </html>
