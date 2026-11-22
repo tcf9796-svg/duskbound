@@ -3,7 +3,8 @@
 const AU = { ctx: null, master: null, muted: false, nbuf: null, last: {} };
 function initAudio() {
   // iOS: play through the ring/silent switch like a game should, and wake the context after calls or app switches ('interrupted').
-  try { if (navigator.audioSession && navigator.audioSession.type !== 'playback') navigator.audioSession.type = 'playback'; } catch (e) { }
+  // ('playback' forbids recording, so while voice chat has the microphone on the session is 'play-and-record'; see voice.js)
+  try { const want = typeof Voice !== 'undefined' && Voice.micStream ? 'play-and-record' : 'playback'; if (navigator.audioSession && navigator.audioSession.type !== want) navigator.audioSession.type = want; } catch (e) { }
   if (AU.ctx) { if (AU.ctx.state !== 'running' && AU.ctx.state !== 'closed') { const r = AU.ctx.resume(); if (r && r.catch) r.catch(() => { }); } return; }
   try {
     AU.ctx = new (window.AudioContext || window.webkitAudioContext)();

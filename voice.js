@@ -62,21 +62,31 @@ const Voice = {
   },
   stop() { for (const pid of [...this.calls.keys()]) this.drop(pid); this.peer = null; this.roster = []; this.setTalking(false); },
   // ---- microphone
+  // iPhone: the game's audio session is 'playback' (plays through the silent switch) and that mode cannot record.
+  session(t) { try { if (navigator.audioSession && navigator.audioSession.type !== t) navigator.audioSession.type = t; } catch (e) { } },
   async enableMic(deviceId) {
-    this.error = '';
+    this.error = ''; this.session('play-and-record');
+    const ask = id => navigator.mediaDevices.getUserMedia({ audio: id ? { deviceId: { exact: id }, echoCancellation: true, noiseSuppression: true } : { echoCancellation: true, noiseSuppression: true } });
+    let s;
+    try { s = await ask(deviceId); }
+    catch (e) {
+      // a remembered microphone may be gone (or ids changed): fall back to the default one
+      if (deviceId && e && e.name !== 'NotAllowedError') { try { s = await ask(''); } catch (e2) { e = e2; } }
+      if (!s) { this.error = (e && e.name) || 'Error'; if (!this.micStream) this.session('playback'); return false; }
+    }
     try {
-      const s = await navigator.mediaDevices.getUserMedia({ audio: deviceId ? { deviceId: { exact: deviceId }, echoCancellation: true, noiseSuppression: true } : { echoCancellation: true, noiseSuppression: true } });
       const old = this.micStream; this.micStream = s; this.micTrack = s.getAudioTracks()[0];
       this.micId = (this.micTrack.getSettings && this.micTrack.getSettings().deviceId) || deviceId || ''; this.savePrefs();
       this.gate(); await this.swapTrack(this.micTrack);
       if (old) old.getTracks().forEach(t => t.stop());
       const c = this.ctx(); if (c) { this.myAn = c.createAnalyser(); this.myAn.fftSize = 512; c.createMediaStreamSource(s).connect(this.myAn); }
       return true;
-    } catch (e) { this.error = e && e.name === 'NotAllowedError' ? 'denied' : 'unavailable'; return false; }
+    } catch (e) { this.error = 'setup:' + ((e && e.name) || 'Error'); return true; } // the mic is on even if the level meter failed
   },
   async disableMic() {
     const old = this.micStream; this.micStream = null; this.micTrack = null; this.myAn = null;
     await this.swapTrack(this.outStream().getAudioTracks()[0] || null); if (old) old.getTracks().forEach(t => t.stop());
+    this.session('playback');
   },
   async swapTrack(track) {
     for (const v of this.calls.values()) { const pc = v.call.peerConnection; if (!pc) continue; for (const s of pc.getSenders()) if (!s.track || s.track.kind === 'audio') try { await s.replaceTrack(track); } catch (e) { } }

@@ -1442,6 +1442,15 @@ function nextChapter() {
   hide(); banner(world.pal.name, chapterSub(), 4); sfx('dawn');
   if (net.mode === 'host') sendWorld();
 }
+// What to do about a microphone error (DOMException names from getUserMedia).
+function micErrorText(name) {
+  if (name === 'NotAllowedError') return L('Microphone permission is off for this site. iPhone Safari: tap <b>aA</b> (or <b>⋯</b>) → <b>Website Settings</b> → <b>Microphone</b> → <b>Allow</b>, then try again. Home Screen app: iPhone <b>Settings</b> → <b>Apps</b> → <b>Safari</b> → <b>Microphone</b>.',
+    '此網站的麥克風權限已關閉。iPhone Safari：點 <b>aA</b>（或 <b>⋯</b>）→ <b>網站設定</b> → <b>麥克風</b> → <b>允許</b>，再試一次。主畫面 App：iPhone <b>設定</b> → <b>App</b> → <b>Safari</b> → <b>麥克風</b>。');
+  if (name === 'NotReadableError' || name === 'AbortError') return L('The microphone is busy — end any call or app using it (or a Bluetooth headset switching), then try again.', '麥克風正被使用中 — 請結束通話或其他使用麥克風的 App（或藍牙耳機切換中），再試一次。');
+  if (name === 'NotFoundError' || name === 'OverconstrainedError') return L('No microphone was found.', '找不到麥克風。');
+  if (name === 'SecurityError') return L('The microphone needs the secure (https) game link.', '麥克風需要使用安全（https）的遊戲連結。');
+  return L('Microphone not available (' + esc(name) + '). Try again, or reload the page.', '無法使用麥克風（' + esc(name) + '）。請再試一次或重新整理頁面。');
+}
 // Voice & sound panel. In co-op play it opens over the running game (soft) and does not pause.
 async function showVoice(back, soft) {
   const nameOf = pid => { const q = players.find(p => p.id === pid) || net.lobby.find(q => q.id === pid); return q ? q.name : '#' + pid; };
@@ -1452,7 +1461,7 @@ async function showVoice(back, soft) {
     h += '<div class="row"><button id="vmic"' + (Voice.micStream ? ' class="ghost"' : '') + '>' + (Voice.micStream ? L('Turn microphone off', '關閉麥克風') : L('Turn microphone on', '開啟麥克風')) + '</button>' +
       '<select id="vmode"><option value="ptt"' + (Voice.mode === 'ptt' ? ' selected' : '') + '>' + L('Push to talk', '按住說話') + '</option><option value="open"' + (Voice.mode === 'open' ? ' selected' : '') + '>' + L('Open mic', '持續開麥') + '</option></select>' +
       (devs.length ? '<select id="vdev">' + devs.map((d, i) => '<option value="' + esc(d.deviceId) + '"' + (d.deviceId === Voice.micId ? ' selected' : '') + '>' + esc(d.label || L('Microphone ', '麥克風 ') + (i + 1)) + '</option>').join('') + '</select>' : '') + '</div>';
-    h += '<div class="wait">' + (Voice.error ? L('Microphone not available (' + Voice.error + '). Check the browser’s permission for this site.', '無法使用麥克風（' + Voice.error + '）。請檢查瀏覽器對此網站的權限。') :
+    h += '<div class="wait">' + (!Voice.micStream && Voice.error ? micErrorText(Voice.error) :
       Voice.micStream ? (Voice.mode === 'ptt' ? L('Hold V (keyboard) or the TALK button (touch) to talk.', '按住 V 鍵（鍵盤）或 TALK 按鈕（觸控）說話。') : L('Everyone hears you while the mic is on.', '麥克風開啟時大家都聽得到你。')) : L('You can hear others without a microphone.', '不開麥克風也能聽到其他人。')) + '</div>';
     const others = Voice.roster.filter(r => r.id !== Voice.myId);
     h += '<div class="stats prof">' + (others.length ? others.map(r => { const v = Voice.calls.get(r.id); return '<div class="vrow">' + esc(nameOf(r.id)) + ' <i>' + (v && v.stream ? L('connected', '已連線') : L('connecting…', '連線中…')) + '</i> ' +
