@@ -699,17 +699,22 @@ function wrapConn(c) {
   c.on('data', d => w.onData && w.onData(d)); c.on('close', () => w.onClose && w.onClose()); c.on('error', () => w.onClose && w.onClose());
   return w;
 }
+// The PeerJS server only introduces players; once connected, game data flows directly. If the link to the server
+// drops (mobile networks, switching apps), reconnect to it so new players can still join and voice calls can start.
+function keepSignal(peer) {
+  peer.on('disconnected', () => { let n = 0; const retry = () => { if (peer.destroyed || !peer.disconnected || n++ > 20) return; try { peer.reconnect(); } catch (e) { } setTimeout(retry, 3000); }; setTimeout(retry, 1000); });
+}
 // Transport: WebRTC data channels brokered by the public PeerJS signalling server. Replaceable for tests.
 let NetT = {
   ok: () => typeof Peer !== 'undefined' && !window.DUSK_NO_NET,
   voice: true,
   host(code, h) {
-    const peer = new Peer(PEER_PREFIX + code);
+    const peer = new Peer(PEER_PREFIX + code); keepSignal(peer);
     peer.on('open', () => h.open()); peer.on('connection', c => c.on('open', () => h.conn(wrapConn(c)))); peer.on('error', e => h.error(e.type || 'error'));
     return { close: () => peer.destroy(), peer, peerId: PEER_PREFIX + code };
   },
   join(code, h) {
-    const peer = new Peer();
+    const peer = new Peer(); keepSignal(peer);
     peer.on('open', () => { const c = peer.connect(PEER_PREFIX + code, { reliable: true, serialization: 'json' }); c.on('open', () => h.open(wrapConn(c))); });
     peer.on('error', e => h.error(e.type || 'error'));
     return { close: () => peer.destroy(), peer };
@@ -856,7 +861,10 @@ const netWhy = t => ({
   'no-room': 'Live rooms are not available in this view. Open the page link directly in Safari or Chrome while signed in to claude.ai — not through a public share link, and not inside another app.',
   'not-allowed-to-host': 'Only the page owner, or people given Edit or Contribute access, can host here. You can still join a room.',
   not_permitted: 'This page is not allowed to open live rooms for you.', limit_reached: 'Too many rooms are open right now. Try again in a minute.',
-  upstream_error: 'The live connection did not answer. Try again.'
+  upstream_error: 'The live connection did not answer. Try again.',
+  network: 'Could not reach the matchmaking server. Check your internet connection and try again.', 'server-error': 'Could not reach the matchmaking server. Check your internet connection and try again.',
+  'socket-error': 'Could not reach the matchmaking server. Check your internet connection and try again.', 'socket-closed': 'Could not reach the matchmaking server. Check your internet connection and try again.',
+  'browser-incompatible': 'This browser can’t make direct connections for co-op. Try Safari or Chrome.', webrtc: 'The direct connection to the host failed. Both players should be on the internet (not only local Wi-Fi) and try again.'
 })[t];
 // Rejoining: each device keeps a random token (never shown to other players) and the last room it joined.
 // Per-session rejoin secret issued privately by the host (not the profile id, not a connection id).
@@ -871,7 +879,7 @@ function hostGame() {
   const handle = net.handle = NetT.host(net.code, {
     open() { if (net.handle === handle) { net.ready = true; if (game.state === 'lobby') showLobby(); } },
     conn(c) { if (net.handle === handle) onClientConn(c); else c.close(); },
-    error(t) { if (net.handle !== handle) return; if (t === 'unavailable-id') hostGame(); else if (!net.ready || netWhy(t)) netFail(netWhy(t) || 'Could not open a room (' + t + '). Check your connection and try again.'); }
+    error(t) { if (net.handle !== handle) return; if (t === 'unavailable-id') hostGame(); else if (!net.ready || t === 'not-allowed-to-host') netFail(netWhy(t) || 'Could not open a room (' + t + '). Check your connection and try again.'); else console.warn('network (non-fatal):', t); }
   });
   game.state = 'lobby'; showLobby(); startTicker();
 }
@@ -1009,7 +1017,7 @@ function joinGame(code) {
       net.host = c; c.onData = d => { try { clientRecv(d); } catch (e) { console.error(e); } }; c.onClose = () => { if (net.handle === handle) netFail('Lost connection to the host. Tap Join to rejoin the game.'); };
       c.send({ t: 'hello', name: net.name, hero: net.hero, tok: rejoinSecret(code), lo: loadoutOf(PROFILE, net.hero) }); rememberRoom(code);
     },
-    error(t) { if (net.handle === handle) netFail(t === 'peer-unavailable' ? 'No room found with code ' + code + '.' : netWhy(t) || 'Connection failed (' + t + ').'); }
+    error(t) { if (net.handle !== handle) return; if (net.host) { console.warn('network (non-fatal):', t); return; } netFail(t === 'peer-unavailable' ? 'No room found with code ' + code + '.' : netWhy(t) || 'Connection failed (' + t + ').'); }
   });
   setTimeout(() => { if (net.handle === handle && !net.host) netFail('Could not reach room ' + code + '.'); }, 22000);
 }

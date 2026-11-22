@@ -68,7 +68,9 @@ const ZH = {
   'Bolts pierce +1 enemy': '火彈多穿透 1 名敵人', '+1 cinder bolt per cast': '每次施放多 1 發燼火彈', '+20% damage, cooldowns 15% faster': '傷害 +20%，冷卻加快 15%',
   '+8% critical chance': '暴擊率 +8%', '+1 dash charge, +10% move speed': '衝刺次數 +1，移動速度 +10%', '+20% damage, +40% critical damage': '傷害 +20%，暴擊傷害 +40%',
   'Max health': '最大生命', 'Damage': '傷害', 'Move speed': '移動速度', 'Critical chance': '暴擊率', 'Starting gold': '初始金幣',
-  'No reward': '沒有獎勵', 'Keepsake (everything already owned)': '紀念品（已擁有全部）', 'That profile is already in this party.': '這個檔案已經在隊伍中了。',
+  'No reward': '沒有獎勵', 'Could not reach the matchmaking server. Check your internet connection and try again.': '無法連上配對伺服器。請檢查網路連線後再試一次。',
+  'This browser can’t make direct connections for co-op. Try Safari or Chrome.': '此瀏覽器無法建立合作模式所需的直接連線，請改用 Safari 或 Chrome。',
+  'The direct connection to the host failed. Both players should be on the internet (not only local Wi-Fi) and try again.': '與房主的直接連線失敗。請確認雙方都已連上網路後再試一次。', 'Keepsake (everything already owned)': '紀念品（已擁有全部）', 'That profile is already in this party.': '這個檔案已經在隊伍中了。',
   // banners and floating text
   'THE GLOAM STAG': '幽暮雄鹿', 'It has come for what you carry.': '它為你身上之物而來。',
   'An Ember rekindles you': '餘燼讓你重燃', 'Stand beside them to revive.': '站到旁邊即可救起。',
