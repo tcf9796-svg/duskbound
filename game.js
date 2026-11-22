@@ -22,12 +22,36 @@ const cv = $('game'), ctx = cv.getContext('2d'), overlay = $('overlay'), choiceE
 let W = 0, H = 0, zoom = 1, VW = 0, VH = 0, DPR = 1;
 // Touch state: on phones the left thumb steers a floating stick, the right thumb aims/attacks, plus on-screen buttons.
 const touch = { on: !!(window.matchMedia && matchMedia('(pointer: coarse)').matches), move: null, aim: null, aimA: 0 };
+// Safe-area insets (iPhone notch / Dynamic Island / home indicator), measured from CSS env() via the hidden #sa element.
+const SA = { l: 0, r: 0, t: 0, b: 0 };
+function readSafeArea() {
+  const el = $('sa'); if (!el || !window.getComputedStyle) return;
+  const cs = getComputedStyle(el), px = v => num(parseFloat(v), 0);
+  SA.t = px(cs.paddingTop); SA.r = px(cs.paddingRight); SA.b = px(cs.paddingBottom); SA.l = px(cs.paddingLeft);
+}
+const IOS = /iP(hone|od|ad)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const STANDALONE = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
+// iPhone Safari (not the Home Screen app, not inside another page): Safari shrinks its bars away only when the page
+// itself scrolls, so give the page some scroll room. Swiping up on menus scrolls it and the bars disappear; during play
+// the canvas blocks scrolling, so they stay hidden.
+const IOS_BARS = IOS && !STANDALONE && window.top === window;
+if (IOS_BARS) document.documentElement.classList.add('iosbar');
+// Are Safari's bars still taking up room? (screen.* is the full screen; in landscape the short side is the full height.)
+const barsShowing = () => IOS_BARS && innerHeight < (innerWidth > innerHeight ? Math.min(screen.width, screen.height) : Math.max(screen.width, screen.height)) - 24;
 function resize() {
-  DPR = Math.min(window.devicePixelRatio || 1, 2); W = innerWidth; H = innerHeight;
+  DPR = Math.min(window.devicePixelRatio || 1, 2); W = innerWidth; H = innerHeight; readSafeArea();
   cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+  if (IOS_BARS) { cv.style.width = W + 'px'; cv.style.height = H + 'px'; overlay.style.height = H + 'px'; document.body.classList.toggle('bars', barsShowing()); }
   zoom = clamp(Math.min(W / 1280, H / 720), touch.on ? 0.72 : 0.55, 1.6); VW = W / zoom; VH = H / zoom;
 }
-addEventListener('resize', resize); addEventListener('orientationchange', () => setTimeout(resize, 200)); resize();
+addEventListener('resize', resize); addEventListener('orientationchange', () => { resize(); setTimeout(resize, 300); }); resize();
+// iOS Safari resizes the visual viewport as its toolbars slide in and out.
+if (window.visualViewport) visualViewport.addEventListener('resize', resize);
+// iOS Safari ignores user-scalable=no for pinch zoom; stop it here. Unlock audio on any tap end too (older iOS needs touchend).
+for (const ev of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(ev, e => e.preventDefault(), { passive: false });
+document.addEventListener('touchend', () => initAudio(), { passive: true }); document.addEventListener('click', () => initAudio());
+// Locking the phone or switching apps pauses a solo run instead of letting the night keep going unseen.
+document.addEventListener('visibilitychange', () => { if (document.hidden && game.state === 'play' && net.mode === 'solo' && !game.over && !game.paused && !(me && me.choice)) onKey('p'); });
 
 // ---------- input ----------
 const keys = {}, mouse = { x: 0, y: 0, l: false, r: false };
@@ -38,24 +62,37 @@ addEventListener('keydown', e => {
   if (k === ' ' || k === 'tab') e.preventDefault();
   onKey(k);
 });
-addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+addEventListener('keyup', e => { const k = e.key.toLowerCase(); keys[k] = false; if (k === 'v') Voice.setTalking(false); });
+addEventListener('keydown', e => { if (e.key.toLowerCase() === 'v' && !(e.target && e.target.tagName === 'INPUT') && !e.repeat) Voice.setTalking(true); });
 cv.addEventListener('mousemove', e => { mouse.x = e.clientX; mouse.y = e.clientY; });
 cv.addEventListener('mousedown', e => { initAudio(); if (touch.on) { touch.on = false; touch.move = touch.aim = null; resize(); } if (e.button === 0) mouse.l = true; if (e.button === 2) { mouse.r = true; pressed.rmb = true; } });
 addEventListener('mouseup', e => { if (e.button === 0) mouse.l = false; if (e.button === 2) mouse.r = false; });
 addEventListener('contextmenu', e => e.preventDefault());
 addEventListener('blur', () => { for (const k in keys) keys[k] = false; mouse.l = mouse.r = false; });
 const mouseWorld = () => ({ x: cam.x + mouse.x / zoom, y: cam.y + mouse.y / zoom });
-const touchU = () => clamp(Math.min(W, H) / 400, 0.8, 1.25);
+const touchU = () => clamp(Math.min(W - SA.l - SA.r, H - SA.t - SA.b) / 400, 0.8, 1.25);
+// HUD scale on phones, and the safe right/bottom edges the touch controls are laid out against.
+const hudScale = () => touch.on ? clamp(Math.min((W - SA.l - SA.r) / 900, (H - SA.t - SA.b) / 480), 0.7, 1) : 1;
 function touchButtons() {
-  const u = touchU();
-  return [{ id: 'skill', key: 'e', x: W - 205 * u, y: H - 62 * u, r: 30 * u }, { id: 'dash', key: ' ', x: W - 190 * u, y: H - 140 * u, r: 30 * u },
-  { id: 'ult', key: 'q', x: W - 118 * u, y: H - 196 * u, r: 30 * u }, { id: 'f', key: 'f', x: W - 42 * u, y: H - 210 * u, r: 26 * u }];
+  const u = touchU(), R = W - SA.r, B = H - Math.max(SA.b - 8, 0), hs = hudScale();
+  return [{ id: 'skill', key: 'e', x: R - 205 * u, y: B - 62 * u, r: 30 * u }, { id: 'dash', key: ' ', x: R - 190 * u, y: B - 140 * u, r: 30 * u },
+  { id: 'ult', key: 'q', x: R - 118 * u, y: B - 196 * u, r: 30 * u }, { id: 'f', key: 'f', x: R - 42 * u, y: B - 210 * u, r: 26 * u },
+  // left of the minimap: pause in solo, mute in co-op
+  { id: 'menu', key: '', x: R - 156 * hs, y: SA.t + 38 * hs, r: 18 * hs }].concat(fsAvailable() && !isFS() && (canFS() || barsShowing()) ? [{ id: 'fs', key: '', x: R - 156 * hs, y: SA.t + 84 * hs, r: 18 * hs }] : []).concat(Voice.micTrack && Voice.mode === 'ptt' && net.mode !== 'solo' ? [{ id: 'talk', key: '', x: SA.l + 44 * u, y: B - 205 * u, r: 28 * u }] : []);
 }
+// In-game ⛶ (on finger lift, which browsers accept for full screen): enter directly, or on iPhone show the help
+// (a solo game pauses meanwhile; co-op keeps running).
+function fsFromGame() {
+  if (canFS()) { setKeepFS(true); goFull(true); return; }
+  if (net.mode === 'solo') game.paused = true;
+  onFsButton(() => { if (net.mode === 'solo') game.paused = false; hide(); });
+}
+function touchMenu() { if (net.mode === 'solo') onKey('p'); else if (game.state === 'play' && !game.over) showVoice(hide, true); }
 cv.addEventListener('touchstart', e => {
   e.preventDefault(); initAudio(); if (!touch.on) { touch.on = true; resize(); }
   for (const t of e.changedTouches) {
     const x = t.clientX, y = t.clientY, b = touchButtons().find(b => Math.hypot(x - b.x, y - b.y) < b.r * 1.25);
-    if (b) pressed[b.key] = true;
+    if (b) { if (b.id === 'menu') touchMenu(); else if (b.id === 'talk') { touch.talk = t.identifier; Voice.setTalking(true); } else if (b.id === 'fs') touch.fs = t.identifier; else pressed[b.key] = true; }
     else if (x < W * 0.45) { if (!touch.move) touch.move = { id: t.identifier, x0: x, y0: y, x, y }; }
     else if (!touch.aim) touch.aim = { id: t.identifier, x0: x, y0: y, x, y };
   }
@@ -65,7 +102,7 @@ cv.addEventListener('touchmove', e => {
   for (const t of e.changedTouches) for (const s of [touch.move, touch.aim]) if (s && s.id === t.identifier) { s.x = t.clientX; s.y = t.clientY; }
 }, { passive: false });
 function touchEnd(e) {
-  for (const t of e.changedTouches) { if (touch.move && touch.move.id === t.identifier) touch.move = null; if (touch.aim && touch.aim.id === t.identifier) touch.aim = null; }
+  for (const t of e.changedTouches) { if (touch.fs === t.identifier) { touch.fs = null; fsFromGame(); } if (touch.talk === t.identifier) { touch.talk = null; Voice.setTalking(false); } if (touch.move && touch.move.id === t.identifier) touch.move = null; if (touch.aim && touch.aim.id === t.identifier) touch.aim = null; }
 }
 cv.addEventListener('touchend', touchEnd); cv.addEventListener('touchcancel', touchEnd);
 function touchInput() {
@@ -89,12 +126,23 @@ function localInput() {
 }
 
 // ---------- state ----------
-const newGame = () => ({ state: 'play', chapter: 1, time: 0, boss: null, banner: null, shake: 0, winT: 0, ambT: 5, wasNight: false, t: 0, over: null, paused: false });
+const newGame = () => ({ state: 'play', diff: 'normal', runId: '', rewards: null, chapter: 1, time: 0, boss: null, banner: null, shake: 0, winT: 0, ambT: 5, wasNight: false, t: 0, over: null, paused: false });
 let game = newGame(); game.state = 'menu';
 let players = [], me = null, world = null, enemies = [], projs = [], zones = [], pickups = [], parts = [], texts = [], fxs = [], tethers = [];
 let night = 0, cam = { x: 0, y: 0 }, groundPat = null, nextId = 1, evQ = [];
-const net = { mode: 'solo', conns: [], host: null, handle: null, lobby: [], myId: 1, nextPid: 2, name: '', hero: 'bramble', code: '', ready: false, snapT: 0, inT: 0, out: {}, pickedSeq: -1, worker: null };
+const net = { mode: 'solo', away: new Map(), claims: new Map(), rolled: new Set(), conns: [], host: null, handle: null, lobby: [], myId: 1, nextPid: 2, name: '', hero: 'bramble', code: '', ready: false, snapT: 0, inT: 0, out: {}, pickedSeq: -1, worker: null };
 try { net.name = localStorage.getItem('duskbound-name') || ''; } catch (e) { }
+// Saved profile (meta.js): identified by a random installation id kept in this browser's storage.
+const STORE = (() => { try { localStorage.setItem('duskbound-probe', '1'); localStorage.removeItem('duskbound-probe'); return localStorage; } catch (e) { const d = {}; return { getItem: k => k in d ? d[k] : null, setItem: (k, v) => { d[k] = String(v); }, removeItem: k => { delete d[k]; } }; } })();
+let PROFILE = loadProfile(STORE);
+const saveMe = () => saveProfile(STORE, PROFILE);
+const DIFF = id => DIFFICULTIES.find(d => d.id === id) || DIFFICULTIES[0];
+// The difficulty this player wants (remembered), never above what their profile has unlocked.
+net.diff = (() => { let d = ''; try { d = localStorage.getItem('duskbound-diff') || ''; } catch (e) { } return PROFILE.unlocked.includes(d) ? d : 'normal'; })();
+const setDiff = d => { if (!PROFILE.unlocked.includes(d)) return; net.diff = d; try { localStorage.setItem('duskbound-diff', d); } catch (e) { } };
+// Players counted for scaling: everyone in the session, including disconnected players whose slot is still held.
+const partyN = () => Math.max(1, players.length + (net.mode === 'host' ? net.away.size : 0));
+const partyMul = per => 1 + per * (partyN() - 1);
 const ETN = ['husk', 'spitter', 'ram', 'bloat', 'wisp', 'boss'], STN = ['chase', 'wind', 'rest', 'charge', 'fuse', 'bwind', 'bcharge', 'ring', 'slam'];
 const DASH_CD = 2.2, ULT_CD = 40;
 
@@ -145,7 +193,7 @@ function makeGround(p) {
 }
 function clearEntities() { enemies = []; projs = []; zones = []; pickups = []; parts = []; texts = []; fxs = []; evQ = []; tethers = []; for (const p of players) { p.decoy = null; p.decoyOn = false; } }
 function genWorld() {
-  const S = 3400, pal = PAL[(game.chapter - 1) % 3];
+  const S = 3400, pal = PAL[(game.chapter - 1) % PAL.length];
   world = { S, obs: [], pois: [], pal }; groundPat = makeGround(pal); clearEntities();
   const c = { x: S / 2, y: S / 2 }, a = rand(TAU), sp = { x: c.x + Math.cos(a) * 1350, y: c.y + Math.sin(a) * 1350 };
   world.spawn = sp; const pois = world.pois;
@@ -182,10 +230,10 @@ function spawnPack(x, y, n, spread, aggro) {
   }
 }
 function spawnEnemy(type, x, y, elite = false) {
-  const T = ET[type], hm = (1 + 0.3 * dayIdx()) * (1 + 0.9 * (game.chapter - 1)) * (elite ? 6 : 1) * (1 + 0.6 * (players.length - 1));
+  const T = ET[type], hm = (1 + 0.3 * dayIdx()) * (1 + 0.9 * (game.chapter - 1)) * (elite ? 6 : 1) * DIFF(game.diff).hp * partyMul(PARTY_SCALE.hpPerExtra);
   const e = {
     id: nextId++, type, x: clamp(x, 40, world.S - 40), y: clamp(y, 40, world.S - 40), r: T.r * (elite ? 1.5 : 1), hp: T.hp * hm, maxHp: T.hp * hm,
-    spd: T.spd, dmg: T.dmg * (elite ? 1.4 : 1), xp: T.xp * (elite ? 8 : 1), elite, state: 'chase', t: 0, cd: rand(0.5, 2), aggro: false,
+    spd: T.spd, dmg: T.dmg * (elite ? 1.4 : 1) * DIFF(game.diff).dmg * partyMul(PARTY_SCALE.dmgPerExtra), xp: T.xp * (elite ? 8 : 1), elite, state: 'chase', t: 0, cd: rand(0.5, 2), aggro: false,
     flash: 0, slowT: 0, rootT: 0, tid: 0, tgt: null, kbx: 0, kby: 0, poisT: 0, poisD: 0, poisTick: 0, poisBy: null, a: 0, dead: false, ph: rand(TAU), n: 0, near: false
   };
   enemies.push(e); return e;
@@ -549,17 +597,18 @@ function update(dt) {
   if (isNight && !game.boss && game.winT <= 0) {
     game.ambT -= dt;
     if (game.ambT <= 0) {
-      game.ambT = rand(6, 9) / (1 + 0.35 * (players.length - 1)); const p = pick(alive());
+      game.ambT = rand(6, 9) / (partyMul(PARTY_SCALE.ambushPerExtra) * DIFF(game.diff).ambush); const p = pick(alive());
       if (p) { const a = rand(TAU), n = randi(3, 4) + game.chapter; for (let i = 0; i < n; i++) { const e = spawnEnemy(Math.random() < 0.8 ? 'wisp' : 'husk', p.x + Math.cos(a + rand(-0.6, 0.6)) * rand(520, 640), p.y + Math.sin(a + rand(-0.6, 0.6)) * rand(520, 640)); e.aggro = true; } }
     }
   }
-  if (game.winT > 0) { game.winT -= dt; if (game.winT <= 0) { game.over = game.chapter < 3 ? 'win' : 'final'; rollReward(); showEnd(); return; } }
+  if (net.mode === 'host' && net.away.size) expireAway();
+  if (game.winT > 0) { game.winT -= dt; if (game.winT <= 0) { game.over = game.chapter < CHAPTERS ? 'win' : 'final'; chapterComplete(); showEnd(); return; } }
 
   // players
   for (const p of players) {
     const inp = p.remote ? p.in : localInput();
     updPlayer(p, inp, dt);
-    if (p.remote) { p.in.dash = p.in.ult = p.in.interact = false; }
+    if (p.remote) { p.in.dash = p.in.ult = p.in.interact = p.in.skill = false; }
     if (game.over) return;
   }
   // enemies
@@ -749,69 +798,246 @@ function rollChoice(p) {
   while (list.length < 3 && pool.length) { const w = pool.map(t => t.hero ? 2 : 1), tot = w.reduce((a, b) => a + b, 0); let r = rand(tot), i = 0; while (i < w.length - 1 && r > w[i]) r -= w[i++]; list.push(pool.splice(i, 1)[0]); }
   p.choice = list; p.choiceSeq++;
 }
-// ---------- character unlocks (saved on this device, like the player name) ----------
-const SAVE_KEY = 'duskbound-unlocks', save = { heroes: [], pools: [] };
+// ---------- character unlocks ----------
+// Unlockable heroes (data.js: `rarity`) are won as character rewards in the single chapter roll (meta.js REWARD_POOLS)
+// and saved in the profile. Unlocks from the earlier per-device save ('duskbound-unlocks') are carried over once.
 try {
-  const s = JSON.parse(localStorage.getItem(SAVE_KEY) || '{}');
-  if (Array.isArray(s.heroes)) save.heroes = s.heroes.filter(h => HEROES[h] && HEROES[h].rarity);
-  if (Array.isArray(s.pools)) save.pools = s.pools.filter(r => RARITY[r]);
+  const old = JSON.parse(localStorage.getItem('duskbound-unlocks') || 'null');
+  if (old && Array.isArray(old.heroes)) { for (const h of old.heroes) if (HEROES[h] && HEROES[h].rarity && !PROFILE.characters.includes(h)) PROFILE.characters.push(h); saveMe(); localStorage.removeItem('duskbound-unlocks'); }
 } catch (e) { }
-function writeSave() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) { } }
-const unlocked = id => !!HEROES[id] && (!HEROES[id].rarity || save.heroes.includes(id));
-// Called once when a chapter is completed (on every player's own machine). First the chapter's pool opens, so the
-// newly eligible heroes take part in this very roll; then one roll unlocks the rarest eligible hero whose chance it beats.
-function rollReward() {
-  if (game.rolled || (game.over !== 'win' && game.over !== 'final')) return; game.rolled = true;
-  const opened = [];
-  for (const r in RARITY) if (RARITY[r].chapter <= game.chapter && !save.pools.includes(r)) { save.pools.push(r); opened.push(r); }
-  const cand = Object.keys(HEROES).filter(id => HEROES[id].rarity && save.pools.includes(HEROES[id].rarity) && !unlocked(id))
-    .sort((a, b) => RARITY[HEROES[a].rarity].chance - RARITY[HEROES[b].rarity].chance);
-  const roll = Math.random(), won = cand.find(id => roll < RARITY[HEROES[id].rarity].chance) || null;
-  if (won) { save.heroes.push(won); playSfx('unlock'); }
-  writeSave(); game.reward = { opened, won, tried: cand.length > 0 };
-}
-function rewardHtml() {
-  const r = game.reward; if (!r) return '';
-  let h = '';
-  for (const k of r.opened) { const R = RARITY[k], who = Object.keys(HEROES).filter(id => HEROES[id].rarity === k).map(id => HEROES[id].name).join(', '); h += '<div class="reward">The <span style="color:' + R.color + '">' + R.name + '</span> character pool opens' + (who ? ' — ' + esc(who) : '') + '.</div>'; }
-  if (r.won) { const H2 = HEROES[r.won], R = RARITY[H2.rarity]; h += '<div class="reward won">Character unlocked: <span style="color:' + H2.color + '">' + esc(H2.name + ', ' + H2.title) + '</span> <span style="color:' + R.color + '">(' + R.name + ')</span></div>'; }
-  else if (r.tried) h += '<div class="reward">Character reward roll: nothing this time.</div>';
-  return h;
-}
+const unlocked = id => !!HEROES[id] && (!HEROES[id].rarity || PROFILE.characters.includes(id));
+const ownsHero = (lo, id) => !!HEROES[id] && (!HEROES[id].rarity || !!(lo && lo.characters && lo.characters.includes(id)));
 function applyPick(p, i) {
   const t = p.choice && p.choice[i]; if (!t) return;
   p.talents[t.id] = (p.talents[t.id] || 0) + 1; t.f(p); sfx('pick', null, p.id); p.pending--; p.choice = null;
 }
 
+// ---------- chapter rewards (host decides; meta.js holds odds and pools) ----------
+// Eligible: every player in the session when the chapter ends, including disconnected players whose slot is still held.
+// One roll per player per chapter. Claims are keyed run:chapter:profile, so repeated completion events, reconnects and
+// duplicate players with the same profile can never roll twice.
+function chapterComplete() {
+  if (net.mode === 'client') return;
+  const key = game.runId + ':' + game.chapter; if (net.rolled.has(key)) return; net.rolled.add(key);
+  const list = [], seen = new Set();
+  for (const p of players.concat([...net.away.values()].map(a => a.p))) {
+    const pid = p.lo && p.lo.pid; if (!pid || seen.has(pid)) continue; seen.add(pid);
+    const claim = key + ':' + pid;
+    let r = net.claims.get(claim);
+    if (!r) { const roll = rollReward({ ...(p.lo || {}), chapter: game.chapter }); r = { claim, pid, id: p.id, name: p.name, rarity: roll.rarity, item: roll.item, ch: game.chapter, diff: game.diff, run: game.runId, final: game.over === 'final' }; net.claims.set(claim, r); }
+    list.push(r); deliverReward(r);
+  }
+  game.rewards = list.map(r => ({ id: r.id, name: r.name, rarity: r.rarity, item: r.item }));
+  for (const c of net.conns) if (c.inGame) c.send({ t: 'rewards', ch: game.chapter, list: game.rewards });
+}
+// Sends (or, for the host, applies) one player's result. Receivers ignore claims they already applied.
+function deliverReward(r) {
+  const msg = { t: 'reward', claim: r.claim, rarity: r.rarity, item: r.item, ch: r.ch, diff: r.diff, run: r.run, final: r.final };
+  if (r.id === 1 && net.mode !== 'client') return receiveReward(msg);
+  const c = net.conns.find(q => q.pid === r.id && q.inGame); if (c) c.send(msg);
+}
+// Runs on the player's own device: saves the reward and, after chapter 5, the campaign clear.
+function receiveReward(m) {
+  if (typeof m.claim !== 'string' || !m.claim.endsWith(':' + PROFILE.id)) return;
+  const valid = m.rarity === null || (RARITIES.includes(m.rarity) && typeof m.item === 'string' && (m.item === 'keepsake' || itemAvailable(m.item, { weapons: [], talents: {}, upgrades: {}, characters: [], chapter: 99 }) || /^u:/.test(m.item)));
+  if (!valid) return;
+  if (grantReward(PROFILE, m.claim, m.rarity, m.rarity ? m.item : null, { chapter: m.ch, diff: m.diff })) {
+    if (m.rarity) banner(rarityName(m.rarity) + ' reward', itemLabel(m.item), 4, me && me.id);
+  }
+  if (m.final) { const un = recordCampaignClear(PROFILE, m.diff, m.run); if (un) setTimeout(() => banner(DIFF(un).name + ' unlocked', 'Campaign cleared on ' + DIFF(m.diff).name, 5), 4200); }
+  saveMe();
+}
+const rarityName = r => RARITY_NAMES[r] || '';
+// Mixed unlocks: a party may only play a difficulty that every player in the lobby has unlocked.
+const lobbyUnlocks = () => net.lobby.map(q => q.id === 1 ? PROFILE.unlocked : (q.lo && q.lo.unlocked) || ['normal']);
+const partyDiffOk = d => lobbyUnlocks().every(u => u.includes(d));
+const bestCommonDiff = () => DIFFICULTIES.filter(d => partyDiffOk(d.id)).pop().id;
+// A disconnected player's slot is held for PARTY_SCALE.graceSeconds, then released.
+function expireAway() {
+  const now = Date.now();
+  for (const [tok, a] of net.away) if (now - a.since > PARTY_SCALE.graceSeconds * 1000) { net.away.delete(tok); banner(a.p.name + "'s place was released", '', 3); }
+}
+
 // ---------- netcode ----------
-const PEER_PREFIX = 'duskbound-v2-'; // bump whenever messages change, so mismatched versions never meet
+const PEER_PREFIX = 'duskbound-v3-'; // bump whenever messages change, so mismatched versions never meet
 const noNetMsg = () => window.DUSK_NO_NET ? 'Online co-op is not available on this page. Solo works here; for co-op, open the downloaded duskbound.html file or a copy on your own website.' : 'Online play needs an internet connection (the networking library did not load).';
 function wrapConn(c) {
-  const w = { send: d => { try { c.send(d); } catch (e) { } }, onData: null, onClose: null, close: () => { try { c.close(); } catch (e) { } } };
+  const w = { peerId: c.peer, send: d => { try { c.send(d); } catch (e) { } }, onData: null, onClose: null, close: () => { try { c.close(); } catch (e) { } } };
   c.on('data', d => w.onData && w.onData(d)); c.on('close', () => w.onClose && w.onClose()); c.on('error', () => w.onClose && w.onClose());
   return w;
+}
+// The PeerJS server only introduces players; once connected, game data flows directly. If the link to the server
+// drops (mobile networks, switching apps), reconnect to it so new players can still join and voice calls can start.
+function keepSignal(peer) {
+  peer.on('disconnected', () => { let n = 0; const retry = () => { if (peer.destroyed || !peer.disconnected || n++ > 20) return; try { peer.reconnect(); } catch (e) { } setTimeout(retry, 3000); }; setTimeout(retry, 1000); });
 }
 // Transport: WebRTC data channels brokered by the public PeerJS signalling server. Replaceable for tests.
 let NetT = {
   ok: () => typeof Peer !== 'undefined' && !window.DUSK_NO_NET,
+  voice: true,
   host(code, h) {
-    const peer = new Peer(PEER_PREFIX + code);
+    const peer = new Peer(PEER_PREFIX + code); keepSignal(peer);
     peer.on('open', () => h.open()); peer.on('connection', c => c.on('open', () => h.conn(wrapConn(c)))); peer.on('error', e => h.error(e.type || 'error'));
-    return { close: () => peer.destroy() };
+    return { close: () => peer.destroy(), peer, peerId: PEER_PREFIX + code };
   },
   join(code, h) {
-    const peer = new Peer();
+    const peer = new Peer(); keepSignal(peer);
     peer.on('open', () => { const c = peer.connect(PEER_PREFIX + code, { reliable: true, serialization: 'json' }); c.on('open', () => h.open(wrapConn(c))); });
     peer.on('error', e => h.error(e.type || 'error'));
-    return { close: () => peer.destroy() };
+    return { close: () => peer.destroy(), peer };
   }
 };
+// Transport 2: claude.ai's live room, for the claude.ai build where WebRTC is blocked.
+// Host -> guest: room events addressed to that guest (the host must be the page's owner, an Editor or a Contributor).
+// Guest -> host: the guest's presence object, which every signed-in viewer may set, so guests need only view access.
+// Payloads are deflated, base64'd and split to fit the 4 KiB message limit. Reliable messages carry sequence numbers
+// and are resent until acknowledged; snapshots and plain input are latest-wins and may drop.
+function makeRoomNet() {
+  let ns; const nsP = window.claude.use('room').then(r => (ns = r), () => (ns = null));
+  const CH = 3000, sleep = ms => new Promise(r => setTimeout(r, ms)), roomName = code => 'duskbound-' + code.toLowerCase();
+  const canZ = typeof CompressionStream !== 'undefined' && typeof DecompressionStream !== 'undefined';
+  const b64 = u8 => { let s = ''; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); };
+  const stream = (bytes, t) => new Response(new Blob([bytes]).stream().pipeThrough(t)).arrayBuffer().then(b => new Uint8Array(b));
+  async function pack(obj) {
+    const raw = new TextEncoder().encode(JSON.stringify(obj));
+    if (canZ && raw.length > 500) try { return { z: 1, s: b64(await stream(raw, new CompressionStream('deflate'))) }; } catch (e) { }
+    return { z: 0, s: b64(raw) };
+  }
+  async function unpack(z, s) {
+    let u8 = Uint8Array.from(atob(s), c => c.charCodeAt(0));
+    if (z) u8 = await stream(u8, new DecompressionStream('deflate'));
+    return JSON.parse(new TextDecoder().decode(u8));
+  }
+  // Collects the parts of one message; resolves the decoded payload once all have arrived.
+  function gather(bufs, d) {
+    let b = bufs.get(d.s); if (!b) { b = { n: d.n, z: d.z, parts: [], got: 0 }; bufs.set(d.s, b); }
+    if (typeof d.d !== 'string' || d.i < 0 || d.i >= b.n || b.parts[d.i] != null) return null;
+    b.parts[d.i] = d.d; if (++b.got < b.n) return null;
+    bufs.delete(d.s); return unpack(b.z, b.parts.join(''));
+  }
+  const code = e => (e && e.code) || 'error';
+  async function open(name, fail) {
+    await nsP;
+    if (!ns) { let u = null; try { u = await window.claude.use('user'); } catch (e) { } fail(u ? 'no-room' : 'signed-out'); return null; }
+    try { return await ns.join(name); } catch (e) { fail(code(e)); return null; }
+  }
+  return {
+    ok: () => true,
+    snapIv: n => n <= 1 ? 1 / 15 : n === 2 ? 0.1 : 0.13,
+    inIv: 1 / 20,
+    host(gameCode, h) {
+      let room = null, closed = false, iv = 0; const guests = new Map(), refused = new Set();
+      const emit = m => room.emit('m', m).catch(e => { if (code(e) === 'not_permitted' && !closed) { handle.close(); h.error('not-allowed-to-host'); } });
+      const handle = { close() { closed = true; clearInterval(iv); for (const g of guests.values()) g.closed = true; guests.clear(); if (room) room.leave().catch(() => { }); } };
+      function out(g, d, rel) {
+        if (g.closed) return;
+        const id = rel ? ++g.outSeq : ++g.uId, rec = { parts: null, t: Date.now() };
+        if (rel) g.unacked.set(id, rec);
+        pack(d).then(pk => {
+          if (g.closed) return; const n = Math.max(1, Math.ceil(pk.s.length / CH));
+          rec.parts = []; for (let i = 0; i < n; i++) rec.parts.push({ to: g.peer, k: rel ? 'r' : 'u', s: id, i, n, z: pk.z, d: pk.s.slice(i * CH, (i + 1) * CH) });
+          for (const m of rec.parts) emit(Object.assign({ a: g.inSeq }, m));
+        });
+      }
+      function deliver(g, d) { if (!g.closed && g.conn.onData && d && typeof d === 'object') g.conn.onData(d); }
+      function fromGuest(p) {
+        if (p.sameTab || refused.has(p.peer)) return; const pr = p.presence || {};
+        if (pr.role !== 'guest' || pr.code !== gameCode) return;
+        let g = guests.get(p.peer);
+        if (!g) {
+          g = { peer: p.peer, inSeq: 0, uSeq: 0, outSeq: 0, uId: 0, unacked: new Map(), closed: false };
+          g.conn = { send: d => out(g, d, !(d && d.t === 's')), onData: null, onClose: null, close: () => { g.closed = true; guests.delete(g.peer); refused.add(g.peer); } };
+          guests.set(p.peer, g); h.conn(g.conn); if (g.closed) return;
+        }
+        const ack = num(pr.ack, 0); for (const s of g.unacked.keys()) if (s <= ack) g.unacked.delete(s);
+        let got = false;
+        if (Array.isArray(pr.out)) for (const e of pr.out.slice().sort((a, b) => a[0] - b[0])) if (Array.isArray(e) && e[0] > g.inSeq) { g.inSeq = e[0]; got = true; deliver(g, e[1]); }
+        if (got && !g.closed) emit({ to: g.peer, k: 'a', a: g.inSeq });
+        if (Array.isArray(pr.u) && pr.u[0] > g.uSeq) { g.uSeq = pr.u[0]; deliver(g, pr.u[1]); }
+      }
+      function left(peer) { refused.delete(peer); const g = guests.get(peer); if (!g) return; guests.delete(peer); g.closed = true; if (g.conn.onClose) g.conn.onClose(); }
+      function resend() {
+        const now = Date.now();
+        for (const g of guests.values()) { let k = 0; for (const [, r] of g.unacked) { if (++k > 3) break; if (r.parts && now - r.t > 700) { r.t = now; for (const m of r.parts) emit(Object.assign({ a: g.inSeq }, m)); } } }
+      }
+      (async () => {
+        room = await open(roomName(gameCode), t => !closed && h.error(t)); if (!room) return; if (closed) return room.leave().catch(() => { });
+        await sleep(1200); if (closed) return;
+        if (room.peers().some(p => !p.sameTab && p.presence && p.presence.role === 'host')) { handle.close(); return h.error('unavailable-id'); }
+        room.presence({ role: 'host', code: gameCode }).catch(() => { });
+        room.onPeers(ch => { if (closed) return; for (const p of ch.left) left(p.peer); for (const p of ch.joined.concat(ch.updated)) fromGuest(p); });
+        iv = setInterval(resend, 300); h.open();
+      })();
+      return handle;
+    },
+    join(gameCode, h) {
+      let room = null, closed = false, hostPeer = null, conn = null, outSeq = 0, uS = 0, inSeq = 0, uDone = 0, chain = Promise.resolve(), outQ = [];
+      const rBufs = new Map(), uBufs = new Map(), done = new Map();
+      const handle = { close() { closed = true; if (room) room.leave().catch(() => { }); } };
+      const myPeer = () => { const p = room.peers().find(p => p.sameTab); return p && p.peer; };
+      const findHost = () => { if (!hostPeer) { const p = room.peers().find(p => !p.sameTab && p.presence && p.presence.role === 'host' && p.presence.code === gameCode); if (p) hostPeer = p.peer; } return hostPeer; };
+      const pres = patch => room.presence(patch).catch(() => { });
+      function onMsg(m) {
+        if (closed || m.sameTab || m.peer !== hostPeer || !conn) return; const d = m.data;
+        if (!d || typeof d !== 'object' || d.to !== myPeer()) return;
+        if (typeof d.a === 'number') { const n = outQ.length; outQ = outQ.filter(e => e[0] > d.a); if (outQ.length !== n) pres({ out: outQ }); }
+        if (d.k === 'r' && d.s > inSeq && !done.has(d.s)) {
+          const p = gather(rBufs, d); if (!p) return;
+          done.set(d.s, p.catch(() => null));
+          // deliver reliable messages strictly in order
+          chain = chain.then(async () => { while (done.has(inSeq + 1)) { const v = await done.get(inSeq + 1); done.delete(++inSeq); if (!closed && v && conn.onData) conn.onData(v); } pres({ ack: inSeq }); });
+        } else if (d.k === 'r') pres({ ack: inSeq });
+        else if (d.k === 'u' && d.s > uDone) {
+          for (const s of uBufs.keys()) if (s < d.s - 4) uBufs.delete(s);
+          const p = gather(uBufs, d); if (p) p.then(v => { if (!closed && d.s > uDone && conn.onData) { uDone = d.s; conn.onData(v); } }, () => { });
+        }
+      }
+      (async () => {
+        room = await open(roomName(gameCode), t => !closed && h.error(t)); if (!room) return; if (closed) return room.leave().catch(() => { });
+        pres({ role: 'guest', code: gameCode, out: [], ack: 0 });
+        room.on('m', onMsg);
+        room.onPeers(ch => { if (closed) return; findHost(); if (hostPeer && ch.left.some(p => p.peer === hostPeer) && conn && conn.onClose) { closed = true; conn.onClose(); } });
+        const t0 = Date.now(); while (!closed && !findHost() && Date.now() - t0 < 8000) await sleep(200);
+        if (closed) return; if (!hostPeer) { handle.close(); return h.error('peer-unavailable'); }
+        conn = {
+          send(d) {
+            if (closed || !d) return;
+            if (d.t === 'i' && d.d == null && !d.q && !d.i) { pres({ u: [++uS, d] }); return; }
+            outQ.push([++outSeq, d]); while (outQ.length > 1 && JSON.stringify(outQ).length > 3000) outQ.shift();
+            pres({ out: outQ });
+          },
+          onData: null, onClose: null, close: () => handle.close()
+        };
+        h.open(conn);
+      })();
+      return handle;
+    }
+  };
+}
+if (window.DUSK_NO_NET && window.claude && typeof window.claude.use === 'function') { NetT = makeRoomNet(); NetT.hint = ' of this same page (it must be shared with them)'; }
 function genCode() { const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let s = ''; for (let i = 0; i < 5; i++) s += pick(A); return s; }
 function leaveNet() {
+  Voice.stop();
   if (net.handle) { try { net.handle.close(); } catch (e) { } }
   net.handle = null; net.host = null; net.conns = []; net.lobby = []; net.mode = 'solo'; net.ready = false; net.myId = 1;
 }
 function netFail(msg) { leaveNet(); showMenu(msg); }
+// Plain-language reasons for transport errors (the claude.ai room transport reports its own codes).
+const netWhy = t => ({
+  'signed-out': 'Co-op here needs you signed in to claude.ai. Sign in to claude.ai in this browser, then open the page link again. (Solo works without signing in.)',
+  'no-room': 'Live rooms are not available in this view. Open the page link directly in Safari or Chrome while signed in to claude.ai — not through a public share link, and not inside another app.',
+  'not-allowed-to-host': 'Only the page owner, or people given Edit or Contribute access, can host here. You can still join a room.',
+  not_permitted: 'This page is not allowed to open live rooms for you.', limit_reached: 'Too many rooms are open right now. Try again in a minute.',
+  upstream_error: 'The live connection did not answer. Try again.',
+  network: 'Could not reach the matchmaking server. Check your internet connection and try again.', 'server-error': 'Could not reach the matchmaking server. Check your internet connection and try again.',
+  'socket-error': 'Could not reach the matchmaking server. Check your internet connection and try again.', 'socket-closed': 'Could not reach the matchmaking server. Check your internet connection and try again.',
+  'browser-incompatible': 'This browser can’t make direct connections for co-op. Try Safari or Chrome.', webrtc: 'The direct connection to the host failed. Both players should be on the internet (not only local Wi-Fi) and try again.'
+})[t];
+// Rejoining: each device keeps a random token (never shown to other players) and the last room it joined.
+// Per-session rejoin secret issued privately by the host (not the profile id, not a connection id).
+function rejoinSecret(code) { try { const r = JSON.parse(localStorage.getItem('duskbound-rejoin') || 'null'); if (r && r.code === code && /^[a-z0-9]{24}$/.test(r.s)) return r.s; } catch (e) { } return ''; }
+function rememberRoom(code) { try { localStorage.setItem('duskbound-room', JSON.stringify({ code, t: Date.now() })); } catch (e) { } }
+function lastRoom() { try { const r = JSON.parse(localStorage.getItem('duskbound-room') || 'null'); if (r && /^[A-Z0-9]{5}$/.test(r.code) && Date.now() - r.t < 3 * 3600e3) return r.code; } catch (e) { } return ''; }
 const cleanName = (s, i) => (String(s || '').replace(/[^\w \-'.]/g, '').trim().slice(0, 14)) || ('Wanderer ' + i);
 function hostGame() {
   if (!NetT.ok()) return showMenu(noNetMsg());
@@ -820,35 +1046,87 @@ function hostGame() {
   const handle = net.handle = NetT.host(net.code, {
     open() { if (net.handle === handle) { net.ready = true; if (game.state === 'lobby') showLobby(); } },
     conn(c) { if (net.handle === handle) onClientConn(c); else c.close(); },
-    error(t) { if (net.handle !== handle) return; if (t === 'unavailable-id') hostGame(); else if (!net.ready) netFail('Could not open a room (' + t + '). Check your connection and try again.'); }
+    error(t) { if (net.handle !== handle) return; if (t === 'unavailable-id') hostGame(); else if (!net.ready || t === 'not-allowed-to-host') netFail(netWhy(t) || 'Could not open a room (' + t + '). Check your connection and try again.'); else console.warn('network (non-fatal):', t); }
   });
   game.state = 'lobby'; showLobby(); startTicker();
 }
+// A connection says hello first; only then do we know whether it is a new player (lobby only)
+// or a teammate coming back to a run in progress (matched by the token their device keeps).
 function onClientConn(c) {
-  const refuse = why => { c.send({ t: 'no', why }); setTimeout(() => c.close(), 600); };
-  if (game.state !== 'lobby') return refuse('That party has already set out. Ask the host to return to the lobby.');
-  if (net.conns.length >= 3) return refuse('That party is full (4 players).');
-  c.pid = net.nextPid++; c.inGame = false; net.conns.push(c);
+  c.refuse = why => { c.pending = false; c.send({ t: 'no', why }); setTimeout(() => c.close(), 600); };
+  c.pending = true; c.pid = 0; c.inGame = false;
   c.onData = d => { try { hostRecv(c, d); } catch (e) { console.error(e); } }; c.onClose = () => dropClient(c);
+  setTimeout(() => { if (c.pending) { c.pending = false; c.close(); } }, 15000);
 }
+function greetClient(c, d) {
+  c.pending = false;
+  const tok = typeof d.tok === 'string' ? d.tok.slice(0, 40) : '', name = cleanName(d.name, net.nextPid);
+  let hero = HEROES[d.hero] ? d.hero : 'bramble';
+  let lo = sanitizeLoadout(d.lo, hero);
+  if (!ownsHero(lo.valid ? lo : null, hero)) { hero = 'bramble'; lo = sanitizeLoadout(d.lo, hero); }
+  if (game.state === 'lobby') {
+    if (net.conns.length >= 3) return c.refuse('That party is full (4 players).');
+    if (lo.valid && (lo.pid === PROFILE.id || net.lobby.some(q => q.lo && q.lo.pid === lo.pid))) return c.refuse('That profile is already in this party.');
+    const secret = randId(24);
+    c.pid = net.nextPid++; net.conns.push(c); net.lobby.push({ id: c.pid, name, hero, tok: secret, lo: lo.valid ? lo : null });
+    c.send({ t: 'secret', code: net.code, s: secret });
+    if (!partyDiffOk(net.diff)) net.diff = bestCommonDiff();
+    sendLobby(); showLobby(); return;
+  }
+  if (tok && game.state === 'play') {
+    expireAway();
+    // their old connection may not have timed out yet (e.g. the app crashed a moment ago): retire it first
+    const live = players.find(p => p.remote && p.tok === tok), old = live && net.conns.find(q => q.pid === live.id);
+    // the secret alone isn't enough: the profile must match too, and nobody is disconnected until it does
+    if (live && live.lo && (!lo.valid || live.lo.pid !== lo.pid)) return c.refuse('That party has already set out. Ask the host to return to the lobby.');
+    if (old) { dropClient(old); old.send({ t: 'no', why: 'You rejoined this game from another window.' }); setTimeout(() => old.close(), 600); }
+    const a = net.away.get(tok); if (a && (!a.p.lo || (lo.valid && a.p.lo.pid === lo.pid))) return rejoinClient(c, a.p);
+  }
+  c.refuse('That party has already set out. Ask the host to return to the lobby.');
+}
+function rejoinClient(c, p) {
+  net.away.delete(p.tok); c.pid = p.id; c.inGame = true; net.conns.push(c);
+  net.lobby.push({ id: p.id, name: p.name, hero: p.hero, tok: p.tok, lo: p.lo });
+  const mate = players.find(q => !q.down) || players[0];
+  if (mate) { p.x = p.tx = clamp(mate.x + rand(-50, 50), 30, world.S - 30); p.y = p.ty = clamp(mate.y + rand(-50, 50), 30, world.S - 30); }
+  p.tp++; p.dashT = 0; p.flurry = null; p.in = newPlayer(0, p.hero, '').in; p.iT = Math.max(p.iT, 2);
+  players.push(p);
+  c.send(worldMsg(p.id));
+  for (const q of net.conns) if (q !== c && q.inGame) q.send({ t: 'roster', players: roster() });
+  banner(p.name + ' rejoined the party', '', 2.5); sendVoice();
+  // results they missed while away: same claims, so nothing is rolled again
+  for (const r of net.claims.values()) if (r.id === p.id) deliverReward(r);
+  if (game.rewards) c.send({ t: 'rewards', ch: game.chapter, list: game.rewards });
+}
+const roster = () => players.map(p => ({ id: p.id, name: p.name, hero: p.hero, x: p.x, y: p.y, tp: p.tp }));
 function dropClient(c) {
   const i = net.conns.indexOf(c); if (i < 0) return; net.conns.splice(i, 1);
   const entry = net.lobby.find(q => q.id === c.pid); net.lobby = net.lobby.filter(q => q.id !== c.pid);
   if (game.state === 'lobby') { sendLobby(); showLobby(); }
   else if (game.state === 'play') {
-    players = players.filter(p => p.id !== c.pid); if (entry) banner(entry.name + ' left the party', '', 2.5);
+    const p = players.find(q => q.id === c.pid); players = players.filter(q => q.id !== c.pid);
+    // keep the hero (level, boons, gold) so they can come back to this run
+    if (p && p.tok) { net.away.set(p.tok, { p, since: Date.now() }); banner(p.name + ' lost connection', 'They can rejoin with room code ' + net.code + ' within ' + Math.round(PARTY_SCALE.graceSeconds / 60) + ' min', 3.5); }
+    else if (entry) banner(entry.name + ' left the party', '', 2.5);
+    sendVoice();
     if (!game.over && players.every(q => q.down)) { game.over = 'dead'; showEnd(); }
   }
 }
-function sendLobby() { for (const c of net.conns) c.send({ t: 'lobby', you: c.pid, code: net.code, players: net.lobby }); }
+function voiceRoster() { return NetT.voice && net.handle && net.handle.peerId ? [{ id: 1, peer: net.handle.peerId }].concat(net.conns.filter(c => c.peerId && (c.inGame || game.state === 'lobby')).map(c => ({ id: c.pid, peer: c.peerId }))) : []; }
+function sendVoice() {
+  if (net.mode !== 'host' || !NetT.voice || !net.handle) return; const list = voiceRoster();
+  Voice.start(net.handle.peer, 1); Voice.sync(list); for (const c of net.conns) c.send({ t: 'vroster', list });
+}
+function sendLobby() { setTimeout(sendVoice, 0); const pl = net.lobby.map(q => ({ id: q.id, name: q.name, hero: q.hero, unl: q.id === 1 ? PROFILE.unlocked : (q.lo && q.lo.unlocked) || ['normal'] })); for (const c of net.conns) c.send({ t: 'lobby', you: c.pid, code: net.code, diff: net.diff, players: pl }); }
 function hostRecv(c, d) {
   if (!d || typeof d !== 'object') return;
-  if (d.t === 'hello') { if (net.lobby.some(q => q.id === c.pid)) return; net.lobby.push({ id: c.pid, name: cleanName(d.name, c.pid), hero: HEROES[d.hero] ? d.hero : 'bramble' }); sendLobby(); if (game.state === 'lobby') showLobby(); }
-  else if (d.t === 'hero') { const q = net.lobby.find(q => q.id === c.pid); if (q && HEROES[d.hero] && game.state === 'lobby') { q.hero = d.hero; sendLobby(); showLobby(); } }
+  if (c.pending) { if (d.t === 'hello') greetClient(c, d); return; }
+  if (!net.conns.includes(c)) return;
+  if (d.t === 'hero') { const q = net.lobby.find(q => q.id === c.pid); if (q && HEROES[d.hero] && game.state === 'lobby' && ownsHero(sanitizeLoadout(d.lo, d.hero), d.hero)) { q.hero = d.hero; const lo = sanitizeLoadout(d.lo, d.hero); if (lo.valid && q.lo && lo.pid === q.lo.pid) q.lo = lo; if (!partyDiffOk(net.diff)) net.diff = bestCommonDiff(); sendLobby(); showLobby(); } }
   else if (d.t === 'i' || d.t === 'pick') {
     const p = players.find(q => q.id === c.pid); if (!p || game.state !== 'play') return;
     if (d.t === 'pick') { if (d.q === p.choiceSeq) applyPick(p, d.i | 0); return; }
-    const I = p.in; I.l = !!d.l; I.skill = !!d.r; I.aim = { x: num(d.ax), y: num(d.ay) };
+    const I = p.in; I.l = !!d.l; if (d.r) I.skill = true; I.aim = { x: num(d.ax), y: num(d.ay) };
     if (d.tp === p.tp && !p.down) { p.tx = clamp(num(d.x, p.x), 30, world.S - 30); p.ty = clamp(num(d.y, p.y), 30, world.S - 30); p.face = num(d.f); p.moving = !!d.m; }
     if (d.d != null) { I.dash = true; I.dashA = num(d.d); }
     if (d.q) I.ult = true; if (d.i) I.interact = true;
@@ -856,7 +1134,7 @@ function hostRecv(c, d) {
 }
 function worldMsg(pid) {
   return {
-    t: 'world', you: pid, ch: game.chapter, S: world.S,
+    t: 'world', you: pid, ch: game.chapter, diff: game.diff, run: game.runId, S: world.S,
     obs: world.obs.map(o => [o.x | 0, o.y | 0, r1(o.r), r1(o.cr), o.tree ? 1 : 0, r2(o.v), o.tone]),
     pois: world.pois.map(o => [o.kind, o.x | 0, o.y | 0, o.r]),
     players: players.map(p => ({ id: p.id, name: p.name, hero: p.hero, x: p.x, y: p.y, tp: p.tp }))
@@ -902,34 +1180,41 @@ function joinGame(code) {
   if (code.length !== 5) return showMenu('Enter the 5-character room code from your host.');
   if (!NetT.ok()) return showMenu(noNetMsg());
   initAudio(); leaveNet(); net.mode = 'client'; net.code = code; game.state = 'lobby';
-  show('<h2>Joining ' + esc(code) + '…</h2><div class="sub">Reaching the host.</div><button id="cancel">Cancel</button>'); $('cancel').onclick = () => netFail('');
+  show('<h2>' + L('Joining ', '正在加入 ') + esc(code) + '…</h2><div class="sub">' + L('Reaching the host.', '正在連線至房主。') + '</div><button id="cancel">' + L('Cancel', '取消') + '</button>'); $('cancel').onclick = () => netFail('');
   const handle = net.handle = NetT.join(code, {
     open(c) {
       if (net.handle !== handle) return c.close();
-      net.host = c; c.onData = d => { try { clientRecv(d); } catch (e) { console.error(e); } }; c.onClose = () => { if (net.handle === handle) netFail('Lost connection to the host.'); };
-      c.send({ t: 'hello', name: net.name, hero: net.hero });
+      net.host = c; c.onData = d => { try { clientRecv(d); } catch (e) { console.error(e); } }; c.onClose = () => { if (net.handle === handle) netFail('Lost connection to the host. Tap Join to rejoin the game.'); };
+      c.send({ t: 'hello', name: net.name, hero: net.hero, tok: rejoinSecret(code), lo: loadoutOf(PROFILE, net.hero) }); rememberRoom(code);
     },
-    error(t) { if (net.handle === handle) netFail(t === 'peer-unavailable' ? 'No room found with code ' + code + '.' : 'Connection failed (' + t + ').'); }
+    error(t) { if (net.handle !== handle) return; if (net.host) { console.warn('network (non-fatal):', t); return; } netFail(t === 'peer-unavailable' ? 'No room found with code ' + code + '.' : netWhy(t) || 'Connection failed (' + t + ').'); }
   });
-  setTimeout(() => { if (net.handle === handle && !net.host) netFail('Could not reach room ' + code + '.'); }, 15000);
+  setTimeout(() => { if (net.handle === handle && !net.host) netFail('Could not reach room ' + code + '.'); }, 22000);
 }
 function clientRecv(d) {
   if (!d || net.mode !== 'client') return;
   if (d.t === 'no') netFail(d.why);
-  else if (d.t === 'lobby') { players = []; net.myId = d.you; net.lobby = d.players; net.code = d.code; game = newGame(); game.state = 'lobby'; me = null; showLobby(); }
+  else if (d.t === 'secret' && /^[a-z0-9]{24}$/.test(d.s)) { try { localStorage.setItem('duskbound-rejoin', JSON.stringify({ code: d.code, s: d.s, t: Date.now() })); } catch (e) { } }
+  else if (d.t === 'reward') receiveReward(d);
+  else if (d.t === 'vroster' && Array.isArray(d.list) && NetT.voice && net.handle && net.handle.peer) { Voice.start(net.handle.peer, net.myId); Voice.sync(d.list.filter(r => r && Number.isInteger(r.id) && typeof r.peer === 'string').slice(0, 4)); }
+  else if (d.t === 'rewards' && Array.isArray(d.list)) { game.rewards = d.list.slice(0, 4); if (game.over) showEnd(); }
+  else if (d.t === 'lobby') { players = []; net.myId = d.you; net.lobby = d.players; net.code = d.code; net.diff = DIFF(d.diff).id; game = newGame(); game.state = 'lobby'; me = null; showLobby(); }
   else if (d.t === 'world') {
-    game = newGame(); game.chapter = d.ch; night = 0; net.myId = d.you; net.out = {}; net.pickedSeq = -1; clearEntities();
-    world = { S: d.S, pal: PAL[(d.ch - 1) % 3], obs: d.obs.map(o => ({ x: o[0], y: o[1], r: o[2], cr: o[3], tree: !!o[4], v: o[5], tone: o[6] })), pois: d.pois.map(o => ({ kind: o[0], x: o[1], y: o[2], r: o[3], used: false, uses: 0, seen: o[0] === 'altar' })) };
+    game = newGame(); game.chapter = d.ch; game.diff = DIFF(d.diff).id; game.runId = String(d.run || ''); night = 0; net.myId = d.you; net.out = {}; net.pickedSeq = -1; clearEntities();
+    world = { S: d.S, pal: PAL[(d.ch - 1) % PAL.length], obs: d.obs.map(o => ({ x: o[0], y: o[1], r: o[2], cr: o[3], tree: !!o[4], v: o[5], tone: o[6] })), pois: d.pois.map(o => ({ kind: o[0], x: o[1], y: o[2], r: o[3], used: false, uses: 0, seen: o[0] === 'altar' })) };
     groundPat = makeGround(world.pal);
     players = d.players.map(q => { const p = newPlayer(q.id, q.hero, q.name); p.x = p.tx = q.x; p.y = p.ty = q.y; p.tp = q.tp; return p; });
-    me = players.find(p => p.id === d.you); hide(); banner(world.pal.name, 'Chapter ' + d.ch, 4);
+    me = players.find(p => p.id === d.you); hide(); banner(world.pal.name, chapterSub(), 4);
+  }
+  else if (d.t === 'roster' && world && me && Array.isArray(d.players)) {
+    for (const q of d.players) if (q && HEROES[q.hero] && !players.some(p => p.id === q.id)) { const p = newPlayer(q.id, q.hero, cleanName(q.name, q.id)); p.x = p.tx = num(q.x); p.y = p.ty = num(q.y); p.tp = q.tp; players.push(p); }
   }
   else if (d.t === 's' && world && me) applySnap(d);
 }
 function applySnap(s) {
   const g = s.g; game.time = g[0]; game.chapter = g[1]; game.wasNight = !!g[2];
   game.boss = g[3] ? { x: g[3][0], y: g[3][1], hp: g[3][2], maxHp: 1 } : null;
-  if ((g[4] || null) !== game.over) { game.over = g[4] || null; rollReward(); if (game.over) showEnd(); else hide(); }
+  if ((g[4] || null) !== game.over) { game.over = g[4] || null; if (game.over) showEnd(); else hide(); }
   players = players.filter(p => s.P.some(q => q.id === p.id));
   for (const q of s.P) {
     const p = players.find(o => o.id === q.id); if (!p) continue;
@@ -966,7 +1251,7 @@ function clientUpdate(dt) {
       if (p.dashT > 0) { p.dashT -= dt; p.x += Math.cos(p.dashA) * 920 * dt; p.y += Math.sin(p.dashA) * 920 * dt; trail(p); } else walk(p, inp, dt);
       collideWorld(p, p.r);
     }
-    if (inp.skill) o.r = 1; if (inp.ult) o.q = 1; if (inp.interact) o.i = 1;
+    if (inp.skill) { o.r = 1; net.skillHold = 0.2; } if (inp.ult) o.q = 1; if (inp.interact) o.i = 1;
   }
   const k = Math.min(1, dt * 14);
   for (const q of players) if (q !== p) { q.x += (q.tx - q.x) * k; q.y += (q.ty - q.y) * k; if (q.moving) q.walk += dt; if (q.dashT > 0) trail(q); }
@@ -979,10 +1264,10 @@ function clientUpdate(dt) {
   }
   for (const q of pickups) { q.x += (q.tx - q.x) * k; q.y += (q.ty - q.y) * k; q.t += dt; }
   updFx(dt);
-  net.inT -= dt;
+  net.inT -= dt; net.skillHold = (net.skillHold || 0) - dt;
   if (net.inT <= 0 && net.host) {
-    net.inT = 1 / 30;
-    net.host.send({ t: 'i', x: r1(p.x), y: r1(p.y), f: r2(p.face), m: p.moving ? 1 : 0, l: inp.l ? 1 : 0, r: o.r || (inp.skill ? 1 : 0), ax: Math.round(inp.aim.x), ay: Math.round(inp.aim.y), tp: p.tp, d: o.d, q: o.q, i: o.i });
+    net.inT = NetT.inIv || 1 / 30;
+    net.host.send({ t: 'i', x: r1(p.x), y: r1(p.y), f: r2(p.face), m: p.moving ? 1 : 0, l: inp.l ? 1 : 0, r: o.r || (inp.skill || net.skillHold > 0 ? 1 : 0), ax: Math.round(inp.aim.x), ay: Math.round(inp.aim.y), tp: p.tp, d: o.d, q: o.q, i: o.i });
     net.out = {};
   }
 }
@@ -1076,35 +1361,35 @@ function render() {
     c.fillStyle = g; c.fillRect(cam.x - 40, cam.y - 40, VW + 80, VH + 80);
   }
   c.textAlign = 'center';
-  for (const q of texts) { c.globalAlpha = clamp(q.life / 0.4, 0, 1); c.font = 'bold ' + q.size + 'px Georgia'; c.fillStyle = 'rgba(0,0,0,.7)'; c.fillText(q.s, q.x + 1, q.y + 1); c.fillStyle = q.color; c.fillText(q.s, q.x, q.y); } c.globalAlpha = 1;
-  const np = !p.down && nearPoi(p), pr = np && poiPrompt(np);
-  if (pr) { c.font = '15px Georgia'; const w = c.measureText(pr).width + 50; c.fillStyle = 'rgba(10,10,20,.8)'; rr(c, np.x - w / 2, np.y - 78, w, 26, 6); c.fill(); c.fillStyle = '#f3d48a'; c.fillText('[F]  ' + pr, np.x, np.y - 60); }
+  for (const q of texts) { c.globalAlpha = clamp(q.life / 0.4, 0, 1); c.font = 'bold ' + q.size + 'px Georgia'; c.fillStyle = 'rgba(0,0,0,.7)'; const qs = T(q.s); c.fillText(qs, q.x + 1, q.y + 1); c.fillStyle = q.color; c.fillText(qs, q.x, q.y); } c.globalAlpha = 1;
+  const np = !p.down && nearPoi(p), pr = np && T(poiPrompt(np));
+  if (pr) { c.font = '15px Georgia'; const w = c.measureText(pr).width + 50; c.fillStyle = 'rgba(10,10,20,.8)'; rr(c, np.x - w / 2, np.y - 78, w, 26, 6); c.fill(); c.fillStyle = '#f3d48a'; c.fillText((touch.on ? '' : '[F]  ') + pr, np.x, np.y - 60); }
   c.restore();
   drawHUD();
 }
 function drawHUD() {
-  const c = ctx, p = me, H2 = HEROES[p.hero], T = touch.on;
+  const c = ctx, p = me, H2 = HEROES[p.hero], TU = touch.on;
   // On phones the HUD is scaled down, the health panel moves to the top-left and the key hints give way to touch buttons.
-  const hs = T ? clamp(Math.min(innerWidth / 900, innerHeight / 480), 0.7, 1) : 1, W = innerWidth / hs, H = innerHeight / hs;
-  c.save(); c.scale(hs, hs);
+  const hs = hudScale(), W = (innerWidth - SA.l - SA.r) / hs, H = (innerHeight - SA.t - SA.b) / hs;
+  c.save(); c.translate(SA.l, SA.t); c.scale(hs, hs);
   c.textAlign = 'left'; c.textBaseline = 'alphabetic';
-  const bx = 24, by = T ? (W < 760 ? 132 : 88) : H - 74, bw = T ? 220 : 300;
+  const bx = 24, by = TU ? (W < 760 ? 132 : 88) : H - 74, bw = TU ? 220 : 300;
   c.fillStyle = 'rgba(8,8,16,.75)'; rr(c, bx - 8, by - 30, bw + 16, 88, 8); c.fill();
-  c.font = '15px Georgia'; c.fillStyle = H2.color; c.fillText(H2.name + ' · Lv ' + p.level, bx, by - 10);
+  c.font = '15px Georgia'; c.fillStyle = H2.color; c.fillText((Voice.transmitting() ? '🎙 ' : '') + T(H2.name) + ' · ' + L('Lv ', '等級 ') + p.level, bx, by - 10);
   c.textAlign = 'right'; c.fillStyle = '#f3c84a'; c.fillText('◈ ' + p.gold + '   ✦ ' + p.embers, bx + bw, by - 10); c.textAlign = 'left';
   c.fillStyle = '#2a1c22'; rr(c, bx, by, bw, 20, 4); c.fill(); c.fillStyle = '#d64545'; rr(c, bx, by, Math.max(6, bw * clamp(p.hp / p.maxHp, 0, 1)), 20, 4); c.fill();
   c.fillStyle = '#fff'; c.font = '13px Georgia'; c.textAlign = 'center'; c.fillText(Math.ceil(p.hp) + ' / ' + p.maxHp, bx + bw / 2, by + 15);
   c.fillStyle = '#1c2430'; rr(c, bx, by + 28, bw, 9, 3); c.fill(); c.fillStyle = '#7fe0ff'; rr(c, bx, by + 28, Math.max(4, bw * clamp(p.xp / xpNeed(p.level), 0, 1)), 9, 3); c.fill();
   // Hero resources, under the experience bar.
   c.textAlign = 'left'; c.font = '12px Georgia';
-  if (p.hero === 'rowan') { c.fillStyle = '#d8c08a'; c.fillText('Deep Roots ' + '●'.repeat(p.roots) + '○'.repeat(Math.max(0, ROOTS_MAX - p.roots)), bx, by + 52); }
-  else if (p.hero === 'vespera') { c.fillStyle = '#86f0cf'; c.fillText('Lantern', bx, by + 52); c.fillStyle = '#16302a'; rr(c, bx + 52, by + 44, bw - 52, 8, 3); c.fill(); c.fillStyle = '#86f0cf'; rr(c, bx + 52, by + 44, Math.max(4, (bw - 52) * clamp(p.lan / p.lanMax, 0, 1)), 8, 3); c.fill(); }
-  else if (p.hero === 'mira') { c.fillStyle = p.decoyOn ? '#bff6ff' : '#6d7f86'; c.fillText(p.decoyOn ? 'Decoy standing' : 'No decoy — dash to leave one', bx, by + 52); }
-  if (p.shield > 0) { c.fillStyle = '#86f0cf'; c.textAlign = 'right'; c.fillText('Shield ' + Math.ceil(p.shield), bx + bw, by + 52); c.textAlign = 'left'; }
+  if (p.hero === 'rowan') { c.fillStyle = '#d8c08a'; c.fillText(T('Deep Roots') + ' ' + '●'.repeat(p.roots) + '○'.repeat(Math.max(0, ROOTS_MAX - p.roots)), bx, by + 52); }
+  else if (p.hero === 'vespera') { c.fillStyle = '#86f0cf'; c.fillText(T('Lantern'), bx, by + 52); c.fillStyle = '#16302a'; rr(c, bx + 52, by + 44, bw - 52, 8, 3); c.fill(); c.fillStyle = '#86f0cf'; rr(c, bx + 52, by + 44, Math.max(4, (bw - 52) * clamp(p.lan / p.lanMax, 0, 1)), 8, 3); c.fill(); }
+  else if (p.hero === 'mira') { c.fillStyle = p.decoyOn ? '#bff6ff' : '#6d7f86'; c.fillText(T(p.decoyOn ? 'Decoy standing' : 'No decoy — dash to leave one'), bx, by + 52); }
+  if (p.shield > 0) { c.fillStyle = '#86f0cf'; c.textAlign = 'right'; c.fillText(T('Shield') + ' ' + Math.ceil(p.shield), bx + bw, by + 52); c.textAlign = 'left'; }
   const b1 = slotBlock(p, 1), b2 = H2.alt ? slotBlock(p, 2) : null;
-  const cd = p.cds, ab = [['LMB', H2.names[0], p.tAtk, cd[0], true], ['RMB', H2.names[1], p.tSkill, cd[1], !b1, b1], ['SPACE', H2.names[2] + (p.dashMax > 1 ? ' ×' + p.dashes : ''), p.dashes > 0 ? 0 : p.dashRe, cd[2], !b2, b2], ['Q', H2.names[3], p.tUlt, cd[3], p.level >= 3, 'Lv 3']];
+  const cd = p.cds, ab = [[T('LMB'), T(H2.names[0]), p.tAtk, cd[0], true], [T('RMB'), T(H2.names[1]), p.tSkill, cd[1], !b1, b1 && T(b1)], [T('SPACE'), T(H2.names[2]) + (p.dashMax > 1 ? ' ×' + p.dashes : ''), p.dashes > 0 ? 0 : p.dashRe, cd[2], !b2, b2 && T(b2)], ['Q', T(H2.names[3]), p.tUlt, cd[3], p.level >= 3, T('Lv 3')]];
   const s = 58, gap = 12, ax = W / 2 - (s * 4 + gap * 3) / 2, ay = H - s - 30;
-  if (!T) ab.forEach((a, i) => {
+  if (!TU) ab.forEach((a, i) => {
     const x = ax + i * (s + gap); c.fillStyle = 'rgba(8,8,16,.8)'; rr(c, x, ay, s, s, 8); c.fill();
     const ready = a[2] <= 0 && a[4]; c.strokeStyle = ready ? H2.color : '#4a4370'; c.lineWidth = 2; rr(c, x, ay, s, s, 8); c.stroke();
     if (a[2] > 0 && a[3] > 0.5) { c.fillStyle = 'rgba(120,110,170,.45)'; c.beginPath(); c.moveTo(x + s / 2, ay + s / 2); c.arc(x + s / 2, ay + s / 2, s * 0.42, -Math.PI / 2, -Math.PI / 2 + TAU * clamp(a[2] / a[3], 0, 1)); c.fill(); }
@@ -1118,21 +1403,22 @@ function drawHUD() {
   const mxp = cx + cw * clamp(game.time / TOTAL, 0, 1); c.fillStyle = '#fff'; c.beginPath(); c.moveTo(mxp, cy + 10); c.lineTo(mxp - 6, cy + 19); c.lineTo(mxp + 6, cy + 19); c.fill(); c.fillRect(mxp - 1, cy - 3, 2, 14);
   c.textAlign = 'center'; c.font = '14px Georgia';
   const ct = game.time % CYCLE, isN = ct >= DAY;
-  if (game.boss) { c.fillStyle = '#ff8ae0'; c.fillText('The Gloam Stag hunts you', W / 2, cy + 36); }
-  else { c.fillStyle = isN ? '#b6b6ff' : '#f3d48a'; c.fillText((isN ? 'Night ' : 'Day ') + (dayIdx() + 1) + ' · ' + (isN ? 'dawn in ' + fmtTime(CYCLE - ct) : 'dusk in ' + fmtTime(DAY - ct)) + '   —   the Stag wakes in ' + fmtTime(TOTAL - game.time), W / 2, cy + 36); }
-  c.textAlign = 'left'; c.font = '13px Georgia'; c.fillStyle = '#a9a3c4'; c.fillText('Chapter ' + game.chapter + ' · ' + world.pal.name, 20, 28); c.fillText('Slain: ' + p.kills, 20, 46);
+  if (game.boss) { c.fillStyle = '#ff8ae0'; c.fillText(T('The Gloam Stag hunts you'), W / 2, cy + 36); }
+  else { c.fillStyle = isN ? '#b6b6ff' : '#f3d48a'; c.fillText(LANG === 'zh' ? '第 ' + (dayIdx() + 1) + (isN ? ' 夜 · ' + fmtTime(CYCLE - ct) + ' 後黎明' : ' 天 · ' + fmtTime(DAY - ct) + ' 後入夜') + '   —   雄鹿將於 ' + fmtTime(TOTAL - game.time) + ' 後甦醒'
+    : (isN ? 'Night ' : 'Day ') + (dayIdx() + 1) + ' · ' + (isN ? 'dawn in ' + fmtTime(CYCLE - ct) : 'dusk in ' + fmtTime(DAY - ct)) + '   —   the Stag wakes in ' + fmtTime(TOTAL - game.time), W / 2, cy + 36); }
+  c.textAlign = 'left'; c.font = '13px Georgia'; c.fillStyle = '#a9a3c4'; c.fillText(T('Chapter ' + game.chapter) + '/' + CHAPTERS + ' · ' + T(world.pal.name) + ' · ' + T(DIFF(game.diff).name), 20, 28); c.fillText(L('Slain: ', '擊殺：') + p.kills, 20, 46);
   // party
-  let py = T ? (W < 760 ? 220 : 176) : 70;
+  let py = TU ? (W < 760 ? 220 : 176) : 70;
   for (const q of players) {
     if (q === p) continue;
     c.fillStyle = 'rgba(8,8,16,.7)'; rr(c, 14, py - 14, 190, 34, 6); c.fill();
-    c.font = '13px Georgia'; c.fillStyle = HEROES[q.hero].color; c.fillText(q.name + ' · Lv ' + q.level, 22, py);
+    c.font = '13px Georgia'; c.fillStyle = HEROES[q.hero].color; c.fillText(q.name + ' · ' + L('Lv ', '等級 ') + q.level + (Voice.level(q.id) > 0.02 ? '  🔊' : ''), 22, py);
     c.fillStyle = '#2a1c22'; c.fillRect(22, py + 6, 174, 7); c.fillStyle = q.down ? '#777' : '#d64545'; c.fillRect(22, py + 6, 174 * (q.down ? clamp(q.rev / 3, 0, 1) : clamp(q.hp / q.maxHp, 0, 1)), 7);
-    if (q.down) { c.fillStyle = '#ff8a8a'; c.textAlign = 'right'; c.fillText('DOWN', 196, py); c.textAlign = 'left'; }
+    if (q.down) { c.fillStyle = '#ff8a8a'; c.textAlign = 'right'; c.fillText(T('DOWN'), 196, py); c.textAlign = 'left'; }
     py += 42;
   }
-  if (game.boss) { const e = game.boss, w = Math.max(150, Math.min(620, W - (T ? 560 : 80))), x = W / 2 - w / 2, y = T && W < 700 ? 140 : 92; c.fillStyle = 'rgba(8,8,16,.8)'; rr(c, x - 4, y - 4, w + 8, 22, 5); c.fill(); c.fillStyle = e.hp < e.maxHp * 0.5 ? '#ff5ad6' : '#a66bff'; rr(c, x, y, Math.max(6, w * clamp(e.hp / e.maxHp, 0, 1)), 14, 4); c.fill(); }
-  const ms = T ? 112 : 160, mx = W - ms - 18, my = 18, k = ms / world.S;
+  if (game.boss) { const e = game.boss, w = Math.max(150, Math.min(620, W - (TU ? 560 : 80))), x = W / 2 - w / 2, y = TU && W < 700 ? 140 : 92; c.fillStyle = 'rgba(8,8,16,.8)'; rr(c, x - 4, y - 4, w + 8, 22, 5); c.fill(); c.fillStyle = e.hp < e.maxHp * 0.5 ? '#ff5ad6' : '#a66bff'; rr(c, x, y, Math.max(6, w * clamp(e.hp / e.maxHp, 0, 1)), 14, 4); c.fill(); }
+  const ms = TU ? 112 : 160, mx = W - ms - 18, my = 18, k = ms / world.S;
   c.fillStyle = 'rgba(8,8,16,.75)'; rr(c, mx - 4, my - 4, ms + 8, ms + 8, 6); c.fill(); c.fillStyle = world.pal.base; c.globalAlpha = 0.6; c.fillRect(mx, my, ms, ms); c.globalAlpha = 1;
   const colr = { altar: '#c27bff', spring: '#4fb6e8', chest: '#f3c84a', shrine: '#e8e2d0', merchant: '#ff8a8a', camp: '#ff8a3a' };
   for (const o of world.pois) { if (!o.seen) continue; c.globalAlpha = o.used && o.kind !== 'altar' ? 0.3 : 1; c.fillStyle = colr[o.kind]; c.fillRect(mx + o.x * k - 3, my + o.y * k - 3, 6, 6); } c.globalAlpha = 1;
@@ -1140,11 +1426,11 @@ function drawHUD() {
   if (game.boss) circ(c, mx + game.boss.x * k, my + game.boss.y * k, 5, '#ff5ad6');
   for (const q of players) if (q !== p) circ(c, mx + q.x * k, my + q.y * k, 3.5, HEROES[q.hero].color);
   circ(c, mx + p.x * k, my + p.y * k, 3.5, '#fff');
-  c.font = '11px Georgia'; c.fillStyle = '#8e88ab'; c.textAlign = 'right'; c.fillText(T ? (net.mode === 'solo' ? '' : 'Room ' + net.code) : 'F interact · ' + (net.mode === 'solo' ? 'P pause · ' : 'Room ' + net.code + ' · ') + 'M mute', W - 18, my + ms + 22);
-  if (game.banner) { const b = game.banner, a = clamp(Math.min(b.t, b.max - b.t) / 0.4, 0, 1); c.globalAlpha = a; c.textAlign = 'center'; c.font = 'bold ' + Math.round(Math.min(44, W / 13)) + 'px Georgia'; c.fillStyle = 'rgba(0,0,0,.6)'; c.fillText(b.text, W / 2 + 2, H * 0.27 + 2); c.fillStyle = '#f3d48a'; c.fillText(b.text, W / 2, H * 0.27); c.font = 'italic 18px Georgia'; c.fillStyle = '#d8d2ee'; c.fillText(b.sub, W / 2, H * 0.27 + 30); c.globalAlpha = 1; }
+  c.font = '11px Georgia'; c.fillStyle = '#8e88ab'; c.textAlign = 'right'; c.fillText(TU ? (net.mode === 'solo' ? '' : L('Room ', '房間 ') + net.code) : L('F interact · ', 'F 互動 · ') + (net.mode === 'solo' ? L('P pause · ', 'P 暫停 · ') : L('Room ', '房間 ') + net.code + ' · ') + L('M mute', 'M 靜音'), W - 18, my + ms + 22);
+  if (game.banner) { const b = game.banner, a = clamp(Math.min(b.t, b.max - b.t) / 0.4, 0, 1); c.globalAlpha = a; c.textAlign = 'center'; c.font = 'bold ' + Math.round(Math.min(44, W / 13)) + 'px Georgia'; c.fillStyle = 'rgba(0,0,0,.6)'; const bt = T(b.text), bs = T(b.sub); c.fillText(bt, W / 2 + 2, H * 0.27 + 2); c.fillStyle = '#f3d48a'; c.fillText(bt, W / 2, H * 0.27); c.font = 'italic 18px Georgia'; c.fillStyle = '#d8d2ee'; c.fillText(bs, W / 2, H * 0.27 + 30); c.globalAlpha = 1; }
   if (!p.down && p.hp < p.maxHp * 0.3) { const g = c.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, H * 0.8); g.addColorStop(0, 'rgba(160,0,0,0)'); g.addColorStop(1, 'rgba(160,0,0,' + (0.3 + Math.sin(game.t * 5) * 0.1) + ')'); c.fillStyle = g; c.fillRect(0, 0, W, H); }
   c.restore();
-  if (T) drawTouchUI();
+  if (TU) drawTouchUI();
 }
 function drawTouchUI() {
   const c = ctx, p = me, u = touchU(), col = HEROES[p.hero].color;
@@ -1153,36 +1439,95 @@ function drawTouchUI() {
     if (s) { const dx = s.x - s.x0, dy = s.y - s.y0, l = Math.hypot(dx, dy), m = Math.min(l, 52 * u); if (l) { kx += dx / l * m; ky += dy / l * m; } }
     c.globalAlpha = s ? 0.55 : 0.25; c.strokeStyle = '#e8e2d0'; c.lineWidth = 2; c.beginPath(); c.arc(x, y, 52 * u, 0, TAU); c.stroke(); circ(c, kx, ky, 22 * u, '#e8e2d0'); c.globalAlpha = 1;
   };
-  stick(touch.move, 100 * u, H - 95 * u); stick(touch.aim, W - 100 * u, H - 90 * u);
+  const B = H - Math.max(SA.b - 8, 0); stick(touch.move, SA.l + 100 * u, B - 95 * u); stick(touch.aim, W - SA.r - 100 * u, B - 90 * u);
   const np = !p.down && nearPoi(p), use = !!(np && poiPrompt(np));
   const b1 = slotBlock(p, 1), alt = HEROES[p.hero].alt, b2 = alt ? slotBlock(p, 2) : null;
-  const info = { skill: [b1 || 'SKILL', p.tSkill, p.cds[1], !b1], dash: [b2 || (alt ? 'SKILL 2' : 'DASH') + (p.dashMax > 1 ? ' ' + p.dashes : ''), p.dashes > 0 ? 0 : p.dashRe, p.cds[2], !b2], ult: [p.level >= 3 ? 'ULT' : 'Lv 3', p.tUlt, p.cds[3], p.level >= 3], f: ['USE', 0, 0, use] };
+  const info = { skill: [b1 || 'SKILL', p.tSkill, p.cds[1], !b1], dash: [b2 || (alt ? 'SKILL 2' : 'DASH') + (p.dashMax > 1 ? ' ' + p.dashes : ''), p.dashes > 0 ? 0 : p.dashRe, p.cds[2], !b2], ult: [p.level >= 3 ? 'ULT' : 'Lv 3', p.tUlt, p.cds[3], p.level >= 3], f: ['USE', 0, 0, use],
+    menu: [net.mode === 'solo' ? 'II' : '🎙', 0, 0, true], fs: ['⛶', 0, 0, true], talk: [Voice.transmitting() ? '● ' + T('TALK') : T('TALK'), 0, 0, true] };
   c.textAlign = 'center'; c.textBaseline = 'middle';
   for (const b of touchButtons()) {
     const [label, t, cd, on] = info[b.id], ready = on && t <= 0;
     c.globalAlpha = on ? 0.9 : 0.35; circ(c, b.x, b.y, b.r, 'rgba(8,8,16,.62)');
     if (t > 0 && cd > 0.5) { c.fillStyle = 'rgba(120,110,170,.5)'; c.beginPath(); c.moveTo(b.x, b.y); c.arc(b.x, b.y, b.r, -Math.PI / 2, -Math.PI / 2 + TAU * clamp(t / cd, 0, 1)); c.fill(); }
     c.strokeStyle = ready ? (b.id === 'f' ? '#f3d48a' : col) : '#4a4370'; c.lineWidth = 2.5; c.beginPath(); c.arc(b.x, b.y, b.r, 0, TAU); c.stroke();
-    c.font = 'bold ' + Math.round(11 * u) + 'px Georgia'; c.fillStyle = ready ? '#fff' : '#8a84a8'; c.fillText(t > 0.5 && cd > 0.5 ? Math.ceil(t) : label, b.x, b.y);
+    c.font = 'bold ' + Math.round(11 * u) + 'px Georgia'; c.fillStyle = ready ? '#fff' : '#8a84a8'; c.fillText(t > 0.5 && cd > 0.5 ? Math.ceil(t) : T(label), b.x, b.y);
   }
   c.globalAlpha = 1; c.textBaseline = 'alphabetic';
 }
 
 // ---------- screens ----------
 const controlsHtml = () => touch.on
-  ? '<div class="controls"><b>Left thumb</b> move · <b>Right thumb</b> drag to aim and attack, or hold to auto-target · <b>Buttons</b> skill, dash, ultimate (Lv 3), use</div>'
-  : '<div class="controls"><b>WASD</b> move · <b>Mouse</b> aim · <b>LMB</b> attack · <b>RMB</b>/<b>E</b> skill · <b>Space</b> dash (Rowan, Vespera: second skill) · <b>Q</b> ultimate (Lv 3) · <b>F</b> interact · <b>1</b>-<b>3</b> pick boon · <b>M</b> mute</div>';
-const goFull = () => { try { if (touch.on && !document.fullscreenElement && document.documentElement.requestFullscreen) { const r = document.documentElement.requestFullscreen(); if (r && r.catch) r.catch(() => { }); } } catch (e) { } };
-function show(html, soft) { overlay.className = soft ? 'soft' : ''; overlay.innerHTML = html; }
-function hide() { overlay.className = 'hidden'; overlay.innerHTML = ''; }
+  ? L('<div class="controls"><b>Left thumb</b> move · <b>Right thumb</b> drag to aim and attack, or hold to auto-target · <b>Buttons</b> skill, dash (Rowan, Vespera: second skill), ultimate (Lv 3), use, <b>II</b> pause',
+      '<div class="controls"><b>左手拇指</b> 移動 · <b>右手拇指</b> 拖曳瞄準並攻擊，或按住自動鎖定 · <b>按鈕</b> 技能、衝刺（羅文、薇斯佩拉：第二技能）、絕招（3 級）、使用、<b>II</b> 暫停') +
+    '</div>'
+  : L('<div class="controls"><b>WASD</b> move · <b>Mouse</b> aim · <b>LMB</b> attack · <b>RMB</b>/<b>E</b> skill · <b>Space</b> dash (Rowan, Vespera: second skill) · <b>Q</b> ultimate (Lv 3) · <b>F</b> interact · <b>1</b>-<b>3</b> pick boon · <b>M</b> mute</div>',
+      '<div class="controls"><b>WASD</b> 移動 · <b>滑鼠</b> 瞄準 · <b>左鍵</b> 攻擊 · <b>右鍵</b>/<b>E</b> 技能 · <b>空白鍵</b> 衝刺（羅文、薇斯佩拉：第二技能） · <b>Q</b> 絕招（3 級） · <b>F</b> 互動 · <b>1</b>-<b>3</b> 選擇祝福 · <b>M</b> 靜音</div>');
+// Full screen: Android and iPad browsers can do it for a page; iPhone Safari only does it for video, so there the way
+// is to add the game to the Home Screen (manifest.webmanifest makes it open full screen, without browser bars).
+const DE = document.documentElement, IPHONE = /iPhone|iPod/.test(navigator.userAgent);
+const canFS = () => !IPHONE && !!(DE.requestFullscreen || DE.webkitRequestFullscreen);
+const isFS = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+// "Keep full screen": remembered once the player turns it on; any later tap goes back into full screen after a
+// notification, rotation or app switch knocked it out. Turned off with "Exit full screen".
+let keepFS = (() => { try { return localStorage.getItem('duskbound-fs') === '1'; } catch (e) { return false; } })();
+const setKeepFS = v => { keepFS = v; try { localStorage.setItem('duskbound-fs', v ? '1' : '0'); } catch (e) { } };
+function goFull(force) {
+  if (!canFS() || isFS() || !(force || keepFS || touch.on)) return;
+  try { const r = (DE.requestFullscreen || DE.webkitRequestFullscreen).call(DE); if (r && r.then) r.then(lockLandscape, () => { }); else lockLandscape(); } catch (e) { }
+}
+function lockLandscape() { try { const r = screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape'); if (r && r.catch) r.catch(() => { }); } catch (e) { } }
+function exitFull() { setKeepFS(false); try { const f = document.exitFullscreen || document.webkitExitFullscreen; if (f && isFS()) { const r = f.call(document); if (r && r.catch) r.catch(() => { }); } } catch (e) { } }
+// taps re-enter full screen when it's kept on (touchend/click count as the user gesture browsers require)
+for (const ev of ['touchend', 'click']) document.addEventListener(ev, () => { if (keepFS && !isFS() && canFS()) goFull(true); }, { passive: true });
+document.addEventListener('fullscreenchange', () => { resize(); if (overlay.className !== 'hidden') document.querySelectorAll('.fsrow,.fsbtn').forEach(b => b.textContent = fsLabel()); });
+// Where the game can't go full screen by itself (the claude.ai page, an already installed app) there is no button.
+const fsAvailable = () => !STANDALONE && !window.DUSK_NO_NET;
+const fsLabel = () => '⛶ ' + (isFS() ? L('Exit full screen', '離開全螢幕') : L('Full screen', '全螢幕'));
+const fsButtonHtml = () => fsAvailable() ? '<button id="fsb" class="ghost fsbtn">' + fsLabel() + '</button>' : '';
+const fsRowHtml = () => fsAvailable() ? '<button class="ghost fsrow">' + fsLabel() + '</button>' : '';
+// back: what to show after the iPhone help screen
+function bindFs(back) { document.querySelectorAll('.fsrow,.fsbtn').forEach(b => b.onclick = () => { if (typeof saveName === 'function' && $('nm')) saveName(); onFsButton(back); }); }
+// "Install app" screen, opened by the app QR code (?a): on iPhone/iPad the Add to Home Screen steps, on Android
+// Chrome's own install prompt when it offers one, otherwise its menu steps. The installed app opens full screen.
+let installEvt = null;
+addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; });
+function showInstall(back0) {
+  if (STANDALONE) return back0();
+  // readable with the phone upright: the 'turn sideways' prompt waits until they choose
+  document.body.classList.add('installing'); const back = () => { document.body.classList.remove('installing'); back0(); };
+  const ios = IOS || /iPad|Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1;
+  let h = '<h2>' + L('Install Duskbound', '安裝 Duskbound') + '</h2><div class="sub">' + L('Free, no App Store needed. It opens full screen from your Home Screen, with its own icon.', '免費，不需要 App Store。從主畫面開啟即為全螢幕，並有專屬圖示。') + '</div>';
+  if (ios) h += '<ol class="steps">' + L('<li>Tap <b>Share</b> — in Safari it is in the bottom bar (or under <b>⋯</b>); in Chrome, at the top right.</li><li>Choose <b>Add to Home Screen</b>, then <b>Add</b>.</li><li>Open <b>Duskbound</b> from your Home Screen.</li>',
+    '<li>點選<b>分享</b> — Safari 在下方工具列（或在 <b>⋯</b> 裡）；Chrome 在右上角。</li><li>選擇<b>加入主畫面</b>，再點<b>加入</b>。</li><li>從主畫面開啟 <b>Duskbound</b>。</li>') + '</ol>';
+  else if (installEvt) h += '<div class="row"><button id="instb">📲 ' + L('Install app', '安裝 App') + '</button></div>';
+  else h += '<ol class="steps">' + L('<li>Open the browser menu <b>⋮</b> (top right in Chrome).</li><li>Choose <b>Install app</b> or <b>Add to Home screen</b>.</li><li>Open <b>Duskbound</b> from your Home screen.</li>',
+    '<li>開啟瀏覽器選單 <b>⋮</b>（Chrome 右上角）。</li><li>選擇<b>安裝應用程式</b>或<b>加到主畫面</b>。</li><li>從主畫面開啟 <b>Duskbound</b>。</li>') + '</ol>';
+  h += '<div class="row"><button id="instok"' + (installEvt && !ios ? ' class="ghost"' : '') + '>' + L('Play in the browser', '直接在瀏覽器遊玩') + '</button></div>';
+  show(h);
+  $('instok').onclick = back;
+  if ($('instb')) $('instb').onclick = async () => { const e = installEvt; installEvt = null; try { e.prompt(); await e.userChoice; } catch (x) { } back(); };
+}
+function onFsButton(back) {
+  if (isFS()) { exitFull(); setTimeout(back, 300); return; }
+  if (canFS()) { setKeepFS(true); goFull(true); setTimeout(back, 300); return; }
+  show('<h2>' + L('Full screen on iPhone', 'iPhone 全螢幕') + '</h2><div class="sub">' +
+    L('<b>Quick:</b> on the title screen, swipe up once — Safari hides its bars. Tap the very top or bottom edge to bring them back.<br><b>Always full screen:</b> install it as an app —',
+      '<b>快速：</b>在標題畫面向上滑動一次，Safari 就會隱藏工具列。點螢幕最上緣或最下緣可叫回工具列。<br><b>永遠全螢幕：</b>把遊戲安裝成 App —') + '</div><ol class="steps">' + L(
+    '<li>Tap <b>Share</b> — in Safari it is in the bottom bar (or under <b>⋯</b>); in Chrome, at the top right.</li><li>Choose <b>Add to Home Screen</b>, then <b>Add</b>.</li><li>Open <b>Duskbound</b> from your Home Screen. It runs full screen, with no browser bars.</li>',
+    '<li>點選<b>分享</b> — Safari 在下方工具列（或在 <b>⋯</b> 裡）；Chrome 在右上角。</li><li>選擇<b>加入主畫面</b>，再點<b>加入</b>。</li><li>從主畫面開啟 <b>Duskbound</b>，就會以全螢幕執行，沒有瀏覽器工具列。</li>') +
+    '</ol><div class="sub">' + L('Your name and language need setting again there; co-op works the same.', '在主畫面版本中需要重新設定名字與語言；合作模式照常可用。') + '</div><button id="fsok">' + L('Got it', '知道了') + '</button>');
+  $('fsok').onclick = back;
+}
+function show(html, soft) { overlay.className = soft ? 'soft' : ''; overlay.innerHTML = html; document.body.classList.toggle('menu', !!$('solo')); }
+function hide() { overlay.className = 'hidden'; overlay.innerHTML = ''; document.body.classList.remove('menu'); }
 function heroCards(sel, compact) {
   let h = '<div class="cards">';
   Object.keys(HEROES).forEach((id, i) => {
     const H2 = HEROES[id], R = H2.rarity && RARITY[H2.rarity], open = unlocked(id);
-    const rar = R ? '<span class="rar" style="color:' + R.color + ';border-color:' + R.color + '">' + R.name + '</span>' : '';
-    const body = open ? (compact ? '' : '<p><i>' + H2.blurb + '</i></p>') + '<ul>' + H2.kit.map(k => '<li>' + k + '</li>').join('') + '</ul>'
-      : '<p class="lock">Locked. ' + (save.pools.includes(H2.rarity) ? 'In the ' + R.name + ' reward pool: each chapter you complete has a chance to unlock ' + H2.name + '.' : 'Complete Chapter ' + R.chapter + ' to add ' + H2.name + ' to the ' + R.name + ' reward pool.') + '</p>';
-    h += '<div class="card' + (id === sel ? ' sel' : '') + (compact ? ' compact' : '') + (open ? '' : ' locked') + '" data-hero="' + id + '"><span class="key">' + (open ? i + 1 : '🔒') + '</span><canvas width="170" height="' + (compact ? 96 : 120) + '" data-p="' + id + '"></canvas><div class="tag" style="color:' + H2.color + '">' + H2.title + '</div><h3>' + H2.name + rar + '</h3>' + body + '</div>';
+    const rar = R ? '<span class="rar" style="color:' + R.color + ';border-color:' + R.color + '">' + T(RARITY_NAMES[H2.rarity]) + '</span>' : '';
+    const body = open ? (compact ? '' : '<p><i>' + T(H2.blurb) + '</i></p>') + '<ul>' + H2.kit.map(k => '<li>' + T(k) + '</li>').join('') + '</ul>'
+      : '<p class="lock">' + L('Locked. Can be won as a ' + RARITY_NAMES[H2.rarity] + ' chapter reward from Chapter ' + R.chapter + ' on.', '未解鎖。從第 ' + R.chapter + ' 章起，可在章節獎勵中以' + T(RARITY_NAMES[H2.rarity]) + '獎勵獲得。') + '</p>';
+    h += '<div class="card' + (id === sel ? ' sel' : '') + (compact ? ' compact' : '') + (open ? '' : ' locked') + '" data-hero="' + id + '"><span class="key">' + (open ? i + 1 : '🔒') + '</span><canvas width="170" height="' + (compact ? 96 : 120) + '" data-p="' + id + '"></canvas><div class="tag" style="color:' + H2.color + '">' + T(H2.title) + '</div><h3>' + T(H2.name) + rar + '</h3>' + body + '</div>';
   });
   return h + '</div>';
 }
@@ -1195,15 +1540,21 @@ function selectHero(id) {
   if (game.state === 'menu') { overlay.querySelectorAll('.card').forEach(cd => cd.classList.toggle('sel', cd.dataset.hero === id)); return; }
   if (game.state !== 'lobby') return;
   const q = net.lobby.find(q => q.id === net.myId); if (q) q.hero = id;
-  if (net.mode === 'host') sendLobby(); else if (net.host) net.host.send({ t: 'hero', hero: id });
+  if (net.mode === 'host') sendLobby(); else if (net.host) net.host.send({ t: 'hero', hero: id, lo: loadoutOf(PROFILE, id) });
   showLobby();
 }
 function saveName() { const el = $('nm'); if (el) { net.name = el.value.trim().slice(0, 14); try { localStorage.setItem('duskbound-name', net.name); } catch (e) { } } }
 function showMenu(msg) {
   game.state = 'menu'; game.over = null; me = null; players = [];
-  show('<h1>DUSKBOUND</h1><div class="sub">Three days. Three nights. Then the Gloam Stag wakes.<br>Roam the wood alone or with up to three friends, and be ready when it comes for you.</div>' + heroCards(net.hero) +
-    '<div class="row"><input id="nm" maxlength="14" placeholder="Your name" value="' + esc(net.name) + '"><button id="solo">Play solo</button><button id="hostb">Host co-op</button><span class="sep"></span><input id="code" maxlength="5" placeholder="CODE" autocomplete="off"><button id="joinb">Join</button></div>' +
-    '<div id="msg">' + esc(msg || '') + '</div>' + controlsHtml());
+  show('<h1>DUSKBOUND</h1><div class="sub">' + L('Three days. Three nights. Then the Gloam Stag wakes.<br>Roam the wood alone or with up to three friends, and be ready when it comes for you.', '三個白晝，三個黑夜，然後幽暮雄鹿將會甦醒。<br>獨自或與最多三位朋友一同漫遊森林，在它找上你之前做好準備。') + '</div>' + heroCards(net.hero) +
+    '<div class="row"><input id="nm" maxlength="14" placeholder="' + L('Your name', '你的名字') + '" value="' + esc(net.name) + '"><button id="solo">' + L('Play solo', '單人遊玩') + '</button><button id="hostb">' + L('Host co-op', '開設合作房') + '</button><span class="sep"></span><input id="code" maxlength="5" placeholder="' + L('CODE', '代碼') + '" autocomplete="off" value="' + esc(lastRoom()) + '"><button id="joinb">' + L('Join', '加入') + '</button></div>' +
+    '<div class="row">' + diffSelect('diffsel', d => PROFILE.unlocked.includes(d)) + '<button id="profb" class="ghost">' + L('Profile', '個人檔案') + '</button></div>' +
+    '<div id="msg">' + esc(T(msg) || '') + '</div>' + controlsHtml() + '<button id="lang" class="ghost langbtn">' + (LANG === 'zh' ? '🌐 English' : '🌐 繁體中文') + '</button>' + fsButtonHtml());
+  bindFs(() => showMenu(msg));
+  $('lang').onclick = () => { saveName(); setLang(LANG === 'zh' ? 'en' : 'zh'); showMenu(msg); };
+  $('swipehint').textContent = L('⇡ Swipe up to hide Safari’s bars', '⇡ 向上滑動即可隱藏 Safari 工具列');
+  $('diffsel').onchange = e => setDiff(e.target.value);
+  $('profb').onclick = () => { saveName(); showProfile(); };
   bindHeroCards(selectHero);
   $('solo').onclick = () => { saveName(); goFull(); startSolo(); };
   $('hostb').onclick = () => { saveName(); goFull(); hostGame(); };
@@ -1212,23 +1563,76 @@ function showMenu(msg) {
 }
 function showLobby() {
   const host = net.mode === 'host';
-  let h = '<h2>Party</h2><div class="sub">' + (host && !net.ready ? 'Opening a room…' : 'Room code <span class="code">' + esc(net.code) + '</span>' + (host ? '<br>Share this code — friends enter it under Join on the title screen.' : '')) + '</div><div class="plist">';
-  for (const q of net.lobby) h += '<div><span style="color:' + HEROES[q.hero].color + '">●</span> ' + esc(q.name) + (q.id === net.myId ? ' (you)' : '') + (q.id === 1 ? ' — host' : '') + ' <i>' + HEROES[q.hero].name + '</i></div>';
-  h += '</div>' + heroCards(net.hero, true) + '<div class="row">' + (host ? '<button id="start">Set out' + (net.lobby.length > 1 ? ' (' + net.lobby.length + ' players)' : ' alone') + '</button>' : '<span class="wait">Waiting for the host to set out…</span>') + '<button id="leave" class="ghost">Leave</button></div>';
-  show(h); bindHeroCards(selectHero);
-  if (host) $('start').onclick = startHosted;
+  let h = '<h2>' + L('Party', '隊伍') + '</h2><div class="sub">' + (host && !net.ready ? L('Opening a room…', '正在開設房間…') : L('Room code', '房間代碼') + ' <span class="code">' + esc(net.code) + '</span>' + (host ? '<br>' + L('Share this code — friends enter it under Join on the title screen' + (NetT.hint || '') + '.', '分享這組代碼 — 朋友在標題畫面的「加入」欄輸入即可' + (NetT.hint ? '（需開啟同一個頁面，且頁面已分享給他們）' : '') + '。') : '')) + '</div><div class="plist">';
+  for (const q of net.lobby) h += '<div><span style="color:' + HEROES[q.hero].color + '">●</span> ' + esc(q.name) + (q.id === net.myId ? L(' (you)', '（你）') : '') + (q.id === 1 ? L(' — host', ' — 房主') : '') + ' <i>' + T(HEROES[q.hero].name) + '</i> · ' + L('up to ', '最高 ') + T(DIFF(unlocksOf(q).slice(-1)[0]).name) + '</div>';
+  h += '</div><div class="row">' + (host ? diffSelect('diffsel', partyDiffOk) + '<span class="wait">' + L('Only difficulties every player has unlocked.', '只能選擇所有人都已解鎖的難度。') + '</span>'
+    : '<span class="wait">' + L('Difficulty: ', '難度：') + T(DIFF(net.diff).name) + '</span>') + '</div>';
+  h += heroCards(net.hero, true) + '<div class="row">' + (host ? '<button id="start">' + (net.lobby.length > 1 ? L('Set out (' + net.lobby.length + ' players)', '出發（' + net.lobby.length + ' 人）') : L('Set out alone', '獨自出發')) + '</button>' : '<span class="wait">' + L('Waiting for the host to set out…', '等待房主出發…') + '</span>') + (NetT.voice ? '<button id="voiceb" class="ghost">🎙 ' + L('Voice', '語音') + '</button>' : '') + '<button id="leave" class="ghost">' + L('Leave', '離開') + '</button></div>';
+  h = h.replace(/<button id="leave"/, fsRowHtml() + '<button id="leave"');
+  show(h); bindHeroCards(selectHero); bindFs(showLobby); if ($('voiceb')) $('voiceb').onclick = () => showVoice(showLobby);
+  if (host) { $('start').onclick = startHosted; $('diffsel').onchange = e => { if (partyDiffOk(e.target.value)) { setDiff(e.target.value); sendLobby(); } showLobby(); }; }
   $('leave').onclick = () => { leaveNet(); showMenu(); };
 }
-function beginRun() {
-  game = newGame(); night = 0; nextId = 1; genWorld(); hide();
+const unlocksOf = q => q.id === net.myId ? PROFILE.unlocked : q.unl || (q.lo && q.lo.unlocked) || ['normal'];
+function diffSelect(id, allowed) {
+  return '<select id="' + id + '" class="diffsel">' + DIFFICULTIES.map(d => '<option value="' + d.id + '"' + (d.id === net.diff ? ' selected' : '') + (allowed(d.id) ? '' : ' disabled') + '>' +
+    L('Difficulty: ', '難度：') + T(d.name) + (allowed(d.id) ? '' : ' 🔒') + '</option>').join('') + '</select>';
+}
+// Profile screen: unlocks, weapons (equip one per hero), upgrades, starting talents, reward history, backup code.
+function showProfile(extra) {
+  const P = PROFILE, rar = r => r ? '<span style="color:' + RARITY_COLORS[r] + '">' + T(RARITY_NAMES[r]) + '</span>' : L('No reward', '沒有獎勵');
+  let h = '<h2>' + L('Profile', '個人檔案') + '</h2><div class="sub">' + L('Saved in this browser · ID ', '儲存在此瀏覽器 · ID ') + esc(P.id.slice(0, 10)) + '…</div><div class="stats prof">';
+  h += '<b>' + L('Difficulties', '難度') + '</b><br>' + DIFFICULTIES.map(d => (P.unlocked.includes(d.id) ? '✓ ' : '🔒 ') + T(d.name) + (P.cleared[d.id] ? L(' (cleared ×' + P.cleared[d.id] + ')', '（通關 ×' + P.cleared[d.id] + '）') : '')).join(' · ');
+  h += '<br><b>' + L('Weapons', '武器') + '</b><br>' + Object.keys(HEROES).map(hero => {
+    const own = P.weapons.filter(w => WEAPONS[w].hero === hero);
+    return T(HEROES[hero].name) + ': ' + (own.length ? '<select data-hero="' + hero + '" class="wsel"><option value="">' + L('(none)', '（無）') + '</option>' + own.map(w => '<option value="' + w + '"' + (P.equipped[hero] === w ? ' selected' : '') + '>' + T(WEAPONS[w].name) + ' — ' + T(WEAPONS[w].desc) + '</option>').join('') + '</select>' : '<i>' + L('none yet', '尚無') + '</i>');
+  }).join('<br>');
+  const ups = Object.entries(P.upgrades).filter(([, v]) => v > 0).map(([k, v]) => T(UPGRADES[k].name) + ' +' + v + UPGRADES[k].unit);
+  h += '<br><b>' + L('Upgrades', '強化') + '</b> ' + (ups.join(' · ') || '<i>' + L('none yet', '尚無') + '</i>');
+  const tal = Object.keys(P.talents).filter(k => P.talents[k] > 0).map(k => T((TALENTS.find(t => t.id === k) || { name: k }).name));
+  h += '<br><b>' + L('Starting talents', '初始天賦') + '</b> ' + (tal.join(' · ') || '<i>' + L('none yet', '尚無') + '</i>');
+  const rec = P.rewards.slice(-6).reverse();
+  h += '<br><b>' + L('Recent chapter rewards', '最近的章節獎勵') + '</b><br>' + (rec.length ? rec.map(r => T('Chapter ' + r.chapter) + ' · ' + T(DIFF(r.diff).name) + ': ' + rar(r.rarity) + (r.item ? ' — ' + T(itemLabel(r.item)) : '')).join('<br>') : '<i>' + L('none yet', '尚無') + '</i>');
+  h += '</div>' + (extra || '') + '<div class="row"><button id="pback">' + L('Back', '返回') + '</button><button id="pexp" class="ghost">' + L('Backup code', '備份代碼') + '</button><button id="pimp" class="ghost">' + L('Restore', '還原') + '</button></div>' +
+    '<div class="wait">' + L('Clearing this site’s data, private browsing, another browser or the Home Screen app each start a new profile — use a backup code to move it.', '清除網站資料、私密瀏覽、換瀏覽器或使用主畫面 App 都會建立新的檔案 — 請用備份代碼搬移。') + '</div>';
+  show(h);
+  document.querySelectorAll('.wsel').forEach(s => s.onchange = () => { const hero = s.dataset.hero; if (s.value) PROFILE.equipped[hero] = s.value; else delete PROFILE.equipped[hero]; saveMe(); });
+  $('pback').onclick = () => showMenu();
+  $('pexp').onclick = () => { showProfile('<textarea id="pcode" readonly rows="3" class="pcode">' + exportProfile(PROFILE) + '</textarea>'); const t = $('pcode'); t.focus(); t.select(); };
+  $('pimp').onclick = () => {
+    showProfile('<textarea id="pcode" rows="3" class="pcode" placeholder="DB1.…"></textarea><div class="row"><button id="pdo">' + L('Replace this profile', '取代目前的檔案') + '</button></div>');
+    $('pdo').onclick = () => { const p = importProfile($('pcode').value); if (!p) return showProfile('<div id="msg">' + L('That code is not valid.', '代碼無效。') + '</div>'); PROFILE = p; saveMe(); if (!PROFILE.unlocked.includes(net.diff)) setDiff('normal'); showProfile('<div class="wait">' + L('Profile restored.', '已還原檔案。') + '</div>'); };
+  };
+}
+const chapterSub = () => 'Chapter ' + game.chapter + (world && world.pal.placeholder ? ' (preview)' : '');
+function beginRun(diff) {
+  game = newGame(); game.diff = DIFF(diff).id; game.runId = randId(12); night = 0; nextId = 1; net.claims = new Map(); net.rolled = new Set(); genWorld(); hide();
   banner(world.pal.name, 'Day 1 — find the camps, caches and shrines.', 4); sfx('dawn');
 }
 function startSolo() {
-  initAudio(); leaveNet(); players = [newPlayer(1, net.hero, cleanName(net.name, 1))]; me = players[0]; beginRun();
+  initAudio(); leaveNet(); if (!PROFILE.unlocked.includes(net.diff)) net.diff = 'normal';
+  players = [newPlayer(1, net.hero, cleanName(net.name, 1))]; me = players[0]; me.lo = loadoutOf(PROFILE, net.hero); applyLoadout(me, me.lo); beginRun(net.diff);
 }
 function startHosted() {
-  players = net.lobby.map(q => { const p = newPlayer(q.id, q.hero, q.name); p.remote = q.id !== 1; return p; });
-  me = players.find(p => p.id === 1); beginRun(); sendWorld(); net.snapT = 0;
+  const d = partyDiffOk(net.diff) ? net.diff : bestCommonDiff(); net.diff = d;
+  net.away.clear(); players = net.lobby.map(q => { const p = newPlayer(q.id, q.hero, q.name); p.remote = q.id !== 1; p.tok = q.tok || ''; p.lo = q.id === 1 ? loadoutOf(PROFILE, q.hero) : q.lo; applyLoadout(p, p.lo); return p; });
+  me = players.find(p => p.id === 1); beginRun(d); sendWorld(); net.snapT = 0;
+}
+// Phones only turn a tap into a click when no other finger is down, so a thumb on the move stick
+// would swallow taps on cards. Act on the touch itself (finger lifted inside the element), and keep click for mice.
+function onTap(el, fn) {
+  let id = null, last = 0;
+  const fire = () => { const n = Date.now(); if (n - last > 400) { last = n; fn(); } };
+  el.onclick = fire;
+  el.addEventListener('touchstart', e => { id = e.changedTouches[0].identifier; }, { passive: true });
+  el.addEventListener('touchend', e => {
+    for (const t of e.changedTouches) {
+      if (t.identifier !== id) continue; id = null;
+      const r = el.getBoundingClientRect();
+      if (t.clientX >= r.left && t.clientX <= r.right && t.clientY >= r.top && t.clientY <= r.bottom) { e.preventDefault(); fire(); }
+    }
+  }, { passive: false });
+  el.addEventListener('touchcancel', () => { id = null; });
 }
 let shownChoice = '';
 function syncChoice() {
@@ -1236,10 +1640,10 @@ function syncChoice() {
   const key = on ? me.choiceSeq + ':' + me.choice.map(t => t.id).join(',') : '';
   if (key === shownChoice) return; shownChoice = key;
   if (!on) { choiceEl.className = 'hidden'; choiceEl.innerHTML = ''; return; }
-  let h = '<h2>' + esc(me.choiceTitle || 'Choose') + '</h2><div class="cards">';
-  me.choice.forEach((t, i) => { const rk = me.talents[t.id] || 0; h += '<div class="card" data-i="' + i + '"><span class="key">' + (i + 1) + '</span><div class="tag"' + (t.hero ? ' style="color:' + HEROES[t.hero].color + '"' : '') + '>' + (t.hero ? HEROES[t.hero].name : 'Boon') + '</div><h3>' + t.name + '</h3><p>' + t.desc + '</p><div class="pips">' + '●'.repeat(rk + 1) + '○'.repeat(Math.max(0, t.max - rk - 1)) + '</div></div>'; });
+  let h = '<h2>' + esc(T(me.choiceTitle || 'Choose')) + '</h2><div class="cards">';
+  me.choice.forEach((t, i) => { const rk = me.talents[t.id] || 0; h += '<div class="card" data-i="' + i + '"><span class="key">' + (i + 1) + '</span><div class="tag"' + (t.hero ? ' style="color:' + HEROES[t.hero].color + '"' : '') + '>' + T(t.hero ? HEROES[t.hero].name : 'Boon') + '</div><h3>' + T(t.name) + '</h3><p>' + T(t.desc) + '</p><div class="pips">' + '●'.repeat(rk + 1) + '○'.repeat(Math.max(0, t.max - rk - 1)) + '</div></div>'; });
   choiceEl.className = net.mode === 'solo' ? 'solo' : 'coop'; choiceEl.innerHTML = h + '</div>';
-  choiceEl.querySelectorAll('.card').forEach(cd => cd.onclick = () => chooseTalent(+cd.dataset.i));
+  choiceEl.querySelectorAll('.card').forEach(cd => onTap(cd, () => chooseTalent(+cd.dataset.i)));
 }
 function chooseTalent(i) {
   if (!me || !me.choice || !me.choice[i] || game.state !== 'play') return;
@@ -1249,35 +1653,78 @@ function chooseTalent(i) {
 }
 function showEnd() {
   if (!me) return;
-  const st = '<div class="stats">' + players.map(p => esc(p.name) + ' — ' + HEROES[p.hero].name + ' · Lv ' + p.level + ' · ' + p.kills + ' slain').join('<br>') + '<br>Chapter ' + game.chapter + '</div>' + rewardHtml();
-  const guest = net.mode === 'client', wait = '<div class="wait">Waiting for the host…</div><button id="leave" class="ghost">Leave party</button>';
-  if (game.over === 'dead') show('<h2>The dusk takes you</h2><div class="sub">The wood closes over another lantern.</div>' + st + (guest ? wait : '<button id="again">' + (net.mode === 'host' ? 'Back to the lobby' : 'Try again') + '</button>'), true);
-  else if (game.over === 'win') show('<h2>The Stag falls</h2><div class="sub">…but its shadow runs ahead of you, deeper in. ' + PAL[game.chapter % 3].name + ' awaits, and everything there is stronger.</div>' + st + (guest ? wait : '<button id="next">Press on</button>'), true);
-  else show('<h1>DAWN</h1><div class="sub">The last Gloam Stag is ash on the wind. For the first time in an age, morning comes and stays.</div>' + st + (guest ? wait : '<button id="again">' + (net.mode === 'host' ? 'Back to the lobby' : 'Play again') + '</button>'));
+  const st = '<div class="stats">' + players.map(p => esc(p.name) + ' — ' + T(HEROES[p.hero].name) + ' · ' + L('Lv ', '等級 ') + p.level + ' · ' + L(p.kills + ' slain', '擊殺 ' + p.kills)).join('<br>') + '<br>' + T('Chapter ' + game.chapter) + '</div>';
+  const rw = game.rewards ? '<div class="stats"><b>' + L('Chapter reward', '章節獎勵') + '</b><br>' + game.rewards.map(r => esc(r.name) + ' — ' + (r.rarity ? '<span style="color:' + RARITY_COLORS[r.rarity] + '">' + T(RARITY_NAMES[r.rarity]) + '</span> · ' + esc(T(itemLabel(r.item))) : L('No reward', '沒有獎勵'))).join('<br>') + '</div>' : '';
+  const guest = net.mode === 'client', wait = '<div class="wait">' + L('Waiting for the host…', '等待房主…') + '</div><button id="leave" class="ghost">' + L('Leave party', '離開隊伍') + '</button>';
+  if (game.over === 'dead') show('<h2>' + L('The dusk takes you', '你被暮色吞沒') + '</h2><div class="sub">' + L('The wood closes over another lantern.', '森林又吞沒了一盞燈火。') + '</div>' + st + rw + (guest ? wait : '<button id="again">' + (net.mode === 'host' ? L('Back to the lobby', '回到大廳') : L('Try again', '再試一次')) + '</button>'), true);
+  else if (game.over === 'win') show('<h2>' + L('The Stag falls', '雄鹿倒下了') + '</h2><div class="sub">' + L('…but its shadow runs ahead of you, deeper in. ' + PAL[game.chapter % PAL.length].name + ' awaits, and everything there is stronger.', '…但它的影子已先一步奔向更深處。' + T(PAL[game.chapter % PAL.length].name) + '在等著你，那裡的一切都更加強大。') + '</div>' + st + rw + (guest ? wait : '<button id="next">' + L('Press on', '繼續前進') + '</button>'), true);
+  else show('<h1>' + L('DAWN', '黎明') + '</h1><div class="sub">' + L('The last Gloam Stag is ash on the wind. For the first time in an age, morning comes and stays.', '最後一頭幽暮雄鹿化為風中灰燼。漫長歲月以來，晨光第一次降臨並且留了下來。') + '</div>' + st + rw + (guest ? wait : '<button id="again">' + (net.mode === 'host' ? L('Back to the lobby', '回到大廳') : L('Play again', '再玩一次')) + '</button>'));
   if ($('again')) $('again').onclick = endRun;
   if ($('next')) $('next').onclick = nextChapter;
   if ($('leave')) $('leave').onclick = () => { leaveNet(); showMenu(); };
 }
 function endRun() {
-  if (net.mode === 'host') { game.state = 'lobby'; game.over = null; me = null; players = []; for (const c of net.conns) c.inGame = false; sendLobby(); showLobby(); }
+  if (net.mode === 'host') { net.away.clear(); game.state = 'lobby'; game.over = null; me = null; players = []; for (const c of net.conns) c.inGame = false; sendLobby(); showLobby(); }
   else showMenu();
 }
 function nextChapter() {
   if (game.over !== 'win') return;
-  const ch = game.chapter + 1; game = newGame(); game.chapter = ch; night = 0;
+  const ch = game.chapter + 1, keep = { diff: game.diff, runId: game.runId }; game = newGame(); Object.assign(game, keep); game.chapter = ch; night = 0;
   for (const p of players) { p.down = false; p.rev = 0; p.flurry = null; p.dashT = 0; if (p.hp <= 0) p.hp = 1; }
   genWorld(); for (const p of players) heal(p, p.maxHp * 0.5);
-  hide(); banner(world.pal.name, 'Chapter ' + game.chapter, 4); sfx('dawn');
+  hide(); banner(world.pal.name, chapterSub(), 4); sfx('dawn');
   if (net.mode === 'host') sendWorld();
 }
+// What to do about a microphone error (DOMException names from getUserMedia).
+function micErrorText(name) {
+  if (name === 'NotAllowedError') return L('Microphone permission is off for this site. iPhone Safari: tap <b>aA</b> (or <b>⋯</b>) → <b>Website Settings</b> → <b>Microphone</b> → <b>Allow</b>, then try again. Home Screen app: iPhone <b>Settings</b> → <b>Apps</b> → <b>Safari</b> → <b>Microphone</b>.',
+    '此網站的麥克風權限已關閉。iPhone Safari：點 <b>aA</b>（或 <b>⋯</b>）→ <b>網站設定</b> → <b>麥克風</b> → <b>允許</b>，再試一次。主畫面 App：iPhone <b>設定</b> → <b>App</b> → <b>Safari</b> → <b>麥克風</b>。');
+  if (name === 'NotReadableError' || name === 'AbortError') return L('The microphone is busy — end any call or app using it (or a Bluetooth headset switching), then try again.', '麥克風正被使用中 — 請結束通話或其他使用麥克風的 App（或藍牙耳機切換中），再試一次。');
+  if (name === 'NotFoundError' || name === 'OverconstrainedError') return L('No microphone was found.', '找不到麥克風。');
+  if (name === 'SecurityError') return L('The microphone needs the secure (https) game link.', '麥克風需要使用安全（https）的遊戲連結。');
+  return L('Microphone not available (' + esc(name) + '). Try again, or reload the page.', '無法使用麥克風（' + esc(name) + '）。請再試一次或重新整理頁面。');
+}
+// Voice & sound panel. In co-op play it opens over the running game (soft) and does not pause.
+async function showVoice(back, soft) {
+  const nameOf = pid => { const q = players.find(p => p.id === pid) || net.lobby.find(q => q.id === pid); return q ? q.name : '#' + pid; };
+  let h = '<h2>' + L('Voice & sound', '語音與音效') + '</h2>';
+  if (!NetT.voice || !Voice.supported()) h += '<div class="sub">' + L('Voice chat needs the GitHub Pages version of the game (direct connections). It is not available on this page.', '語音聊天需要 GitHub Pages 版本（直接連線），此頁面無法使用。') + '</div>';
+  else {
+    const devs = Voice.micStream ? await Voice.devices() : [];
+    h += '<div class="row"><button id="vmic"' + (Voice.micStream ? ' class="ghost"' : '') + '>' + (Voice.micStream ? L('Turn microphone off', '關閉麥克風') : L('Turn microphone on', '開啟麥克風')) + '</button>' +
+      '<select id="vmode"><option value="ptt"' + (Voice.mode === 'ptt' ? ' selected' : '') + '>' + L('Push to talk', '按住說話') + '</option><option value="open"' + (Voice.mode === 'open' ? ' selected' : '') + '>' + L('Open mic', '持續開麥') + '</option></select>' +
+      (devs.length ? '<select id="vdev">' + devs.map((d, i) => '<option value="' + esc(d.deviceId) + '"' + (d.deviceId === Voice.micId ? ' selected' : '') + '>' + esc(d.label || L('Microphone ', '麥克風 ') + (i + 1)) + '</option>').join('') + '</select>' : '') + '</div>';
+    h += '<div class="wait">' + (!Voice.micStream && Voice.error ? micErrorText(Voice.error) :
+      Voice.micStream ? (Voice.mode === 'ptt' ? L('Hold V (keyboard) or the TALK button (touch) to talk.', '按住 V 鍵（鍵盤）或 TALK 按鈕（觸控）說話。') : L('Everyone hears you while the mic is on.', '麥克風開啟時大家都聽得到你。')) : L('You can hear others without a microphone.', '不開麥克風也能聽到其他人。')) + '</div>';
+    const others = Voice.roster.filter(r => r.id !== Voice.myId);
+    h += '<div class="stats prof">' + (others.length ? others.map(r => { const v = Voice.calls.get(r.id); return '<div class="vrow">' + esc(nameOf(r.id)) + ' <i>' + (v && v.stream ? L('connected', '已連線') : L('connecting…', '連線中…')) + '</i> ' +
+      '<button class="ghost vmute" data-pid="' + r.id + '">' + (v && v.muted ? L('Unmute', '取消靜音') : L('Mute', '靜音')) + '</button> <input type="range" class="vvol" data-pid="' + r.id + '" min="0" max="2" step="0.05" value="' + (v ? v.vol : 1) + '"></div>'; }).join('') : '<i>' + L('No one else here yet.', '目前沒有其他人。') + '</i>') + '</div>';
+  }
+  h += '<div class="row"><button id="vsfx" class="ghost">' + L('Game sound: ', '遊戲音效：') + (AU.muted ? L('off', '關') : L('on', '開')) + '</button>' + fsRowHtml() + '<button id="vback">' + L('Close', '關閉') + '</button></div>';
+  show(h, soft); bindFs(() => showVoice(back, soft));
+  $('vback').onclick = () => back(); $('vsfx').onclick = () => { initAudio(); onKey('m'); showVoice(back, soft); };
+  if ($('vmic')) $('vmic').onclick = async () => { if (Voice.micStream) await Voice.disableMic(); else await Voice.enableMic(Voice.micId); showVoice(back, soft); };
+  if ($('vmode')) $('vmode').onchange = e => { Voice.setMode(e.target.value); showVoice(back, soft); };
+  if ($('vdev')) $('vdev').onchange = async e => { await Voice.enableMic(e.target.value); showVoice(back, soft); };
+  document.querySelectorAll('.vmute').forEach(b => b.onclick = () => { const pid = +b.dataset.pid, v = Voice.calls.get(pid); Voice.setMuted(pid, !(v && v.muted)); showVoice(back, soft); });
+  document.querySelectorAll('.vvol').forEach(r => r.oninput = () => Voice.setVolume(+r.dataset.pid, +r.value));
+}
+const muteLabel = () => AU.muted ? L('Unmute', '取消靜音') : L('Mute', '靜音');
 function onKey(k) {
   if (k === 'm' && AU.ctx) { AU.muted = !AU.muted; AU.master.gain.value = AU.muted ? 0 : 0.55; }
   const n = '123456789'.indexOf(k);
   if (n >= 0 && (game.state === 'menu' || game.state === 'lobby')) selectHero(Object.keys(HEROES)[n]);
   else if (n >= 0 && n < 3 && game.state === 'play') chooseTalent(n);
+  else if ((k === 'p' || k === 'escape') && game.state === 'play' && net.mode !== 'solo' && !game.over && overlay.className === 'hidden') showVoice(hide, true);
   else if ((k === 'p' || k === 'escape') && game.state === 'play' && net.mode === 'solo' && !game.over && !(me && me.choice)) {
     game.paused = !game.paused;
-    if (game.paused) { show('<h2>Paused</h2>' + controlsHtml() + '<button id="res">Resume</button>', true); $('res').onclick = () => { game.paused = false; hide(); }; } else hide();
+    if (game.paused) {
+      show('<h2>' + L('Paused', '暫停') + '</h2>' + controlsHtml() + '<div class="row"><button id="res">' + L('Resume', '繼續') + '</button>' + (touch.on ? '<button id="mute" class="ghost">' + muteLabel() + '</button><button id="quit" class="ghost">' + L('Quit run', '放棄本局') + '</button>' : '') + fsRowHtml() + '</div>', true);
+      $('res').onclick = () => { game.paused = false; hide(); };
+      bindFs(() => { game.paused = true; onKey('p'); onKey('p'); });
+      if ($('mute')) $('mute').onclick = () => { initAudio(); onKey('m'); $('mute').textContent = muteLabel(); };
+      if ($('quit')) $('quit').onclick = () => { game.paused = false; showMenu(); };
+    } else hide();
   }
 }
 
@@ -1289,10 +1736,11 @@ function tick(ts) {
     if (net.mode === 'client') clientUpdate(dt);
     else if (game.over) updFx(dt);
     else if (!(net.mode === 'solo' && (game.paused || me.choice))) update(dt);
-    if (net.mode === 'host') { net.snapT -= dt; if (net.snapT <= 0) { net.snapT = 0.05; sendSnaps(); } }
+    if (net.mode === 'host') { net.snapT -= dt; if (net.snapT <= 0) { net.snapT = NetT.snapIv ? NetT.snapIv(net.conns.length) : 0.05; sendSnaps(); } }
   }
   for (const k in pressed) delete pressed[k];
   syncChoice();
 }
 function frame(ts) { tick(ts); music(); render(); requestAnimationFrame(frame); }
 showMenu(); requestAnimationFrame(frame);
+if (/[?&]a(=|&|$)/.test(location.search) && !STANDALONE && !window.DUSK_NO_NET) showInstall(() => showMenu());

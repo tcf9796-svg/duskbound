@@ -2,9 +2,14 @@
 // Synthesized audio: all sound effects and music are generated with WebAudio.
 const AU = { ctx: null, master: null, muted: false, nbuf: null, last: {} };
 function initAudio() {
-  if (AU.ctx) { if (AU.ctx.state === 'suspended') AU.ctx.resume(); return; }
+  // iOS: play through the ring/silent switch like a game should, and wake the context after calls or app switches ('interrupted').
+  // ('playback' forbids recording, so while voice chat has the microphone on the session is 'play-and-record'; see voice.js)
+  try { const want = typeof Voice !== 'undefined' && Voice.micStream ? 'play-and-record' : 'playback'; if (navigator.audioSession && navigator.audioSession.type !== want) navigator.audioSession.type = want; } catch (e) { }
+  if (AU.ctx) { if (AU.ctx.state !== 'running' && AU.ctx.state !== 'closed') { const r = AU.ctx.resume(); if (r && r.catch) r.catch(() => { }); } return; }
   try {
     AU.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    // older iOS only unlocks audio once something is started inside the gesture
+    const u = AU.ctx.createBufferSource(); u.buffer = AU.ctx.createBuffer(1, 1, 22050); u.connect(AU.ctx.destination); u.start(0);
     AU.master = AU.ctx.createGain(); AU.master.gain.value = 0.55; AU.master.connect(AU.ctx.destination);
     const n = AU.ctx.sampleRate; AU.nbuf = AU.ctx.createBuffer(1, n, n);
     const d = AU.nbuf.getChannelData(0); for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;

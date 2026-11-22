@@ -17,8 +17,8 @@ inline() {
       if (extra != "") { print "<script>"; while ((getline l < extra) > 0) print l; close(extra); print "</script>" }
       next
     }
-    /<script src="[a-z]+\.js"><\/script>/ {
-      match($0, /"[a-z]+\.js"/); f = substr($0, RSTART + 1, RLENGTH - 2)
+    /<script src="[a-z0-9]+\.js(\?v=[0-9]+)?"><\/script>/ {
+      match($0, /"[a-z0-9]+\.js/); f = substr($0, RSTART + 1, RLENGTH - 1)
       print "<script>"; while ((getline l < f) > 0) print l; close(f); print "</script>"
       next
     }
@@ -30,6 +30,7 @@ inline "$PEER" > dist/duskbound.html
 # claude.ai wraps the page in its own document, so drop the outer tags and pin the dark colour scheme.
 printf 'window.DUSK_NO_NET = true;\n' > dist/nonet.tmp.js
 inline dist/nonet.tmp.js \
+  | grep -v -e 'rel="manifest"' -e 'rel="apple-touch-icon"' \
   | grep -v -x -e '<!doctype html>' -e '<html lang="en">' -e '<head>' -e '</head>' -e '<body>' -e '</body>' -e '</html>' \
   | awk '{ print } /^<style>$/ && !done { print "  :root{color-scheme:dark}"; done = 1 }' > dist/artifact.html
 rm dist/nonet.tmp.js
