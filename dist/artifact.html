@@ -379,7 +379,7 @@ const ZH = {
   'Wake the Gloam Stag early': '提早喚醒幽暮雄鹿', 'Unsealing': '解封中', 'Drink from the spring': '飲用泉水', 'Open cache': '開啟寶箱', 'Pray at the wayshrine': '在路旁神龕祈禱',
   // HUD
   'The Gloam Stag hunts you': '幽暮雄鹿正在獵殺你', 'LMB': '左鍵', 'RMB': '右鍵', 'SPACE': '空白鍵', 'DOWN': '倒地',
-  'SKILL': '技能', 'AUTO': '自動', 'AUTO ✓': '自動 ✓', 'Auto attack': '自動攻擊', 'Auto attack on': '自動攻擊：開', 'Auto attack off': '自動攻擊：關', 'on': '開', 'off': '關', 'TALK': '說話', 'DASH': '衝刺', 'ULT': '絕招', 'USE': '使用', 'Lv 3': '3 級',
+  'SKILL': '技能', 'DOWN — an ally must reach you': '倒地 — 等待隊友前來救援', 'DOWN — stand close to revive': '倒地 — 靠近即可救起', 'AUTO': '自動', 'AUTO ✓': '自動 ✓', 'Auto attack': '自動攻擊', 'Auto attack on': '自動攻擊：開', 'Auto attack off': '自動攻擊：關', 'on': '開', 'off': '關', 'TALK': '說話', 'DASH': '衝刺', 'ULT': '絕招', 'USE': '使用', 'Lv 3': '3 級',
   // messages
   'Online co-op is not available on this page. Solo works here; for co-op, open the downloaded duskbound.html file or a copy on your own website.': '此頁面無法進行線上合作。可以單人遊玩；合作模式請開啟下載的 duskbound.html 檔案或架在你自己網站上的版本。',
   'Online play needs an internet connection (the networking library did not load).': '線上遊玩需要網路連線（連線函式庫未能載入）。',
@@ -2319,7 +2319,13 @@ function drawPlayer(p) {
     c.globalAlpha = 0.45; drawHero(c, p.hero, p.x, p.y, p.face, 0, {}); c.globalAlpha = 1;
     c.strokeStyle = 'rgba(255,90,90,.7)'; c.lineWidth = 3; c.beginPath(); c.arc(p.x, p.y, 30, 0, TAU); c.stroke();
     if (p.rev > 0) { c.strokeStyle = '#8dff8a'; c.lineWidth = 5; c.beginPath(); c.arc(p.x, p.y, 30, -Math.PI / 2, -Math.PI / 2 + TAU * clamp(p.rev / 3, 0, 1)); c.stroke(); }
-    c.textAlign = 'center'; c.font = 'bold 12px Georgia'; c.fillStyle = '#ff8a8a'; c.fillText(p === me ? 'DOWN — an ally must reach you' : 'DOWN — stand close to revive', p.x, p.y + 50);
+    c.textAlign = 'center'; c.font = 'bold 12px Georgia'; c.fillStyle = '#ff8a8a'; c.fillText(T(p === me ? 'DOWN — an ally must reach you' : 'DOWN — stand close to revive'), p.x, p.y + 50);
+    if (p !== me) { // pulsing beacon so a fallen teammate stands out in a fight
+      const k = 0.5 + 0.5 * Math.sin(game.t * 6), y0 = p.y - 58 - k * 6;
+      const g = c.createRadialGradient(p.x, p.y, 10, p.x, p.y, 70); g.addColorStop(0, 'rgba(255,60,60,' + (0.18 + 0.14 * k) + ')'); g.addColorStop(1, 'rgba(255,60,60,0)'); c.fillStyle = g; c.beginPath(); c.arc(p.x, p.y, 70, 0, TAU); c.fill();
+      c.fillStyle = '#ff5a5a'; c.beginPath(); c.moveTo(p.x - 11, y0 - 14); c.lineTo(p.x + 11, y0 - 14); c.lineTo(p.x, y0); c.closePath(); c.fill();
+      c.font = 'bold 13px Georgia'; c.fillStyle = '#ffd0d0'; c.fillText(p.name, p.x, y0 - 20);
+    }
   } else {
     const big = p.ultT > 0 && (p.hero === 'bramble' || p.hero === 'rowan');
     if (big) { c.globalAlpha = 0.25 + Math.sin(game.t * 8) * 0.1; circ(c, p.x, p.y, p.hero === 'rowan' ? 40 : 34, HEROES[p.hero].color); c.globalAlpha = 1; }
@@ -2407,6 +2413,48 @@ function render() {
   c.restore();
   drawHUD();
 }
+// Fallen teammates who are off screen: a marker on the screen edge pointing at them, with name, distance and
+// revive progress. (On screen they get a beacon in drawPlayer instead.)
+// Edge positions (screen pixels) for fallen teammates who are off screen.
+function downMarkers() {
+  const out = [], m = 46, L = SA.l + m, R = innerWidth - SA.r - m, Tp = SA.t + m, B = innerHeight - SA.b - m, cx = innerWidth / 2, cy = innerHeight / 2;
+  if (!me) return out;
+  const avoid = touch.on ? touchButtons() : [], hs = hudScale(), mini = { x: innerWidth - SA.r - ((touch.on ? 112 : 160) + 22) * hs, y: SA.t + ((touch.on ? 112 : 160) + 26) * hs };
+  for (const q of players) {
+    if (q === me || !q.down) continue;
+    const sx = (q.x - cam.x) * zoom, sy = (q.y - cam.y) * zoom;
+    if (sx > 0 && sx < innerWidth && sy > 0 && sy < innerHeight) continue; // visible: beacon drawn in the world
+    // where the line from the screen centre to them crosses the inset edge
+    const dx = sx - cx, dy = sy - cy, s = Math.min(dx ? Math.abs(((dx > 0 ? R : L) - cx) / dx) : 1e9, dy ? Math.abs(((dy > 0 ? B : Tp) - cy) / dy) : 1e9);
+    let x = cx + dx * s, y = cy + dy * s;
+    // slide along the edge to the nearest spot clear of touch buttons, the minimap and other markers
+    const clear = (x, y) => avoid.every(b => Math.hypot(x - b.x, y - b.y) > b.r + 30) && !(x > mini.x - 26 && y < mini.y + 26) && out.every(o => Math.hypot(o.x - x, o.y - y) > 60);
+    if (!clear(x, y)) {
+      const side = x <= L + 1 || x >= R - 1;
+      search: for (let i = 1; i < 60; i++) for (const sg of [-1, 1]) {
+        const nx = side ? x : clamp(x + sg * i * 8, L, R), ny = side ? clamp(y + sg * i * 8, Tp, B) : y;
+        if (clear(nx, ny)) { x = nx; y = ny; break search; }
+      }
+    }
+    out.push({ q, x, y, a: Math.atan2(sy - y, sx - x), below: y > cy });
+  }
+  return out;
+}
+function drawDownMarkers() {
+  const c = ctx, cy = innerHeight / 2;
+  for (const { q, x, y, a } of downMarkers()) {
+    const k = 0.5 + 0.5 * Math.sin(game.t * 6), r = 20 + 3 * k;
+    c.save(); c.translate(x, y);
+    c.fillStyle = 'rgba(8,8,16,.75)'; c.beginPath(); c.arc(0, 0, r + 5, 0, TAU); c.fill();
+    c.fillStyle = 'rgba(255,59,59,' + (0.75 + 0.25 * k) + ')'; c.beginPath(); c.arc(0, 0, r, 0, TAU); c.fill();
+    if (q.rev > 0) { c.strokeStyle = '#8dff8a'; c.lineWidth = 4; c.beginPath(); c.arc(0, 0, r + 4, -Math.PI / 2, -Math.PI / 2 + TAU * clamp(q.rev / 3, 0, 1)); c.stroke(); }
+    c.save(); c.rotate(a); c.fillStyle = '#ff3b3b'; c.beginPath(); c.moveTo(r + 16, 0); c.lineTo(r + 5, -8); c.lineTo(r + 5, 8); c.closePath(); c.fill(); c.restore();
+    c.fillStyle = '#fff'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.font = 'bold 20px Georgia'; c.fillText('!', 0, 1);
+    c.textBaseline = 'alphabetic'; c.font = 'bold 12px Georgia'; const lab = q.name + ' · ' + Math.round(dist(q, me) / 32) + ' m', ty = y > cy ? -r - 10 : r + 18;
+    c.fillStyle = 'rgba(0,0,0,.7)'; c.fillText(lab, 1, ty + 1); c.fillStyle = '#ffd0d0'; c.fillText(lab, 0, ty);
+    c.restore();
+  }
+}
 function drawHUD() {
   const c = ctx, p = me, H2 = HEROES[p.hero], TU = touch.on;
   // On phones the HUD is scaled down, the health panel moves to the top-left and the key hints give way to touch buttons.
@@ -2473,12 +2521,13 @@ function drawHUD() {
   for (const o of world.pois) { if (!o.seen) continue; c.globalAlpha = o.used && o.kind !== 'altar' ? 0.3 : 1; c.fillStyle = colr[o.kind]; c.fillRect(mx + o.x * k - 3, my + o.y * k - 3, 6, 6); } c.globalAlpha = 1;
   for (const e of enemies) if (e.elite && e.near) { c.fillStyle = '#ff5a5a'; c.fillRect(mx + e.x * k - 2, my + e.y * k - 2, 4, 4); }
   if (game.boss) circ(c, mx + game.boss.x * k, my + game.boss.y * k, 5, '#ff5ad6');
-  for (const q of players) if (q !== p) circ(c, mx + q.x * k, my + q.y * k, 3.5, HEROES[q.hero].color);
+  for (const q of players) if (q !== p) { if (q.down) { const bl = Math.sin(game.t * 8) > -0.3; circ(c, mx + q.x * k, my + q.y * k, bl ? 6 : 4, '#ff3b3b'); if (bl) { c.strokeStyle = '#fff'; c.lineWidth = 1.5; c.beginPath(); c.arc(mx + q.x * k, my + q.y * k, 6, 0, TAU); c.stroke(); } } else circ(c, mx + q.x * k, my + q.y * k, 3.5, HEROES[q.hero].color); }
   circ(c, mx + p.x * k, my + p.y * k, 3.5, '#fff');
   c.font = '11px Georgia'; c.fillStyle = '#8e88ab'; c.textAlign = 'right'; c.fillText(TU ? (net.mode === 'solo' ? '' : L('Room ', '房間 ') + net.code) : L('F interact · ', 'F 互動 · ') + (net.mode === 'solo' ? L('P pause · ', 'P 暫停 · ') : L('Room ', '房間 ') + net.code + ' · ') + L('M mute', 'M 靜音'), W - 18, my + ms + 22);
   if (game.banner) { const b = game.banner, a = clamp(Math.min(b.t, b.max - b.t) / 0.4, 0, 1); c.globalAlpha = a; c.textAlign = 'center'; c.font = 'bold ' + Math.round(Math.min(44, W / 13)) + 'px Georgia'; c.fillStyle = 'rgba(0,0,0,.6)'; const bt = T(b.text), bs = T(b.sub); c.fillText(bt, W / 2 + 2, H * 0.27 + 2); c.fillStyle = '#f3d48a'; c.fillText(bt, W / 2, H * 0.27); c.font = 'italic 18px Georgia'; c.fillStyle = '#d8d2ee'; c.fillText(bs, W / 2, H * 0.27 + 30); c.globalAlpha = 1; }
   if (!p.down && p.hp < p.maxHp * 0.3) { const g = c.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, H * 0.8); g.addColorStop(0, 'rgba(160,0,0,0)'); g.addColorStop(1, 'rgba(160,0,0,' + (0.3 + Math.sin(game.t * 5) * 0.1) + ')'); c.fillStyle = g; c.fillRect(0, 0, W, H); }
   c.restore();
+  drawDownMarkers();
   if (TU) drawTouchUI();
 }
 function drawTouchUI() {
