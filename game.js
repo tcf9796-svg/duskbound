@@ -199,7 +199,10 @@ function newPlayer(pid, hero, name) {
     ultT: 0, pulse: 0, combo: 0, flurry: null, talents: {}, h: {}, walk: 0, moving: false, healAcc: 0,
     pending: 0, choice: null, choiceSeq: 0, choiceTitle: '', down: false, rev: 0, tp: 0, remote: false,
     aim: { x: 0, y: 0 }, in: { mx: 0, my: 0, l: false, skill: false, dash: false, ult: false, interact: false, aim: { x: 0, y: 0 } }, cds: [0, 0, 0, 0],
-    roots: 0, lan: LANTERN_MAX, lanMax: LANTERN_MAX, shield: 0, shieldT: 0, decoy: null, decoyOn: false
+    roots: 0, lan: LANTERN_MAX, lanMax: LANTERN_MAX, shield: 0, shieldT: 0, decoy: null, decoyOn: false,
+    // chapter talents (talents.js): picked ids, earned picks, the open offer; plus their effect state
+    ct: [], ctPending: 0, ctChoice: null, ctSeq: 0, barrier: 0, hasteT: 0, hasteMul: 1, bmT: 0, bmHome: false, wingbeat: false, reprisal: false,
+    lrCd: 0, hbCd: 0, ultExt: 0, lanCh: 0, lanRe: 0, mercy: null, threadT: 0
   };
 }
 const dashCdOf = p => (HEROES[p.hero].dashCd || DASH_CD) * p.cdr;
@@ -328,14 +331,16 @@ function hitEnemy(p, e, dmg, o = {}) {
     d *= p.dmgMul * (1 + p.nightDmg * night) * (p.ultT > 0 && p.hero === 'bramble' ? 1.5 : 1);
     if (p.exec && e.hp < e.maxHp * 0.3) d *= 1 + p.exec;
     // Blind Spot: the foe is busy with an ally or a decoy.
-    if (p.hero === 'mira' && e.aggro && e.tgt && e.tgt !== p) { d *= 1.4 + 0.2 * (p.h.glint || 0); o = Object.assign({}, o, { color: '#bff6ff' }); }
+    if (p.hero === 'mira' && e.aggro && e.tgt && e.tgt !== p) { d *= 1.4 + 0.2 * (p.h.glint || 0); o = Object.assign({}, o, { color: '#bff6ff' }); blindSpotHit(p, e, o); }
+    d *= markBonus(p, e, o); // Shared Opening
     crit = !o.noCrit && Math.random() < p.crit + (p.hero === 'vesper' ? 0.15 * night : 0);
     if (crit) d *= p.critMul;
+    if (crit && p.hero === 'vesper' && night > 0.5 && hasT(p, 'lunar')) lunarCut(p);
   }
   if (e.invuln) { if (!o.quiet) floatText(e.x, e.y - e.r - 4, T('Immune'), '#9a96b8', 12); return 0; }
   if (e.armor) d *= 1 - e.armor; if (e.vuln) d *= BOSS_VULN;
   d = Math.max(1, Math.round(d)); if (bossLinkHit(e, d)) { e.flash = 0.1; floatText(e.x, e.y - e.r - 4, d, '#9ff0ff', 15); return d; } e.hp -= d; e.flash = 0.1;
-  if (!o.shared && e.tid) shareTether(p, e, d);
+  if (!o.shared && !o.dot && e.tid) shareTether(p, e, d); // direct damage only
   if (!e.aggro) alertPack(e);
   if (o.kb && e.type !== 'boss' && !e.anchor) { const a = angTo(p, e); e.kbx += Math.cos(a) * o.kb; e.kby += Math.sin(a) * o.kb; }
   floatText(e.x, e.y - e.r - 4, d + (crit ? '!' : ''), crit ? '#ffd24a' : o.color || '#fff', crit ? 19 : 14);
@@ -360,6 +365,7 @@ function killEnemy(e, p) {
   if (e.dead) return; e.dead = true;
   if (e.noDrop) { burst(e.x, e.y, '#d9c8a0', 14, 220, 4); sfx('die', e); return; } // boss arena objects: no loot, no kill credit, never end the chapter
   if (p) p.kills++;
+  talentKill(e);
   // Lingering Light: while a Lanternkeeper is in the party, the fallen leave embers for her lantern.
   if (players.some(q => q.hero === 'vespera')) pickups.push({ id: nextId++, kind: 'lume', x: e.x, y: e.y, val: e.elite || e.type === 'boss' ? 20 : 6, vx: 0, vy: 0, t: rand(TAU), life: 8 });
   burst(e.x, e.y, e.type === 'wisp' ? '#8fd0ff' : '#b79bd6', e.elite || e.type === 'boss' ? 40 : 12, 240, 4); sfx('die', e);
@@ -380,14 +386,18 @@ function hurtPlayer(p, dmg, src) {
   let raw = dmg; const sentinel = p.hero === 'rowan' && p.ultT > 0;
   if (p.hero === 'rowan' && src && Math.abs(angDiff(angTo(p, src), p.face)) < 1.05) {
     raw *= 0.5; ring(p.x + Math.cos(p.face) * 18, p.y + Math.sin(p.face) * 18, 26, '#d8c08a'); sfx('block', p);
-    if (p.roots < ROOTS_MAX) { p.roots++; floatText(p.x, p.y - 44, 'Blocked · root ' + p.roots, '#d8c08a', 13); } else floatText(p.x, p.y - 44, 'Blocked', '#d8c08a', 13);
+    let reached = false;
+    if (p.roots < ROOTS_MAX) { p.roots++; reached = p.roots === ROOTS_MAX; floatText(p.x, p.y - 44, 'Blocked · root ' + p.roots, '#d8c08a', 13); } else floatText(p.x, p.y - 44, 'Blocked', '#d8c08a', 13);
+    rowanBlock(p, reached);
   }
-  if (inShelter(p)) raw *= 0.65;
+  raw *= 1 - zoneDR(p); // Shelterwood or an Aftergrowth sapling, the stronger
   let d = Math.max(1, Math.round(raw * (1 - Math.min(sentinel ? 0.8 : 0.6, p.armor + (sentinel ? 0.35 : 0)))));
-  if (p.shield > 0) {
+  if (p.barrier > 0) { const a = Math.min(p.barrier, d); p.barrier -= a; d -= a; } // Sunseed Reserve
+  if (d > 0 && p.shield > 0) {
     const a = Math.min(p.shield, d); p.shield -= a; d -= a;
     if (d <= 0) { p.iT = 0.55; floatText(p.x, p.y - 30, 'Absorbed', '#86f0cf', 14); burst(p.x, p.y, '#86f0cf', 8, 160); sfx('shield', null, p.id); return; }
   }
+  if (d <= 0) { p.iT = 0.55; floatText(p.x, p.y - 30, 'Absorbed', '#d8f0a0', 14); return; }
   p.hp -= d; p.iT = 0.55; shake(9, null, p.id); sfx('hurt', null, p.id);
   floatText(p.x, p.y - 30, '-' + d, '#ff6b6b', 17); burst(p.x, p.y, '#ff6b6b', 10, 200);
   if (p.spite) { ring(p.x, p.y, 130, '#ff9b6b'); for (const e of enemies) if (!e.dead && dist(e, p) < 130 + e.r) hitEnemy(p, e, 14 * p.spite + p.dmg, { proc: true, kb: 250, color: '#ff9b6b' }); }
@@ -396,7 +406,7 @@ function hurtPlayer(p, dmg, src) {
       p.embers--; p.hp = p.maxHp * 0.5; p.iT = 2.5; banner('An Ember rekindles you', p.embers + ' remaining', 2.5, p.id); sfx('ult', p); ring(p.x, p.y, 260, '#ffb347');
       for (const e of enemies) if (!e.dead && dist(e, p) < 260) hitEnemy(p, e, 40, { proc: true, kb: 600 });
     } else {
-      p.hp = 0; p.down = true; p.rev = 0; p.flurry = null; p.dashT = 0; p.ultT = 0; p.shield = 0;
+      p.hp = 0; p.down = true; p.rev = 0; p.flurry = null; p.dashT = 0; p.ultT = 0; p.shield = 0; p.mercy = null;
       if (players.every(q => q.down)) { game.over = 'dead'; showEnd(); }
       else banner(p.name + ' has fallen', 'Stand beside them to revive.', 3);
     }
@@ -405,11 +415,11 @@ function hurtPlayer(p, dmg, src) {
 function hurtNear(x, y, R, dmg) { for (const q of players) if (!q.down && Math.hypot(q.x - x, q.y - y) < R + q.r) hurtPlayer(q, dmg, { x, y }); }
 // o.from: swing from this point instead of the player (Mira's reflections).
 function meleeArc(p, range, arc, dmg, o = {}) {
-  let n = 0; const s = o.from || p;
-  addFx({ kind: 'arc', x: s.x, y: s.y, a: p.face, r: range, arc, color: o.color || '#fff', life: 0.14, max: 0.14 });
+  let n = 0; const s = o.from || p, fa = o.face ?? p.face;
+  addFx({ kind: 'arc', x: s.x, y: s.y, a: fa, r: range, arc, color: o.color || '#fff', life: 0.14, max: 0.14 });
   for (const e of enemies) {
     if (e.dead || !e.near) continue;
-    if (dist(e, s) < range + e.r && Math.abs(angDiff(angTo(s, e), p.face)) < arc / 2 + 0.15) { hitEnemy(p, e, dmg, o); n++; }
+    if (dist(e, s) < range + e.r && Math.abs(angDiff(angTo(s, e), fa)) < arc / 2 + 0.15) { hitEnemy(p, e, dmg, o); n++; if (o.hits) o.hits.push(e); }
   }
   return n;
 }
@@ -421,24 +431,27 @@ function doAttack(p) {
   const H = p.hero; p.tAtk = p.atkCd / p.asMul; p.swing = 1;
   const cg = cageOn(p); if (cg && cg.type === 'cage') { hitEnemy(p, cg, p.dmg * 1.2, { color: '#d9b26a' }); sfx('hit', p); return; }
   if (H === 'bramble') {
-    const n = meleeArc(p, 98 * (1 + 0.3 * (p.h.wide || 0)) * (p.ultT > 0 ? 1.25 : 1), 2.3, p.dmg, { kb: 170, color: '#9fe08a' });
+    const hits = [], n = meleeArc(p, 98 * (1 + 0.3 * (p.h.wide || 0)) * (p.ultT > 0 ? 1.25 : 1), 2.3, p.dmg, { kb: 170, color: '#9fe08a', hits }); talentSweep(p, hits);
     if (p.ultT > 0 && n) heal(p, 2 * n); sfx('slash', p);
   } else if (H === 'wick') {
-    const n = 1 + (p.h.fork || 0) + (night > 0.5 ? 1 : 0);
-    for (let i = 0; i < n; i++) shoot(p.x + Math.cos(p.face) * 18, p.y + Math.sin(p.face) * 18, p.face + (i - (n - 1) / 2) * 0.13, 640, { owner: p, dmg: p.dmg, life: 0.85, pierce: p.h.pierce || 0, color: '#ffb347', kind: 'fire' });
+    const vl = wickVolley(p), n = 1 + (p.h.fork || 0) + vl.bonus, hm = vl.home ? tv(p, 'midnight') : null;
+    for (let i = 0; i < n; i++) shoot(p.x + Math.cos(p.face) * 18, p.y + Math.sin(p.face) * 18, p.face + (i - (n - 1) / 2) * 0.13, 640, { owner: p, dmg: p.dmg, life: 0.85, pierce: p.h.pierce || 0, color: '#ffb347', kind: 'fire', fork: vl.fork, home: hm && i === n - 1 ? { turn: hm.turn, range: hm.range } : null });
     sfx('bolt', p);
   } else if (H === 'rowan') {
-    meleeArc(p, 118 * (p.ultT > 0 ? 1.25 : 1), 0.75, p.dmg * (p.ultT > 0 ? 1.3 : 1), { kb: 140, color: '#d8c08a' }); sfx('slash', p);
+    meleeArc(p, 118 * (p.ultT > 0 ? 1.25 : 1), 0.75, p.dmg * (p.ultT > 0 ? 1.3 : 1), { kb: 140, color: '#d8c08a' }); sfx('slash', p); rowanThrust(p);
   } else if (H === 'mira') {
     // Shattered Cuts: cut, cut, then a wider finishing slash.
     const fin = ++p.combo % 3 === 0, col = fin ? '#ffffff' : '#bff6ff';
     meleeArc(p, fin ? 84 : 72, fin ? 2.2 : 1.4, p.dmg * (fin ? 1.8 : 1), { kb: fin ? 120 : 30, color: col }); sfx('blade', p);
     if (p.ultT > 0) for (const s of mirrorSpots(p)) meleeArc(p, fin ? 84 : 72, fin ? 2.2 : 1.4, p.dmg * (fin ? 1.8 : 1) * 0.4, { from: s, quiet: true, proc: true, color: '#9ee7f2' });
   } else if (H === 'vespera') {
-    shoot(p.x + Math.cos(p.face) * 18, p.y + Math.sin(p.face) * 18, p.face, 600, { owner: p, dmg: p.dmg, life: 0.9, r: 7, color: '#86f0cf', kind: 'ghost' }); sfx('bolt', p);
+    const wf = hasT(p, 'wandering') ? tv(p, 'wandering').dmg : 0; // Wandering Flame: one more target, weaker
+    shoot(p.x + Math.cos(p.face) * 18, p.y + Math.sin(p.face) * 18, p.face, 600, { owner: p, dmg: p.dmg, life: 0.9, r: 7, color: '#86f0cf', kind: 'ghost', pierce: wf ? 1 : 0, falloff: wf }); sfx('bolt', p);
   } else {
     meleeArc(p, 80 * (1 + 0.15 * (p.h.lunar || 0)), 1.7, p.dmg, { kb: 60, color: '#d9ccff' }); sfx('blade', p);
-    if (++p.combo % 3 === 0) shoot(p.x, p.y, p.face, 780, { owner: p, dmg: p.dmg * 1.3, life: 0.6, pierce: 2, color: '#e6dcff', kind: 'blade' });
+    const third = ++p.combo % 3 === 0;
+    if (third) shoot(p.x, p.y, p.face, 780, { owner: p, dmg: p.dmg * 1.3, life: 0.6, pierce: 2, color: '#e6dcff', kind: 'blade', ret: hasT(p, 'returning') });
+    vesperCut(p, third);
   }
 }
 // Guiding Wisp's target: the living ally nearest the aim point. Only a solo Lanternkeeper may shield herself.
@@ -454,17 +467,19 @@ function doSkill(p) {
   if (H === 'vespera') {
     const t = wispTarget(p); if (!t) { floatText(p.x, p.y - 34, 'No ally to guide', '#aaa', 13); p.tSkill = 0.6; return; }
     p.lan -= LANTERN_COST; p.tSkill = HEROES[H].skillCd * p.cdr; sfx('shield', p);
-    t.shield = Math.max(t.shield, (30 + 3 * p.level) * (1 + 0.5 * (p.h.kindred || 0))); t.shieldT = 6;
+    const amt = (30 + 3 * p.level) * (1 + 0.5 * (p.h.kindred || 0)); t.shield = Math.max(t.shield, amt); t.shieldT = 6; wispGiven(p, t, amt);
     addFx({ kind: 'bolt', x: p.x, y: p.y, x2: t.x, y2: t.y, life: 0.3, max: 0.3, color: '#86f0cf' }); ring(t.x, t.y, 40, '#86f0cf'); burst(t.x, t.y, '#c9fff0', 14, 160);
     return;
   }
+  if (H === 'wick' && !covenReady(p)) return; // Lantern Coven: out of charges
   p.tSkill = HEROES[H].skillCd * p.cdr; sfx('skill', p);
   if (H === 'rowan') {
     // Root Snare, strengthened by every Deep Roots charge.
     const k = p.roots, tr = p.h.taproot || 0, R = 170 * (1 + 0.12 * k), T = 1.6 + 0.3 * k + 0.5 * tr;
     ring(p.x, p.y, R, '#8a6238'); burst(p.x, p.y, '#a9c46c', 24, 340, 4); shake(5, p); sfx('root', p);
     if (k) floatText(p.x, p.y - 44, 'Deep Roots ×' + k, '#d8c08a', 15);
-    for (const e of enemies) if (!e.dead && dist(e, p) < R + e.r) { e.rootT = e.type === 'boss' ? T * 0.4 : T; hitEnemy(p, e, p.dmg * 1.3 * (1 + 0.2 * k) * (1 + 0.4 * tr), { color: '#d8c08a' }); }
+    const cast = hasT(p, 'spreading') ? { p, spread: false } : null; // Spreading Roots: once per cast
+    for (const e of enemies) if (!e.dead && dist(e, p) < R + e.r) { e.rootT = e.type === 'boss' ? T * 0.4 : T; e.rootCast = cast; hitEnemy(p, e, p.dmg * 1.3 * (1 + 0.2 * k) * (1 + 0.4 * tr), { color: '#d8c08a' }); }
     p.roots = 0;
     return;
   }
@@ -476,17 +491,22 @@ function doSkill(p) {
     z.life = 0; p.decoy = null; p.decoyOn = false; sfx('shatter', { x: ox, y: oy });
     const R = 125; ring(ox, oy, R, '#9ee7f2'); burst(ox, oy, '#e8fbff', 26, 320, 4); shake(4, p);
     for (const e of enemies) if (!e.dead && dist(e, { x: ox, y: oy }) < R + e.r) hitEnemy(p, e, p.dmg * 3.2 * (1 + 0.4 * (p.h.facets || 0)), { kb: 200, color: '#bff6ff' });
+    miraExchange(p, z, ox, oy, R);
     return;
   }
   if (H === 'bramble') {
     const k = p.h.ring || 0, R = 150 * (1 + 0.2 * k); ring(p.x, p.y, R, '#7bc96f'); burst(p.x, p.y, '#7bc96f', 30, 380, 4); shake(5, p);
     for (const e of enemies) if (!e.dead && dist(e, p) < R + e.r) { hitEnemy(p, e, p.dmg * 2.4 * (1 + 0.5 * k), { kb: 220, color: '#9fe08a' }); e.slowT = 2.5; }
+    if (hasT(p, 'territory')) briarTerritory(p, R);
   } else if (H === 'wick') {
     const k = p.h.lantern || 0, a = angTo(p, m), d = Math.min(420, dist(p, m));
-    zones.push({ kind: 'burn', friendly: true, owner: p, x: p.x + Math.cos(a) * d, y: p.y + Math.sin(a) * d, r: 110 * (1 + 0.25 * k), delay: 0, life: 5 + 2 * k, max: 5 + 2 * k, dmg: p.dmg * 1.9, tickT: 0, color: '#ffb347', lantern: true });
+    const z = { kind: 'burn', friendly: true, owner: p, oid: p.id, x: p.x + Math.cos(a) * d, y: p.y + Math.sin(a) * d, r: 110 * (1 + 0.25 * k), delay: 0, life: 5 + 2 * k, max: 5 + 2 * k, dmg: p.dmg * 1.9, tickT: 0, color: '#ffb347', lantern: true };
+    zones.push(z); if (hasT(p, 'coven')) covenUse(p, z);
   } else {
-    const n = 5 + 2 * (p.h.fan || 0);
-    for (let i = 0; i < n; i++) shoot(p.x, p.y, p.face + (i - (n - 1) / 2) * (1.0 / n), 720, { owner: p, dmg: p.dmg * 1.6, life: 0.65, pierce: 3, color: '#e6dcff', kind: 'blade' });
+    const n = 5 + 2 * (p.h.fan || 0), angs = [];
+    for (let i = 0; i < n; i++) angs.push(p.face + (i - (n - 1) / 2) * (1.0 / n));
+    if (hasT(p, 'silk')) silkTrails(p, angs);
+    for (let i = 0; i < n; i++) shoot(p.x, p.y, angs[i], 720, { owner: p, dmg: p.dmg * 1.6, life: 0.65, pierce: 3, color: '#e6dcff', kind: 'blade' });
   }
 }
 // Movement half of a dash; runs on whichever machine owns the player's position.
@@ -500,42 +520,44 @@ function doDash(p, a) {
   if (HEROES[p.hero].alt && slotBlock(p, 2)) return;
   p.dashes--; if (p.dashRe <= 0) p.dashRe = dashCdOf(p);
   if (HEROES[p.hero].alt) return doAlt(p);
+  const x0 = p.x, y0 = p.y;
   sfx('dash', p); p.dashHit = new Set(); p.iT = Math.max(p.iT, 0.3);
   if (p.hero === 'mira') {
     // Reflection Step leaves a decoy where Mira stood; only one per Mira.
     if (p.decoy) p.decoy.life = 0;
     const T = 4 + 2 * (p.h.facets || 0);
     p.decoy = { kind: 'decoy', dec: true, friendly: true, owner: p, x: p.x, y: p.y, r: 15, life: T, max: T, color: HEROES.mira.color };
-    zones.push(p.decoy); p.decoyOn = true; burst(p.x, p.y, '#e8fbff', 10, 160);
+    zones.push(p.decoy); p.decoyOn = true; burst(p.x, p.y, '#e8fbff', 10, 160); miraDecoy(p, p.decoy);
   }
   if (p.hero === 'wick') {
     burst(p.x, p.y, '#ffb347', 14, 200);
     zones.push({ kind: 'burn', friendly: true, owner: p, x: p.x, y: p.y, r: 55, delay: 0, life: 2, max: 2, dmg: p.dmg * 1.5, tickT: 0, color: '#ffb347' });
   }
   if (p.remote) { p.dashA = a; if (p.hero === 'wick') { p.x = p.tx; p.y = p.ty; } else p.dashT = 0.18; } else startDashMove(p, a);
-  if (p.hero === 'wick') burst(p.x, p.y, '#ffb347', 14, 200);
+  if (p.hero === 'wick') { burst(p.x, p.y, '#ffb347', 14, 200); wickBlink(p, x0, y0); }
 }
 function doAlt(p) {
   const m = p.aim; sfx('skill', p);
   if (p.hero === 'rowan') {
     // Shelterwood: a grove at Rowan's feet where allies take less damage.
     const k = p.h.thicket || 0, T = 6 + 2 * k;
-    zones.push({ kind: 'shelter', friendly: true, owner: p, x: p.x, y: p.y, r: 150 * (1 + 0.25 * k), delay: 0, life: T, max: T, color: '#a9c46c' });
-    ring(p.x, p.y, 150 * (1 + 0.25 * k), '#a9c46c'); burst(p.x, p.y, '#cfe89a', 20, 260, 4);
+    const z = { kind: 'shelter', friendly: true, owner: p, oid: p.id, x: p.x, y: p.y, r: 150 * (1 + 0.25 * k), delay: 0, life: T, max: T, color: '#a9c46c' };
+    if (hasT(p, 'grove')) { z.follow = true; z.r *= tv(p, 'grove').radius; } // Walking Grove
+    zones.push(z); ring(p.x, p.y, z.r, '#a9c46c'); burst(p.x, p.y, '#cfe89a', 20, 260, 4);
   } else if (p.hero === 'vespera') {
     // Soul Tether: link the foes nearest the aim point.
     const a = angTo(p, m), d = Math.min(500, dist(p, m)), c = { x: p.x + Math.cos(a) * d, y: p.y + Math.sin(a) * d };
     const list = enemies.filter(e => !e.dead && e.near && dist(e, c) < 220 + e.r).sort((x, y) => dist(x, c) - dist(y, c)).slice(0, 4);
     if (list.length < 2) { floatText(p.x, p.y - 34, 'Needs two foes to tether', '#aaa', 13); p.dashes++; p.dashRe = p.dashes < p.dashMax ? p.dashRe : 0; return; }
     p.lan -= LANTERN_COST; sfx('tether', p);
-    const g = { id: nextId++, list, t: 6 };
+    const g = { id: nextId++, list, t: 6, owner: p, moved: false };
     for (const e of list) { if (e.tid) { const o = tethers.find(o => o.id === e.tid); if (o) o.list = o.list.filter(q => q !== e); } e.tid = g.id; ring(e.x, e.y, e.r + 14, '#86f0cf'); }
     tethers.push(g);
   }
 }
 function doUlt(p) {
   const H = p.hero, m = p.aim; p.tUlt = ULT_CD * p.cdr; sfx('ult', p); shake(8, p);
-  if (H === 'bramble') { p.ultT = 8; p.pulse = 0; ring(p.x, p.y, 180, '#7bc96f'); }
+  if (H === 'bramble') { p.ultT = 8; p.pulse = 0; p.ultExt = 0; ring(p.x, p.y, 180, '#7bc96f'); }
   else if (H === 'rowan') { p.ultT = 8; p.pulse = 0; ring(p.x, p.y, 220, '#a9c46c'); burst(p.x, p.y, '#cfe89a', 30, 300, 5); banner('Ancient Sentinel', 'The wood rallies to you.', 2, p.id); }
   else if (H === 'mira') { p.ultT = 7; ring(p.x, p.y, 90, '#9ee7f2'); for (const s of mirrorSpots(p)) burst(s.x, s.y, '#e8fbff', 12, 180); sfx('shatter', p); }
   else if (H === 'vespera') {
@@ -544,8 +566,9 @@ function doUlt(p) {
     zones.push({ kind: 'proc', friendly: true, owner: p, x: p.x, y: p.y, r: 80, delay: 0, life: HEROES.vespera.ultTime, max: HEROES.vespera.ultTime, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, tickT: 0, color: '#86f0cf' });
   }
   else if (H === 'wick') {
-    for (let i = 0; i < 12; i++) { const a = rand(TAU), d = i === 0 ? 0 : rand(40, 210); zones.push({ kind: 'blast', friendly: true, owner: p, x: m.x + Math.cos(a) * d, y: m.y + Math.sin(a) * d, r: 88, delay: 0.5 + i * 0.2, max: 0.5 + i * 0.2, dmg: p.dmg * 4.2, color: '#ff7a2f' }); }
+    for (let i = 0; i < 12; i++) { const a = rand(TAU), d = i === 0 ? 0 : rand(40, 210); zones.push({ kind: 'blast', friendly: true, owner: p, x: m.x + Math.cos(a) * d, y: m.y + Math.sin(a) * d, r: 88, delay: 0.5 + i * 0.2, max: 0.5 + i * 0.2, dmg: p.dmg * 4.2, color: '#ff7a2f', final: i === 11, cx: m.x, cy: m.y }); }
   } else {
+    if (hasT(p, 'total')) { if (!eclipseStart(p)) p.tUlt = 1; return; } // Total Eclipse
     const list = enemies.filter(e => !e.dead && dist(e, p) < 520).sort((a, b) => dist(a, p) - dist(b, p)).slice(0, 8);
     if (!list.length) { p.tUlt = 1; return; }
     if (list.length < 8) { const base = list.slice(); while (list.length < 8) list.push(base[list.length % base.length]); }
@@ -564,14 +587,21 @@ function collideWorld(o, r) {
 const dashDir = (p, inp) => (inp.mx || inp.my) ? Math.atan2(inp.my, inp.mx) : p.face;
 function walk(p, inp, dt) {
   const sp = p.spd * p.spdMul * (p.hero === 'vesper' ? 1 + 0.15 * night : 1) * (inp.l && p.hero !== 'vesper' && p.hero !== 'mira' ? 0.8 : 1) * (p.hero === 'rowan' && p.ultT > 0 ? 0.85 : 1);
-  const sl = bindSlow(p); p.x += inp.mx * sp * sl * dt; p.y += inp.my * sp * sl * dt; if (inp.mx || inp.my) p.walk += dt;
+  const sl = bindSlow(p) * hasteMul(p); p.x += inp.mx * sp * sl * dt; p.y += inp.my * sp * sl * dt; if (inp.mx || inp.my) p.walk += dt;
 }
 const trail = p => parts.push({ x: p.x, y: p.y, vx: 0, vy: 0, life: 0.25, max: 0.25, color: HEROES[p.hero].color, size: 9 });
+// One Eclipse blink-strike on e (mult: Total Eclipse's reduced repeat damage).
+function eclipseStrike(p, e, mult) {
+  const a = rand(TAU); burst(p.x, p.y, '#cdbcff', 8); addFx({ kind: 'bolt', x: p.x, y: p.y, x2: e.x, y2: e.y, life: 0.2, max: 0.2, color: '#cdbcff' });
+  p.x = p.tx = e.x + Math.cos(a) * (e.r + 20); p.y = p.ty = e.y + Math.sin(a) * (e.r + 20); p.tp++; p.face = a + Math.PI; p.swing = 1;
+  hitEnemy(p, e, p.dmg * 3.6 * mult, { color: '#e6dcff' }); sfx('blade', p);
+}
 function updPlayer(p, inp, dt) {
   p.tAtk -= dt; p.tSkill -= dt; p.tUlt -= dt; p.iT -= dt; p.swing = Math.max(0, p.swing - dt * 6);
   if (p.dashes < p.dashMax) { p.dashRe -= dt; if (p.dashRe <= 0) { p.dashes++; p.dashRe = p.dashes < p.dashMax ? dashCdOf(p) : 0; } }
   p.cds = [p.atkCd / p.asMul, HEROES[p.hero].skillCd * p.cdr, dashCdOf(p), ULT_CD * p.cdr];
-  if (p.shieldT > 0) { p.shieldT -= dt; if (p.shieldT <= 0) p.shield = 0; }
+  if (p.shieldT > 0) { p.shieldT -= dt; if (p.shieldT <= 0) { shieldExpired(p); p.shield = 0; } }
+  talentPlayerTick(p, dt);
   if (p.hero === 'vespera') p.lan = Math.min(p.lanMax, p.lan + (4 + (p.h.deepwick || 0)) * dt);
   if (p.decoy && p.decoy.life <= 0) p.decoy = null;
   p.decoyOn = !!p.decoy;
@@ -587,22 +617,22 @@ function updPlayer(p, inp, dt) {
   if (p.remote) { const k = Math.min(1, dt * 25); p.x += (p.tx - p.x) * k; p.y += (p.ty - p.y) * k; if (p.moving) p.walk += dt; }
   if (p.dashT > 0) {
     p.dashT -= dt; if (!p.remote) { p.x += Math.cos(p.dashA) * 920 * dt; p.y += Math.sin(p.dashA) * 920 * dt; }
-    trail(p);
+    trail(p); rampartFree(p);
     for (const e of enemies) if (!e.dead && e.near && !p.dashHit.has(e) && dist(e, p) < p.r + e.r + 14) {
-      p.dashHit.add(e); hitEnemy(p, e, p.dmg * (p.hero === 'bramble' ? 1.6 : 1.2 * (p.h.ghost ? 2 : 1)), { kb: p.hero === 'bramble' ? 380 : 0, color: HEROES[p.hero].color });
+      p.dashHit.add(e); hitEnemy(p, e, p.dmg * (p.hero === 'bramble' ? 1.6 : 1.2 * (p.h.ghost ? 2 : 1)), { kb: p.hero === 'bramble' ? 380 : 0, color: HEROES[p.hero].color }); talentDashHit(p, e);
       if (p.h.bulwark) heal(p, 4 * p.h.bulwark);
     }
   } else if (!p.remote) walk(p, inp, dt);
   if (!p.remote) bossLocalMove(p, dt);
   if (p.flurry) {
     const f = p.flurry; p.iT = Math.max(p.iT, 0.25); f.t -= dt;
-    if (f.t <= 0) {
+    if (f.t <= 0 && f.total) {
+      const e = f.left > 0 ? eclipseNext(p) : null;
+      if (e) { const k = f.struck.get(e) || 0; f.struck.set(e, k + 1); f.left--; eclipseStrike(p, e, k ? tv(p, 'total').repeat : 1); f.t = 0.1; }
+      if (!e || f.left <= 0) p.flurry = null;
+    } else if (f.t <= 0) {
       let e = f.list.shift(); while (e && e.dead) e = f.list.shift();
-      if (e) {
-        const a = rand(TAU); burst(p.x, p.y, '#cdbcff', 8); addFx({ kind: 'bolt', x: p.x, y: p.y, x2: e.x, y2: e.y, life: 0.2, max: 0.2, color: '#cdbcff' });
-        p.x = p.tx = e.x + Math.cos(a) * (e.r + 20); p.y = p.ty = e.y + Math.sin(a) * (e.r + 20); p.tp++; p.face = a + Math.PI; p.swing = 1;
-        hitEnemy(p, e, p.dmg * 3.6, { color: '#e6dcff' }); sfx('blade', p); f.t = 0.1;
-      }
+      if (e) { eclipseStrike(p, e, 1); f.t = 0.1; }
       if (!f.list.length || !e) p.flurry = null;
     }
   } else {
@@ -612,11 +642,12 @@ function updPlayer(p, inp, dt) {
   }
   if (!p.remote) collideWorld(p, p.r);
   if (p.ultT > 0) {
-    p.ultT -= dt; p.pulse -= dt;
+    p.ultT -= dt; p.pulse -= dt; if (p.ultT <= 0 && !p.down) talentUltEnd(p); // ran out on its own
     if (p.pulse <= 0 && p.hero === 'bramble') { p.pulse = 1; ring(p.x, p.y, 125, '#7bc96f'); for (const e of enemies) if (!e.dead && dist(e, p) < 125 + e.r) hitEnemy(p, e, p.dmg * 1.2, { proc: true, color: '#9fe08a', quiet: true }); }
     else if (p.pulse <= 0 && p.hero === 'rowan') { p.pulse = 1.2; ring(p.x, p.y, 220, '#d8c08a'); for (const e of enemies) if (!e.dead && dist(e, p) < 650) e.aggro = true; }
   }
   const regen = p.dayRegen * (1 - night) + (p.hero === 'bramble' ? 1.5 * (1 - night) : 0); if (regen > 0 && p.hp < p.maxHp) p.hp = Math.min(p.maxHp, p.hp + regen * dt);
+  else if (p.hero === 'bramble' && p.hp >= p.maxHp) sunseed(p, 1.5 * (1 - night), dt); // Daybloom's excess
   if (inp.interact) interact(p);
 }
 function updFx(dt) {
@@ -680,22 +711,25 @@ function update(dt) {
   }
   // projectiles
   for (const q of projs) {
+    if (q.friendly && (q.back || q.home)) talentProjSteer(q, dt);
     q.life -= dt; q.x += q.vx * dt; q.y += q.vy * dt;
     if (q.x < 0 || q.y < 0 || q.x > world.S || q.y > world.S) q.life = 0;
-    for (const b of world.obs) if (Math.abs(q.x - b.x) < b.cr && Math.abs(q.y - b.y) < b.cr && dist(q, b) < b.cr) { q.life = 0; burst(q.x, q.y, q.color, 4, 100, 2); break; }
-    if (q.life <= 0) continue;
+    if (!q.back) for (const b of world.obs) if (Math.abs(q.x - b.x) < b.cr && Math.abs(q.y - b.y) < b.cr && dist(q, b) < b.cr) { q.life = 0; burst(q.x, q.y, q.color, 4, 100, 2); break; }
+    if (q.life <= 0) { if (q.friendly) talentProjEnd(q); continue; } // a Returning Edge blade turns back
     if (q.friendly) {
-      for (const e of enemies) if (!e.dead && e.near && !q.hit.has(e) && dist(e, q) < e.r + q.r) { q.hit.add(e); hitEnemy(q.owner, e, q.dmg, { kb: 60, color: q.color }); if (q.pierce-- <= 0) { q.life = 0; break; } }
+      for (const e of enemies) if (!e.dead && e.near && !q.hit.has(e) && dist(e, q) < e.r + q.r) { q.hit.add(e); hitEnemy(q.owner, e, q.dmg, { kb: 60, color: q.color }); talentProjHit(q, e); if (q.pierce-- <= 0) { q.life = 0; break; } }
     } else for (const p of players) if (!p.down && dist(q, p) < p.r + q.r - 2) { if (p.iT <= 0) { hurtPlayer(p, q.dmg, { x: q.x - q.vx, y: q.y - q.vy }); q.life = 0; } break; }
   }
   projs = projs.filter(q => q.life > 0);
   // zones
   for (const z of zones) {
+    talentZonePre(z, dt);
+    if (z.tal && talentZone(z, dt)) continue;
     if (z.delay > 0) {
       z.delay -= dt;
       if (z.delay <= 0 && z.kind === 'blast') {
         sfx('boom', z); burst(z.x, z.y, z.color, 22, 320, 5); ring(z.x, z.y, z.r, z.color); shake(5, z);
-        if (z.friendly) { for (const e of enemies) if (!e.dead && dist(e, z) < z.r + e.r) hitEnemy(z.owner, e, z.dmg, { kb: 200, color: z.color }); }
+        if (z.friendly) { for (const e of enemies) if (!e.dead && dist(e, z) < z.r + e.r) hitEnemy(z.owner, e, z.dmg, { kb: 200, color: z.color }); constellation(z); }
         else hurtNear(z.x, z.y, z.r - 4, z.dmg);
         z.life = 0;
       }
@@ -709,16 +743,19 @@ function update(dt) {
     else if (z.kind === 'proc') {
       // Guided: locks on to the nearest foe (within 700) and turns toward it, picking the next one when it falls.
       // With nothing to chase it keeps flying straight. Guests just follow the velocity in the snapshots.
-      if (!z.tgt || !targetable(z.tgt)) { let b = null, bd = 700; for (const e of enemies) { if (!targetable(e)) continue; const d = dist(e, z); if (d < bd) { bd = d; b = e; } } z.tgt = b; }
-      if (z.tgt) { const sp = Math.hypot(z.vx, z.vy) || 260, cur = Math.atan2(z.vy, z.vx), na = cur + clamp(angDiff(angTo(z, z.tgt), cur), -4.5 * dt, 4.5 * dt); z.vx = Math.cos(na) * sp; z.vy = Math.sin(na) * sp; }
+      if (z.back) procBackStep(z, dt); // Returning Procession: follows its path back, no hunting
+      else if (!z.tgt || !targetable(z.tgt)) { let b = null, bd = 700; for (const e of enemies) { if (!targetable(e)) continue; const d = dist(e, z); if (d < bd) { bd = d; b = e; } } z.tgt = b; }
+      if (z.tgt && !z.back) { const sp = Math.hypot(z.vx, z.vy) || 260, cur = Math.atan2(z.vy, z.vx), na = cur + clamp(angDiff(angTo(z, z.tgt), cur), -4.5 * dt, 4.5 * dt); z.vx = Math.cos(na) * sp; z.vy = Math.sin(na) * sp; }
       z.life -= dt; z.tickT -= dt; z.x += z.vx * dt; z.y += z.vy * dt;
       if (z.tickT <= 0) {
-        z.tickT = 0.3; const o = z.owner;
-        for (const e of enemies) if (!e.dead && dist(e, z) < z.r + e.r) hitEnemy(o, e, o.dmg * 0.9, { proc: true, quiet: true, color: '#86f0cf' });
-        for (const q of players) if (!q.down && dist(q, z) < z.r + q.r) heal(q, 2 + 0.03 * q.maxHp);
+        z.tickT = 0.3; const o = z.owner, s = z.str || 1;
+        for (const e of enemies) if (!e.dead && dist(e, z) < z.r + e.r) { if (z.hits) { const k = z.hits.get(e) || 0; if (k >= z.hitCap) continue; z.hits.set(e, k + 1); } hitEnemy(o, e, o.dmg * 0.9 * s, { proc: true, quiet: true, color: '#86f0cf' }); }
+        for (const q of players) if (!q.down && dist(q, z) < z.r + q.r) heal(q, (2 + 0.03 * q.maxHp) * s);
       }
+      if (z.life <= 0) procEnded(z);
     }
   }
+  covenThreads(dt);
   zones = zones.filter(z => z.kind === 'blast' ? z.life !== 0 : z.life > 0);
   updHazards(dt, true);
   // pickups — experience, gold and sigils are shared by the whole party
@@ -737,13 +774,14 @@ function update(dt) {
       if (k.kind === 'xp') { for (const q of players) gainXp(q, k.val); sfx('xp', p); }
       else if (k.kind === 'gold') { for (const q of players) q.gold += k.val; sfx('gold', p); }
       else if (k.kind === 'heart') { heal(p, k.val); sfx('heal', p); }
-      else if (k.kind === 'lume') { p.lan = Math.min(p.lanMax, p.lan + k.val); sfx('xp', p); }
+      else if (k.kind === 'lume') { p.lan = Math.min(p.lanMax, p.lan + k.val); sfx('xp', p); emberCollected(p); }
       else if (k.kind === 'sigil') { for (const q of players) { q.pending++; q.choiceTitle = 'Sigil claimed'; } sfx('level'); }
     }
   }
   pickups = pickups.filter(k => !k.dead);
   enemies = enemies.filter(e => !e.dead);
   for (const p of players) if (p.pending > 0 && !p.choice) rollChoice(p);
+  for (const p of players) if (p.ctPending > 0 && !p.ctChoice) offerChapterTalent(p);
   updFx(dt);
 }
 function gainXp(p, v) {
@@ -752,6 +790,7 @@ function gainXp(p, v) {
 }
 function updEnemy(e, dt) {
   e.flash -= dt;
+  talentEnemyTick(e, dt); if (e.dead) return; // bleed, marks
   if (e.poisT > 0) { e.poisT -= dt; e.poisTick -= dt; if (e.poisTick <= 0) { e.poisTick = 0.5; e.hp -= e.poisD * 0.5; floatText(e.x, e.y - e.r, Math.round(e.poisD * 0.5), '#a6e36a', 12); if (e.hp <= 0) { killEnemy(e, e.poisBy); return; } } }
   // p may be a player or one of Mira's decoys (p.dec); decoys draw attacks but cannot be hurt.
   const p = enemyTarget(e); e.tgt = p; if (!p) return;
@@ -827,9 +866,11 @@ function updEnemy(e, dt) {
   }
   if (e.anchor || e.hidden) mx = my = 0, e.kbx = e.kby = 0;
   if (e.rootT > 0) mx = my = 0; // Root Snare: rooted foes still swing and spit, but cannot move
-  e.x += (mx + e.kbx) * dt; e.y += (my + e.kby) * dt; const f = Math.pow(0.003, dt); e.kbx *= f; e.kby *= f;
+  e.x += (mx + e.kbx) * dt; e.y += (my + e.kby) * dt;
   if (mx || my) e.dir = mx < 0 ? -1 : 1;
-  collideWorld(e, e.type === 'boss' ? 20 : e.r);
+  const bx = e.x, by = e.y; collideWorld(e, e.type === 'boss' ? 20 : e.r);
+  if (e.splint) splinterCheck(e, dt, bx, by); // Splintering Impact
+  const f = Math.pow(0.003, dt); e.kbx *= f; e.kby *= f;
 }
 function nearPoi(p) { let best = null, bd = 80; for (const o of world.pois) { if (o.kind === 'camp') continue; const d = dist(o, p); if (d < bd) { bd = d; best = o; } } return best; }
 const merchCost = o => 40 + 30 * o.uses;
@@ -888,10 +929,14 @@ function chapterComplete() {
     const pid = p.lo && p.lo.pid; if (!pid || seen.has(pid)) continue; seen.add(pid);
     const claim = key + ':' + pid;
     let r = net.claims.get(claim);
-    if (!r) { const roll = rollReward({ ...(p.lo || {}), chapter: game.chapter }); r = { claim, pid, id: p.id, name: p.name, rarity: roll.rarity, item: roll.item, ch: game.chapter, diff: game.diff, run: game.runId, final: game.over === 'final' }; net.claims.set(claim, r); }
+    if (!r) {
+      const roll = rollReward({ ...(p.lo || {}), chapter: game.chapter }); r = { claim, pid, id: p.id, name: p.name, rarity: roll.rarity, item: roll.item, ch: game.chapter, diff: game.diff, run: game.runId, final: game.over === 'final' }; net.claims.set(claim, r);
+      // chapter talent pick: earned with this roll's result (CHAPTER_TALENT in meta.js); once per claim, never rerolled
+      if (earnsChapterTalent(r.item, game.chapter)) { r.ct = 1; p.ctPending = (p.ctPending || 0) + 1; }
+    }
     list.push(r); deliverReward(r);
   }
-  game.rewards = list.map(r => ({ id: r.id, name: r.name, rarity: r.rarity, item: r.item }));
+  game.rewards = list.map(r => ({ id: r.id, name: r.name, rarity: r.rarity, item: r.item, ct: r.ct ? 1 : 0 }));
   for (const c of net.conns) if (c.inGame) c.send({ t: 'rewards', ch: game.chapter, list: game.rewards });
 }
 // Sends (or, for the host, applies) one player's result. Receivers ignore claims they already applied.
@@ -923,7 +968,7 @@ function expireAway() {
 }
 
 // ---------- netcode ----------
-const PEER_PREFIX = 'duskbound-v5-'; // bump whenever messages change, so mismatched versions never meet
+const PEER_PREFIX = 'duskbound-v6-'; // bump whenever messages change, so mismatched versions never meet
 const noNetMsg = () => window.DUSK_NO_NET ? 'Online co-op is not available on this page. Solo works here; for co-op, open the downloaded duskbound.html file or a copy on your own website.' : 'Online play needs an internet connection (the networking library did not load).';
 function wrapConn(c) {
   const w = { peerId: c.peer, send: d => { try { c.send(d); } catch (e) { } }, onData: null, onClose: null, close: () => { try { c.close(); } catch (e) { } } };
@@ -1187,9 +1232,10 @@ function hostRecv(c, d) {
   if (c.pending) { if (d.t === 'hello') greetClient(c, d); return; }
   if (!net.conns.includes(c)) return;
   if (d.t === 'hero') { const q = net.lobby.find(q => q.id === c.pid); if (q && HEROES[d.hero] && game.state === 'lobby' && ownsHero(sanitizeLoadout(d.lo, d.hero), d.hero)) { q.hero = d.hero; const lo = sanitizeLoadout(d.lo, d.hero); if (lo.valid && q.lo && lo.pid === q.lo.pid) q.lo = lo; if (!partyDiffOk(net.diff)) net.diff = bestCommonDiff(); sendLobby(); showLobby(); } }
-  else if (d.t === 'i' || d.t === 'pick') {
+  else if (d.t === 'i' || d.t === 'pick' || d.t === 'ctpick') {
     const p = players.find(q => q.id === c.pid); if (!p || game.state !== 'play') return;
     if (d.t === 'pick') { if (d.q === p.choiceSeq) applyPick(p, d.i | 0); return; }
+    if (d.t === 'ctpick') { applyChapterTalent(p, String(d.id || ''), d.q); return; } // validated there
     const I = p.in; I.l = !!d.l; if (d.r) I.skill = true; I.aim = { x: num(d.ax), y: num(d.ay) };
     if (d.tp === p.tp && !p.down) { p.tx = clamp(num(d.x, p.x), 30, world.S - 30); p.ty = clamp(num(d.y, p.y), 30, world.S - 30); p.face = num(d.f); p.moving = !!d.m; }
     if (d.d != null) { I.dash = true; I.dashA = num(d.d); }
@@ -1210,8 +1256,8 @@ function snapPlayer(p) {
     id: p.id, x: r1(p.x), y: r1(p.y), f: r2(p.face), hp: r1(p.hp), mh: p.maxHp, lv: p.level, xp: r1(p.xp), g: p.gold, k: p.kills, em: p.embers,
     ta: r2(Math.max(0, p.tAtk)), ts: r2(Math.max(0, p.tSkill)), tu: r2(Math.max(0, p.tUlt)), d: p.dashes, dr: r2(p.dashRe), dm: p.dashMax, cds: p.cds.map(r2),
     it: p.iT > 0 ? 1 : 0, sw: r2(p.swing), ut: r1(Math.max(0, p.ultT)), mv: p.moving ? 1 : 0, dn: p.down ? 1 : 0, rv: r2(p.rev), dt: p.dashT > 0 ? 1 : 0, tp: p.tp,
-    fl: p.flurry ? 1 : 0, sp: r1(p.spd * p.spdMul), pr: p.pickR | 0,
-    rc: p.roots, ln: r1(p.lan), lm: p.lanMax, sh: r1(p.shield), dc: p.decoyOn ? 1 : 0
+    fl: p.flurry ? 1 : 0, sp: r1(p.spd * p.spdMul * hasteMul(p)), pr: p.pickR | 0,
+    rc: p.roots, ln: r1(p.lan), lm: p.lanMax, sh: r1(p.shield), dc: p.decoyOn ? 1 : 0, br: r1(p.barrier || 0), tl: p.ct
   };
 }
 function sendSnaps() {
@@ -1223,13 +1269,14 @@ function sendSnaps() {
     const nr = o => Math.abs(o.x - cp.x) < 1150 && Math.abs(o.y - cp.y) < 850;
     c.send({
       t: 's', g, P, O,
-      E: enemies.filter(e => !e.dead && nr(e)).map(e => [e.id, ETN.indexOf(e.type), e.x | 0, e.y | 0, r1(e.r), r3(Math.max(0, e.hp / e.maxHp)), e.elite ? 1 : 0, STN.indexOf(e.state), r2(e.a), e.flash > 0 ? 1 : 0, e.slowT > 0 ? 1 : 0, e.poisT > 0 ? 1 : 0, e.dir || 1, e.rootT > 0 ? 1 : 0, e.tid || 0]),
+      E: enemies.filter(e => !e.dead && nr(e)).map(e => [e.id, ETN.indexOf(e.type), e.x | 0, e.y | 0, r1(e.r), r3(Math.max(0, e.hp / e.maxHp)), e.elite ? 1 : 0, STN.indexOf(e.state), r2(e.a), e.flash > 0 ? 1 : 0, e.slowT > 0 ? 1 : 0, e.poisT > 0 ? 1 : 0, e.dir || 1, e.rootT > 0 ? 1 : 0, e.tid || 0, e.bleed ? 1 : 0, e.mark ? 1 : 0]),
       Q: projs.filter(nr).map(q => [q.x | 0, q.y | 0, q.vx | 0, q.vy | 0, q.r, q.kind, q.color, r2(q.life)]),
       X: hazards.filter(h => Math.abs(h.x - cp.x) < 1700 && Math.abs(h.y - cp.y) < 1400 || h.k === 'tsunami' || h.k === 'wall' || h.k === 'beam').map(hzSnap),
-      Z: zones.filter(nr).map(z => [z.x | 0, z.y | 0, z.r | 0, z.kind, r2(Math.max(0, z.delay || 0)), r2(z.max), r2(z.life || 0), z.friendly ? 1 : 0, z.lantern ? 1 : 0, z.color, z.vx | 0, z.vy | 0]),
+      Z: zones.filter(nr).map(z => [z.x | 0, z.y | 0, z.r | 0, z.kind, r2(Math.max(0, z.delay || 0)), r2(z.max), r2(z.life || 0), z.friendly ? 1 : 0, z.lantern ? 1 : 0, z.color, z.vx | 0, z.vy | 0, z.x2 | 0, z.y2 | 0, z.oid || 0, z.coven ? 1 : 0]),
       K: pickups.filter(nr).map(k => [k.id, k.kind, k.x | 0, k.y | 0]),
       ev: evQ.filter(e => (!e.to || e.to === c.pid) && (e.x === undefined || Math.hypot(e.x - cp.x, e.y - cp.y) < 1200)).map(e => ({ k: e.k, a: e.a })),
-      c: cp.choice ? { q: cp.choiceSeq, ids: cp.choice.map(t => t.id), title: cp.choiceTitle } : 0, tal: cp.talents
+      c: cp.choice ? { q: cp.choiceSeq, ids: cp.choice.map(t => t.id), title: cp.choiceTitle } : 0, tal: cp.talents,
+      ct: cp.ctChoice ? { q: cp.ctSeq, ids: cp.ctChoice } : 0
     });
   }
   evQ.length = 0;
@@ -1265,7 +1312,7 @@ function clientRecv(d) {
   else if (d.t === 'rewards' && Array.isArray(d.list)) { game.rewards = d.list.slice(0, 4); if (game.over) showEnd(); }
   else if (d.t === 'lobby') { players = []; net.myId = d.you; net.lobby = d.players; net.code = d.code; net.diff = DIFF(d.diff).id; game = newGame(); game.state = 'lobby'; me = null; showLobby(); }
   else if (d.t === 'world') {
-    game = newGame(); game.chapter = d.ch; game.diff = DIFF(d.diff).id; game.runId = String(d.run || ''); night = 0; net.myId = d.you; net.out = {}; net.pickedSeq = -1; clearEntities();
+    game = newGame(); game.chapter = d.ch; game.diff = DIFF(d.diff).id; game.runId = String(d.run || ''); night = 0; net.myId = d.you; net.out = {}; net.pickedSeq = -1; net.ctPicked = -1; clearEntities();
     world = { S: d.S, pal: PAL[(d.ch - 1) % PAL.length], obs: d.obs.map(o => ({ x: o[0], y: o[1], r: o[2], cr: o[3], tree: !!o[4], v: o[5], tone: o[6] })), pois: d.pois.map(o => ({ kind: o[0], x: o[1], y: o[2], r: o[3], used: false, uses: 0, seen: o[0] === 'altar' })) };
     groundPat = makeGround(world.pal);
     players = d.players.map(q => { const p = newPlayer(q.id, q.hero, q.name); p.x = p.tx = q.x; p.y = p.ty = q.y; p.tp = q.tp; return p; });
@@ -1289,6 +1336,7 @@ function applySnap(s) {
     p.tAtk = q.ta; p.tSkill = q.ts; p.tUlt = q.tu; p.dashRe = q.dr; p.dashMax = q.dm; p.cds = q.cds; if (!(p === me && p.dashLock > 0)) p.dashes = q.d;
     p.iT = q.it ? 0.2 : 0; p.swing = q.sw; p.ultT = q.ut; p.down = !!q.dn; p.rev = q.rv; p.flurry = q.fl ? 1 : null; p.spd = q.sp; p.spdMul = 1; p.pickR = q.pr;
     p.roots = q.rc | 0; p.lan = num(q.ln); p.lanMax = num(q.lm, LANTERN_MAX); p.shield = num(q.sh); p.decoyOn = !!q.dc;
+    p.barrier = num(q.br); p.ct = Array.isArray(q.tl) ? q.tl.filter(id => heroTalent(p.hero, id)) : [];
     if (p === me) { if (q.tp !== p.tp) { p.x = q.x; p.y = q.y; p.tp = q.tp; p.dashT = 0; } }
     else { p.tx = q.x; p.ty = q.y; p.face = q.f; p.moving = !!q.mv; p.dashT = q.dt ? 0.05 : 0; if (dist(p, { x: q.x, y: q.y }) > 300) { p.x = q.x; p.y = q.y; } }
   }
@@ -1297,14 +1345,16 @@ function applySnap(s) {
   enemies = s.E.map(a => {
     const e = old.get(a[0]) || { id: a[0], x: a[2], y: a[3], ph: (a[0] * 1.7) % TAU, flash: 0, near: true };
     e.type = ETN[a[1]]; e.tx = a[2]; e.ty = a[3]; e.r = a[4]; e.hp = a[5]; e.maxHp = 1; e.elite = !!a[6]; e.state = STN[a[7]]; e.a = a[8];
-    if (a[9]) e.flash = 0.1; e.slowT = a[10]; e.poisT = a[11]; e.dir = a[12]; e.rootT = a[13]; e.tid = a[14]; return e;
+    if (a[9]) e.flash = 0.1; e.slowT = a[10]; e.poisT = a[11]; e.dir = a[12]; e.rootT = a[13]; e.tid = a[14]; e.bleedOn = !!a[15]; e.markOn = !!a[16]; return e;
   });
   projs = s.Q.map(a => ({ x: a[0], y: a[1], vx: a[2], vy: a[3], r: a[4], kind: a[5], color: a[6], life: a[7] }));
-  zones = s.Z.map(a => ({ x: a[0], y: a[1], r: a[2], kind: a[3], delay: a[4], max: a[5], life: a[6], friendly: !!a[7], lantern: !!a[8], color: a[9], vx: a[10], vy: a[11] }));
+  zones = s.Z.map(a => ({ x: a[0], y: a[1], r: a[2], kind: a[3], delay: a[4], max: a[5], life: a[6], friendly: !!a[7], lantern: !!a[8], color: a[9], vx: a[10], vy: a[11], x2: a[12], y2: a[13], oid: a[14], coven: !!a[15] }));
   const oldK = new Map(pickups.map(k => [k.id, k]));
   pickups = s.K.map(a => { const k = oldK.get(a[0]) || { id: a[0], x: a[2], y: a[3], t: a[0] % 7 }; k.kind = a[1]; k.tx = a[2]; k.ty = a[3]; return k; });
   for (const e of s.ev) applyEv(e);
   me.talents = s.tal || {};
+  // chapter talent offer: shown until the player picks; the pick only takes effect once the host accepts it (tl)
+  if (s.ct && s.ct.q !== net.ctPicked && Array.isArray(s.ct.ids)) { me.ctChoice = s.ct.ids.filter(id => heroTalent(me.hero, id)); me.ctSeq = s.ct.q; } else me.ctChoice = null;
   if (s.c && s.c.q !== net.pickedSeq) { me.choice = s.c.ids.map(id => TALENTS.find(t => t.id === id)).filter(Boolean); me.choiceSeq = s.c.q; me.choiceTitle = s.c.title; } else me.choice = null;
 }
 function clientUpdate(dt) {
@@ -1398,10 +1448,12 @@ function render() {
   const inView = (o, m = 80) => o.x > cam.x - m && o.x < cam.x + VW + m && o.y > cam.y - m && o.y < cam.y + VH + m;
   for (const z of zones) {
     if (!inView(z, 150)) continue;
-    if (z.kind === 'shelter' || z.kind === 'decoy' || z.kind === 'proc') drawZone(c, z);
+    if (TALENT_ZONES.has(z.kind)) drawTalentZone(c, z);
+    else if (z.kind === 'shelter' || z.kind === 'decoy' || z.kind === 'proc') drawZone(c, z);
     else if (z.kind === 'burn') { const a = Math.min(1, z.life / 0.5); c.globalAlpha = 0.28 * a; circ(c, z.x, z.y, z.r, z.color); c.globalAlpha = 0.7 * a; c.strokeStyle = z.color; c.lineWidth = 2; c.beginPath(); c.arc(z.x, z.y, z.r, 0, TAU); c.stroke(); c.globalAlpha = 1; if (z.lantern) { circ(c, z.x, z.y - 8, 7, '#fff1c2'); c.fillStyle = '#4a3a2a'; c.fillRect(z.x - 6, z.y - 18, 12, 3); c.fillRect(z.x - 6, z.y - 1, 12, 3); } }
     else { const k = 1 - clamp(z.delay / z.max, 0, 1), col = z.friendly ? '255,140,60' : '220,60,255'; c.fillStyle = 'rgba(' + col + ',.16)'; c.beginPath(); c.arc(z.x, z.y, z.r, 0, TAU); c.fill(); c.fillStyle = 'rgba(' + col + ',.35)'; c.beginPath(); c.arc(z.x, z.y, z.r * k, 0, TAU); c.fill(); c.strokeStyle = 'rgba(' + col + ',.9)'; c.lineWidth = 2; c.beginPath(); c.arc(z.x, z.y, z.r, 0, TAU); c.stroke(); }
   }
+  drawThreads(c); // Lantern Coven
   drawArena(c); drawHazards(c); // boss arena outline, warnings and active hazards
   for (const k of pickups) if (inView(k)) drawPickup(k);
   const list = [];
@@ -1502,7 +1554,7 @@ function drawHUD() {
   if (p.hero === 'rowan') { c.fillStyle = '#d8c08a'; c.fillText(T('Deep Roots') + ' ' + '●'.repeat(p.roots) + '○'.repeat(Math.max(0, ROOTS_MAX - p.roots)), bx, by + 52); }
   else if (p.hero === 'vespera') { c.fillStyle = '#86f0cf'; c.fillText(T('Lantern'), bx, by + 52); c.fillStyle = '#16302a'; rr(c, bx + 52, by + 44, bw - 52, 8, 3); c.fill(); c.fillStyle = '#86f0cf'; rr(c, bx + 52, by + 44, Math.max(4, (bw - 52) * clamp(p.lan / p.lanMax, 0, 1)), 8, 3); c.fill(); }
   else if (p.hero === 'mira') { c.fillStyle = p.decoyOn ? '#bff6ff' : '#6d7f86'; c.fillText(T(p.decoyOn ? 'Decoy standing' : 'No decoy — dash to leave one'), bx, by + 52); }
-  if (p.shield > 0) { c.fillStyle = '#86f0cf'; c.textAlign = 'right'; c.fillText(T('Shield') + ' ' + Math.ceil(p.shield), bx + bw, by + 52); c.textAlign = 'left'; }
+  if (p.shield + (p.barrier || 0) > 0) { c.fillStyle = '#86f0cf'; c.textAlign = 'right'; c.fillText(T('Shield') + ' ' + Math.ceil(p.shield + (p.barrier || 0)), bx + bw, by + 52); c.textAlign = 'left'; }
   const b1 = slotBlock(p, 1), b2 = H2.alt ? slotBlock(p, 2) : null;
   const cd = p.cds, ab = [[T('LMB'), T(H2.names[0]), p.tAtk, cd[0], true], [T('RMB'), T(H2.names[1]), p.tSkill, cd[1], !b1, b1 && T(b1)], [T('SPACE'), T(H2.names[2]) + (p.dashMax > 1 ? ' ×' + p.dashes : ''), p.dashes > 0 ? 0 : p.dashRe, cd[2], !b2, b2 && T(b2)], ['Q', T(H2.names[3]), p.tUlt, cd[3], p.level >= 3, T('Lv 3')]];
   const s = 58, gap = 12, ax = W / 2 - (s * 4 + gap * 3) / 2, ay = H - s - 30;
@@ -1564,6 +1616,11 @@ function drawHUD() {
   if (game.boss) circ(c, mx + game.boss.x * k, my + game.boss.y * k, 5, '#ff5ad6');
   for (const q of players) if (q !== p) { if (q.down) { const bl = Math.sin(game.t * 8) > -0.3; circ(c, mx + q.x * k, my + q.y * k, bl ? 6 : 4, '#ff3b3b'); if (bl) { c.strokeStyle = '#fff'; c.lineWidth = 1.5; c.beginPath(); c.arc(mx + q.x * k, my + q.y * k, 6, 0, TAU); c.stroke(); } } else circ(c, mx + q.x * k, my + q.y * k, 3.5, HEROES[q.hero].color); }
   circ(c, mx + p.x * k, my + p.y * k, 3.5, '#fff');
+  if (!TU && p.ct && p.ct.length) {
+    const names = p.ct.map(id => T((heroTalent(p.hero, id) || { name: id }).name)), bh = 22 + names.length * 16, by0 = my + ms + 32;
+    c.fillStyle = 'rgba(8,8,16,.75)'; rr(c, mx - 4, by0, ms + 8, bh, 6); c.fill(); c.textAlign = 'left'; c.font = '12px Georgia'; c.fillStyle = '#f3d48a'; c.fillText(L('Talents', '天賦'), mx + 4, by0 + 15);
+    c.fillStyle = HEROES[p.hero].color; names.forEach((nm, i) => c.fillText('• ' + nm, mx + 4, by0 + 31 + i * 16));
+  }
   c.font = '11px Georgia'; c.fillStyle = '#8e88ab'; c.textAlign = 'right'; c.fillText(TU ? (net.mode === 'solo' ? '' : L('Room ', '房間 ') + net.code) : L('F interact · ', 'F 互動 · ') + (net.mode === 'solo' ? L('P pause · ', 'P 暫停 · ') : L('Room ', '房間 ') + net.code + ' · ') + L('M mute', 'M 靜音'), W - 18, my + ms + 22);
   if (game.banner) { const b = game.banner, a = clamp(Math.min(b.t, b.max - b.t) / 0.4, 0, 1); c.globalAlpha = a; c.textAlign = 'center'; c.font = 'bold ' + Math.round(Math.min(44, W / 13)) + 'px Georgia'; c.fillStyle = 'rgba(0,0,0,.6)'; const bt = T(b.text), bs = T(b.sub); c.fillText(bt, W / 2 + 2, H * 0.27 + 2); c.fillStyle = '#f3d48a'; c.fillText(bt, W / 2, H * 0.27); c.font = 'italic 18px Georgia'; c.fillStyle = '#d8d2ee'; c.fillText(bs, W / 2, H * 0.27 + 30); c.globalAlpha = 1; }
   if (!p.down && p.hp < p.maxHp * 0.3) { const g = c.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, H * 0.8); g.addColorStop(0, 'rgba(160,0,0,0)'); g.addColorStop(1, 'rgba(160,0,0,' + (0.3 + Math.sin(game.t * 5) * 0.1) + ')'); c.fillStyle = g; c.fillRect(0, 0, W, H); }
@@ -1833,7 +1890,26 @@ function onTap(el, fn) {
   el.addEventListener('touchcancel', () => { id = null; });
 }
 let shownChoice = '';
+// One chapter-talent card: name, the abilities it changes, what it does and its limits.
+function talentCard(hero, t, i, key) {
+  return '<div class="card ctc" tabindex="0" role="button" data-i="' + i + '">' + (key ? '<span class="key">' + (i + 1) + '</span>' : '') + '<div class="tag" style="color:' + HEROES[hero].color + '">' + t.ab.map(T).join(' · ') + '</div><h3>' + T(t.name) + '</h3><p>' + T(t.desc) + '</p><p class="lim">' + T(t.limits) + '</p></div>';
+}
+// The build panel: a player's chapter talents this run (pause screen, co-op menu, chapter end).
+function buildHtml(p) {
+  if (!p || !HERO_TALENTS[p.hero]) return '';
+  const got = (p.ct || []).map(id => heroTalent(p.hero, id)).filter(Boolean);
+  return '<div class="stats prof build"><b>' + L('Chapter talents', '章節天賦') + '</b> <i>' + L('(this run)', '（本局）') + '</i><br>' + (got.length ? got.map(t => '<span style="color:' + HEROES[p.hero].color + '">' + T(t.name) + '</span> — ' + t.ab.map(T).join(' · ') + ': ' + T(t.desc) + ' <i class="lim">' + T(t.limits) + '</i>').join('<br>') : '<i>' + L('none yet', '尚無') + '</i>') + '</div>';
+}
 function syncChoice() {
+  const ct = me && game.state === 'play' && !game.over && me.ctChoice && me.ctChoice.length;
+  if (ct) {
+    const key = 'ct' + me.ctSeq + ':' + me.ctChoice.join(','); if (key === shownChoice) return; shownChoice = key;
+    let h = '<h2>' + L('Chapter talent — choose one', '章節天賦 — 選擇一項') + '</h2><div class="sub ctsub">' + L('It lasts for the rest of this run. Tap or click a card, or press its number.', '效果持續到本局結束。點選卡片，或按下對應的數字鍵。') + '</div><div class="cards ctcards">';
+    me.ctChoice.forEach((id, i) => { const t = heroTalent(me.hero, id); if (t) h += talentCard(me.hero, t, i, true); });
+    choiceEl.className = net.mode === 'solo' ? 'solo' : 'coop'; choiceEl.innerHTML = h + '</div>';
+    choiceEl.querySelectorAll('.card').forEach(cd => { onTap(cd, () => chooseChapterTalent(+cd.dataset.i)); cd.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); chooseChapterTalent(+cd.dataset.i); } }; });
+    return;
+  }
   const on = me && game.state === 'play' && !game.over && me.choice && me.choice.length;
   const key = on ? me.choiceSeq + ':' + me.choice.map(t => t.id).join(',') : '';
   if (key === shownChoice) return; shownChoice = key;
@@ -1842,6 +1918,14 @@ function syncChoice() {
   me.choice.forEach((t, i) => { const rk = me.talents[t.id] || 0; h += '<div class="card" data-i="' + i + '"><span class="key">' + (i + 1) + '</span><div class="tag"' + (t.hero ? ' style="color:' + HEROES[t.hero].color + '"' : '') + '>' + T(t.hero ? HEROES[t.hero].name : 'Boon') + '</div><h3>' + T(t.name) + '</h3><p>' + T(t.desc) + '</p><div class="pips">' + '●'.repeat(rk + 1) + '○'.repeat(Math.max(0, t.max - rk - 1)) + '</div></div>'; });
   choiceEl.className = net.mode === 'solo' ? 'solo' : 'coop'; choiceEl.innerHTML = h + '</div>';
   choiceEl.querySelectorAll('.card').forEach(cd => onTap(cd, () => chooseTalent(+cd.dataset.i)));
+}
+// Solo / host: applied at once (applyChapterTalent validates). Guest: sent to the host; the effect starts when the host accepts.
+function chooseChapterTalent(i) {
+  if (!me || !me.ctChoice || !me.ctChoice[i] || game.state !== 'play') return;
+  const id = me.ctChoice[i];
+  if (net.mode === 'client') { net.host.send({ t: 'ctpick', id, q: me.ctSeq }); net.ctPicked = me.ctSeq; me.ctChoice = null; playSfx('pick'); }
+  else applyChapterTalent(me, id, me.ctSeq);
+  mouse.l = mouse.r = false;
 }
 function chooseTalent(i) {
   if (!me || !me.choice || !me.choice[i] || game.state !== 'play') return;
@@ -1852,10 +1936,11 @@ function chooseTalent(i) {
 function showEnd() {
   if (!me) return;
   const st = '<div class="stats">' + players.map(p => esc(p.name) + ' — ' + T(HEROES[p.hero].name) + ' · ' + L('Lv ', '等級 ') + p.level + ' · ' + L(p.kills + ' slain', '擊殺 ' + p.kills)).join('<br>') + '<br>' + T('Chapter ' + game.chapter) + '</div>';
-  const rw = game.rewards ? '<div class="stats"><b>' + L('Chapter reward', '章節獎勵') + '</b><br>' + game.rewards.map(r => esc(r.name) + ' — ' + (r.rarity ? '<span style="color:' + RARITY_COLORS[r.rarity] + '">' + T(RARITY_NAMES[r.rarity]) + '</span> · ' + esc(T(itemLabel(r.item))) : L('No reward', '沒有獎勵'))).join('<br>') + '</div>' : '';
+  const rw = game.rewards ? '<div class="stats"><b>' + L('Chapter reward', '章節獎勵') + '</b><br>' + game.rewards.map(r => esc(r.name) + ' — ' + (r.rarity ? '<span style="color:' + RARITY_COLORS[r.rarity] + '">' + T(RARITY_NAMES[r.rarity]) + '</span> · ' + esc(T(itemLabel(r.item))) : L('No reward', '沒有獎勵')) + (r.ct ? ' · <b>' + L('+ chapter talent pick', '+ 章節天賦選擇') + '</b>' : '')).join('<br>') + '</div>' : '';
+  const bl = game.over === 'win' ? buildHtml(me) : '';
   const guest = net.mode === 'client', wait = '<div class="wait">' + L('Waiting for the host…', '等待房主…') + '</div><button id="leave" class="ghost">' + L('Leave party', '離開隊伍') + '</button>';
   if (game.over === 'dead') show('<h2>' + L('The dusk takes you', '你被暮色吞沒') + '</h2><div class="sub">' + L('The wood closes over another lantern.', '森林又吞沒了一盞燈火。') + '</div>' + st + rw + (guest ? wait : '<button id="again">' + (net.mode === 'host' ? L('Back to the lobby', '回到大廳') : L('Try again', '再試一次')) + '</button>'), true);
-  else if (game.over === 'win') show('<h2>' + L(bossCfg(game.chapter).name + ' falls', T(bossCfg(game.chapter).name) + '倒下了') + '</h2><div class="sub">' + L('The path runs deeper. ' + PAL[game.chapter % PAL.length].name + ' awaits — and ' + bossCfg(game.chapter + 1).name + ', who is stronger still.', '道路通往更深處。' + T(PAL[game.chapter % PAL.length].name) + '在等著你，還有更加強大的' + T(bossCfg(game.chapter + 1).name) + '。') + '</div>' + st + rw + (guest ? wait : '<button id="next">' + L('Press on', '繼續前進') + '</button>'), true);
+  else if (game.over === 'win') show('<h2>' + L(bossCfg(game.chapter).name + ' falls', T(bossCfg(game.chapter).name) + '倒下了') + '</h2><div class="sub">' + L('The path runs deeper. ' + PAL[game.chapter % PAL.length].name + ' awaits — and ' + bossCfg(game.chapter + 1).name + ', who is stronger still.', '道路通往更深處。' + T(PAL[game.chapter % PAL.length].name) + '在等著你，還有更加強大的' + T(bossCfg(game.chapter + 1).name) + '。') + '</div>' + st + rw + bl + (guest ? wait : '<button id="next">' + L('Press on', '繼續前進') + '</button>'), true);
   else show('<h1>' + L('DAWN', '黎明') + '</h1><div class="sub">' + L('Nezha lowers his spear: the divine trial is won. For the first time in an age, morning comes and stays.', '哪吒放下火尖槍：神之試煉已經通過。漫長歲月以來，晨光第一次降臨並且留了下來。') + '</div>' + st + rw + (guest ? wait : '<button id="again">' + (net.mode === 'host' ? L('Back to the lobby', '回到大廳') : L('Play again', '再玩一次')) + '</button>'));
   if ($('again')) $('again').onclick = endRun;
   if ($('next')) $('next').onclick = nextChapter;
@@ -1868,7 +1953,7 @@ function endRun() {
 function nextChapter() {
   if (game.over !== 'win') return;
   const ch = game.chapter + 1, keep = { diff: game.diff, runId: game.runId }; game = newGame(); Object.assign(game, keep); game.chapter = ch; night = 0;
-  for (const p of players) { p.down = false; p.rev = 0; p.flurry = null; p.dashT = 0; if (p.hp <= 0) p.hp = 1; }
+  for (const p of players) { p.down = false; p.rev = 0; p.flurry = null; p.dashT = 0; p.ultT = 0; if (p.hp <= 0) p.hp = 1; } // cleanup: no Final Curtain / Aftergrowth
   genWorld(); for (const p of players) heal(p, p.maxHp * 0.5);
   hide(); banner(world.pal.name, chapterSub(), 4); sfx('dawn');
   if (net.mode === 'host') sendWorld();
@@ -1885,7 +1970,7 @@ function micErrorText(name) {
 // Voice & sound panel. In co-op play it opens over the running game (soft) and does not pause.
 async function showVoice(back, soft) {
   const nameOf = pid => { const q = players.find(p => p.id === pid) || net.lobby.find(q => q.id === pid); return q ? q.name : '#' + pid; };
-  let h = '<h2>' + L('Voice & sound', '語音與音效') + '</h2>';
+  let h = '<h2>' + L('Voice & sound', '語音與音效') + '</h2>' + (soft && game.state === 'play' ? buildHtml(me) : '');
   if (!NetT.voice || !Voice.supported()) h += '<div class="sub">' + L('Voice chat needs the GitHub Pages version of the game (direct connections). It is not available on this page.', '語音聊天需要 GitHub Pages 版本（直接連線），此頁面無法使用。') + '</div>';
   else {
     const devs = Voice.micStream ? await Voice.devices() : [];
@@ -1913,12 +1998,13 @@ function onKey(k) {
   if (k === 'm' && AU.ctx) { AU.muted = !AU.muted; AU.master.gain.value = AU.muted ? 0 : 0.55; }
   const n = '123456789'.indexOf(k);
   if (n >= 0 && (game.state === 'menu' || game.state === 'lobby')) selectHero(Object.keys(HEROES)[n]);
+  else if (n >= 0 && n < 5 && game.state === 'play' && me && me.ctChoice) chooseChapterTalent(n);
   else if (n >= 0 && n < 3 && game.state === 'play') chooseTalent(n);
   else if ((k === 'p' || k === 'escape') && game.state === 'play' && net.mode !== 'solo' && !game.over && overlay.className === 'hidden') showVoice(hide, true);
-  else if ((k === 'p' || k === 'escape') && game.state === 'play' && net.mode === 'solo' && !game.over && !(me && me.choice)) {
+  else if ((k === 'p' || k === 'escape') && game.state === 'play' && net.mode === 'solo' && !game.over && !(me && (me.choice || me.ctChoice))) {
     game.paused = !game.paused;
     if (game.paused) {
-      show('<h2>' + L('Paused', '暫停') + '</h2>' + controlsHtml() + '<div class="row"><button id="res">' + L('Resume', '繼續') + '</button>' + (touch.on ? '<button id="mute" class="ghost">' + muteLabel() + '</button><button id="quit" class="ghost">' + L('Quit run', '放棄本局') + '</button>' : '') + fsRowHtml() + '</div>', true);
+      show('<h2>' + L('Paused', '暫停') + '</h2>' + buildHtml(me) + controlsHtml() + '<div class="row"><button id="res">' + L('Resume', '繼續') + '</button>' + (touch.on ? '<button id="mute" class="ghost">' + muteLabel() + '</button><button id="quit" class="ghost">' + L('Quit run', '放棄本局') + '</button>' : '') + fsRowHtml() + '</div>', true);
       $('res').onclick = () => { game.paused = false; hide(); };
       bindFs(() => { game.paused = true; onKey('p'); onKey('p'); });
       if ($('mute')) $('mute').onclick = () => { initAudio(); onKey('m'); $('mute').textContent = muteLabel(); };
@@ -1934,7 +2020,7 @@ function tick(ts) {
   if (game.state === 'play' && me) {
     if (net.mode === 'client') clientUpdate(dt);
     else if (game.over) updFx(dt);
-    else if (!(net.mode === 'solo' && (game.paused || me.choice))) update(dt);
+    else if (!(net.mode === 'solo' && (game.paused || me.choice || me.ctChoice))) update(dt);
     if (net.mode === 'host') { net.snapT -= dt; if (net.snapT <= 0) { net.snapT = NetT.snapIv ? NetT.snapIv(net.conns.length) : 0.05; sendSnaps(); } }
   }
   for (const k in pressed) delete pressed[k];

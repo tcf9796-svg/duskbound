@@ -119,6 +119,9 @@ function drawEnemy(e) {
   c.restore();
   if (e.type !== 'boss' && e.hp < e.maxHp) { const w = r * 2; ctx.fillStyle = 'rgba(0,0,0,.6)'; ctx.fillRect(e.x - w / 2, e.y - r - 14, w, 4); ctx.fillStyle = e.elite ? '#f3d48a' : e.poisT > 0 ? '#a6e36a' : '#e25555'; ctx.fillRect(e.x - w / 2, e.y - r - 14, w * clamp(e.hp / e.maxHp, 0, 1), 4); }
   if (e.slowT > 0) { ctx.strokeStyle = '#7bc96f'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(e.x, e.y + r * 0.6, r * 0.9, 0, TAU); ctx.stroke(); }
+  // chapter talents: Shared Opening mark (a glass diamond) and Splintered Edge bleeding (red drops)
+  if (e.mark || e.markOn) { const y = e.y - r - 24; ctx.fillStyle = '#e8fbff'; ctx.strokeStyle = '#4a8a99'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(e.x, y - 7); ctx.lineTo(e.x + 5, y); ctx.lineTo(e.x, y + 7); ctx.lineTo(e.x - 5, y); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+  if (e.bleed || e.bleedOn) { ctx.fillStyle = '#e0312a'; for (let i = 0; i < 3; i++) { const x = e.x - 8 + i * 8, y = e.y - r * 0.2 + ((game.t * 30 + i * 7) % 14); ctx.beginPath(); ctx.arc(x, y, 2, 0, TAU); ctx.fill(); } }
   if (e.rootT > 0) {
     // Root Snare: roots curl up around the feet.
     ctx.strokeStyle = '#8a6238'; ctx.lineWidth = 3; ctx.lineCap = 'round';
