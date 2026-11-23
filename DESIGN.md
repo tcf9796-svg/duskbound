@@ -116,7 +116,7 @@ changes these odds, and boss phases, summons and other kills never trigger a rol
   the claim ids it has applied. So duplicate completion events, reconnects and resends never roll or grant twice.
 - **Categories:** upgrades (stackable stats, capped), starting talents (begin each run with one rank of a boon),
   weapons (one per hero, equipped in Profile) and characters.
-- **Characters:** the unlockable heroes Rowan (Green), Mira (Blue) and Vespera (Purple) are `c:<id>` items in their
+- **Characters:** the unlockable heroes Rowan (Green), Mira (Blue) and Lumen (Purple, id `vespera`) are `c:<id>` items in their
   tier's pool, winnable from Chapter 1, 2 and 3 respectively (`RARITY[...].chapter` in `data.js`). They are part of
   the single roll above, not a separate one. Unlocks are saved in the profile; an older per-device unlock save
   (`duskbound-unlocks`) is imported once. The host only lets a guest play a hero their profile owns.

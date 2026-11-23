@@ -57,7 +57,7 @@ const ZH = {
   'Ghoststep': '鬼步', 'Dash damage doubled; kills refund a dash.': '衝刺傷害加倍；擊殺返還一次衝刺。',
   'Lunar Edge': '月刃', 'Cut reach +15%, +20% critical damage.': '斬擊範圍 +15%，暴擊傷害 +20%。',
   'Boon': '祝福', 'Choose': '選擇',
-  // unlockable heroes (Rowan, Mira, Vespera)
+  // unlockable heroes (Rowan, Mira, Lumen)
   "<b>Attack</b> — Briar Thrust: a long spear jab": "<b>攻擊</b> — 荊刺突：長矛突刺",
   "<b>Skill</b> — Root Snare: roots nearby foes in place": "<b>技能</b> — 根縛：將附近敵人定身",
   "<b>Space</b> — Shelterwood: a grove where allies take 35% less damage": "<b>空白鍵</b> — 庇護林：林中的隊友受到的傷害 -35%",
@@ -80,7 +80,7 @@ const ZH = {
   "The Thornwarden": "棘盾衛士",
   "Mira": "米拉",
   "The Mirrorblade": "鏡刃",
-  "Vespera": "薇斯佩拉",
+  "Lumen": "露明",
   "The Lanternkeeper": "守燈人",
   "Briar Thrust": "荊刺突",
   "Root Snare": "根縛",

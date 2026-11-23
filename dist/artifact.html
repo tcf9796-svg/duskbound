@@ -145,7 +145,7 @@ const HEROES = {
     names: ['Twin Cuts', 'Blade Fan', 'Flit', 'Eclipse']
   },
   // Unlockable heroes. `rarity` names their character reward pool (see RARITY); `alt` heroes cast a second skill
-  // from the dash slot (Space / DASH button) instead of dashing; `dashCd` overrides that slot's recharge; `ultTime` (Vespera) is Midnight Procession's base duration in seconds.
+  // from the dash slot (Space / DASH button) instead of dashing; `dashCd` overrides that slot's recharge; `ultTime` (Lumen) is Midnight Procession's base duration in seconds.
   rowan: {
     name: 'Rowan', title: 'The Thornwarden', color: '#a9c46c', hp: 170, spd: 205, dmg: 14, atkCd: 0.5, skillCd: 9, dashes: 1, dashCd: 14, alt: true, rarity: 'green',
     blurb: 'Bark armour, a moss-heavy cloak and a shield that is still growing. Where Rowan plants a foot, the line holds.',
@@ -158,8 +158,8 @@ const HEROES = {
     kit: ['<b>Attack</b> — Shattered Cuts: a fast three-strike dagger combo', '<b>Skill</b> — Mirror Exchange: swap places with your decoy, then shatter it', '<b>Dash</b> — Reflection Step: dash through foes, leaving a decoy that draws them', '<b>Ultimate</b> — Hall of Mirrors: three reflections repeat your cuts at 40% damage', '<b>Trait</b> — Blind Spot: +40% damage to foes distracted by an ally or decoy'],
     names: ['Shattered Cuts', 'Mirror Exchange', 'Reflection Step', 'Hall of Mirrors']
   },
-  vespera: {
-    name: 'Vespera', title: 'The Lanternkeeper', color: '#86f0cf', hp: 100, spd: 225, dmg: 12, atkCd: 0.38, skillCd: 10, dashes: 1, dashCd: 12, alt: true, rarity: 'purple', ultTime: 10,
+  vespera: { // shown as Lumen; the id stays 'vespera' so saved unlocks and the c:vespera reward keep working
+    name: 'Lumen', title: 'The Lanternkeeper', color: '#86f0cf', hp: 100, spd: 225, dmg: 12, atkCd: 0.38, skillCd: 10, dashes: 1, dashCd: 12, alt: true, rarity: 'purple', ultTime: 10,
     blurb: 'A cloaked traveller swinging a haunted lantern on a chain. The lost follow her light; so does everything else.',
     kit: ['<b>Attack</b> — Ghostlight: a spectral bolt', '<b>Skill</b> — Guiding Wisp: shield the ally nearest your aim (yourself when solo). 30 energy', '<b>Space</b> — Soul Tether: link up to 4 foes; 40% of direct damage to one spreads to the rest. 30 energy', '<b>Ultimate</b> — Midnight Procession: spirits set out toward your aim and hunt down the nearest foes, harming them and healing allies they pass', '<b>Trait</b> — Lingering Light: the fallen leave embers that restore lantern energy'],
     names: ['Ghostlight', 'Guiding Wisp', 'Soul Tether', 'Midnight Procession']
@@ -296,7 +296,7 @@ const ZH = {
   'Ghoststep': '鬼步', 'Dash damage doubled; kills refund a dash.': '衝刺傷害加倍；擊殺返還一次衝刺。',
   'Lunar Edge': '月刃', 'Cut reach +15%, +20% critical damage.': '斬擊範圍 +15%，暴擊傷害 +20%。',
   'Boon': '祝福', 'Choose': '選擇',
-  // unlockable heroes (Rowan, Mira, Vespera)
+  // unlockable heroes (Rowan, Mira, Lumen)
   "<b>Attack</b> — Briar Thrust: a long spear jab": "<b>攻擊</b> — 荊刺突：長矛突刺",
   "<b>Skill</b> — Root Snare: roots nearby foes in place": "<b>技能</b> — 根縛：將附近敵人定身",
   "<b>Space</b> — Shelterwood: a grove where allies take 35% less damage": "<b>空白鍵</b> — 庇護林：林中的隊友受到的傷害 -35%",
@@ -319,7 +319,7 @@ const ZH = {
   "The Thornwarden": "棘盾衛士",
   "Mira": "米拉",
   "The Mirrorblade": "鏡刃",
-  "Vespera": "薇斯佩拉",
+  "Lumen": "露明",
   "The Lanternkeeper": "守燈人",
   "Briar Thrust": "荊刺突",
   "Root Snare": "根縛",
@@ -3185,11 +3185,11 @@ function drawTouchUI() {
 
 // ---------- screens ----------
 const controlsHtml = () => touch.on
-  ? L('<div class="controls"><b>Left thumb</b> move · <b>Right thumb</b> drag to aim and attack, or hold to auto-target · <b>Buttons</b> skill, dash (Rowan, Vespera: second skill), ultimate (Lv 3), use, <b>AUTO</b> automatic attacks, <b>II</b> pause',
-      '<div class="controls"><b>左手拇指</b> 移動 · <b>右手拇指</b> 拖曳瞄準並攻擊，或按住自動鎖定 · <b>按鈕</b> 技能、衝刺（羅文、薇斯佩拉：第二技能）、絕招（3 級）、使用、<b>自動</b> 自動攻擊、<b>II</b> 暫停') +
+  ? L('<div class="controls"><b>Left thumb</b> move · <b>Right thumb</b> drag to aim and attack, or hold to auto-target · <b>Buttons</b> skill, dash (Rowan, Lumen: second skill), ultimate (Lv 3), use, <b>AUTO</b> automatic attacks, <b>II</b> pause',
+      '<div class="controls"><b>左手拇指</b> 移動 · <b>右手拇指</b> 拖曳瞄準並攻擊，或按住自動鎖定 · <b>按鈕</b> 技能、衝刺（羅文、露明：第二技能）、絕招（3 級）、使用、<b>自動</b> 自動攻擊、<b>II</b> 暫停') +
     '</div>'
-  : L('<div class="controls"><b>WASD</b> move · <b>Mouse</b> aim · <b>LMB</b> attack · <b>RMB</b>/<b>E</b> skill · <b>Space</b> dash (Rowan, Vespera: second skill) · <b>Q</b> ultimate (Lv 3) · <b>F</b> interact · <b>R</b> auto attack · <b>1</b>-<b>3</b> pick boon · <b>M</b> mute</div>',
-      '<div class="controls"><b>WASD</b> 移動 · <b>滑鼠</b> 瞄準 · <b>左鍵</b> 攻擊 · <b>右鍵</b>/<b>E</b> 技能 · <b>空白鍵</b> 衝刺（羅文、薇斯佩拉：第二技能） · <b>Q</b> 絕招（3 級） · <b>F</b> 互動 · <b>R</b> 自動攻擊 · <b>1</b>-<b>3</b> 選擇祝福 · <b>M</b> 靜音</div>');
+  : L('<div class="controls"><b>WASD</b> move · <b>Mouse</b> aim · <b>LMB</b> attack · <b>RMB</b>/<b>E</b> skill · <b>Space</b> dash (Rowan, Lumen: second skill) · <b>Q</b> ultimate (Lv 3) · <b>F</b> interact · <b>R</b> auto attack · <b>1</b>-<b>3</b> pick boon · <b>M</b> mute</div>',
+      '<div class="controls"><b>WASD</b> 移動 · <b>滑鼠</b> 瞄準 · <b>左鍵</b> 攻擊 · <b>右鍵</b>/<b>E</b> 技能 · <b>空白鍵</b> 衝刺（羅文、露明：第二技能） · <b>Q</b> 絕招（3 級） · <b>F</b> 互動 · <b>R</b> 自動攻擊 · <b>1</b>-<b>3</b> 選擇祝福 · <b>M</b> 靜音</div>');
 // Full screen: Android and iPad browsers can do it for a page; iPhone Safari only does it for video, so there the way
 // is to add the game to the Home Screen (manifest.webmanifest makes it open full screen, without browser bars).
 const DE = document.documentElement, IPHONE = /iPhone|iPod/.test(navigator.userAgent);

@@ -61,10 +61,11 @@ page by republishing `dist/artifact.html` to the URL above.
   apply difficulty and party scaling once and no chapter multiplier, keep every boss beatable solo with the starting
   heroes. Host runs the boss; guests apply pull/cage/slow locally. See DESIGN.md "Chapter bosses".
 - Chapters 4–5 biomes are placeholders (palettes only).
-- Six heroes: Bramble, Wick, Vesper (everyone has them) and the unlockable Rowan (Green), Mira (Blue), Vespera
+- Six heroes: Bramble, Wick, Vesper (everyone has them) and the unlockable Rowan (Green), Mira (Blue), Lumen
   (Purple). They are character rewards inside the one chapter roll (`c:<id>` in `REWARD_POOLS`), winnable from
   Chapter 1 / 2 / 3; there is no separate character roll. Unlocks live in the profile (`PROFILE.characters`); the
-  host only lets a guest play a hero their profile owns. Rowan and Vespera cast a second skill from the dash slot.
+  host only lets a guest play a hero their profile owns. Rowan and Lumen cast a second skill from the dash slot. Lumen's
+  internal id is `vespera` (kept so saved unlocks and `c:vespera` keep working); only the shown name changed.
 - The boss is unsealed early by standing in the altar ring for `UNSEAL_TIME` (5 s, `data.js`), not by pressing F;
   any living player counts, the host keeps the time, progress drains when the ring is empty.
 - Network messages changed: `PEER_PREFIX` is `duskbound-v5-`. Bump it whenever messages change.
