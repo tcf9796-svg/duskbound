@@ -1598,11 +1598,11 @@ function drawTouchUI() {
 
 // ---------- screens ----------
 const controlsHtml = () => touch.on
-  ? L('<div class="controls"><b>Left thumb</b> move · <b>Right thumb</b> drag to aim and attack, or hold to auto-target · <b>Buttons</b> skill, dash (Rowan, Vespera: second skill), ultimate (Lv 3), use, <b>AUTO</b> automatic attacks, <b>II</b> pause',
-      '<div class="controls"><b>左手拇指</b> 移動 · <b>右手拇指</b> 拖曳瞄準並攻擊，或按住自動鎖定 · <b>按鈕</b> 技能、衝刺（羅文、薇斯佩拉：第二技能）、絕招（3 級）、使用、<b>自動</b> 自動攻擊、<b>II</b> 暫停') +
+  ? L('<div class="controls"><b>Left thumb</b> move · <b>Right thumb</b> drag to aim and attack, or hold to auto-target · <b>Buttons</b> skill, dash (Rowan, Lumen: second skill), ultimate (Lv 3), use, <b>AUTO</b> automatic attacks, <b>II</b> pause',
+      '<div class="controls"><b>左手拇指</b> 移動 · <b>右手拇指</b> 拖曳瞄準並攻擊，或按住自動鎖定 · <b>按鈕</b> 技能、衝刺（羅文、露明：第二技能）、絕招（3 級）、使用、<b>自動</b> 自動攻擊、<b>II</b> 暫停') +
     '</div>'
-  : L('<div class="controls"><b>WASD</b> move · <b>Mouse</b> aim · <b>LMB</b> attack · <b>RMB</b>/<b>E</b> skill · <b>Space</b> dash (Rowan, Vespera: second skill) · <b>Q</b> ultimate (Lv 3) · <b>F</b> interact · <b>R</b> auto attack · <b>1</b>-<b>3</b> pick boon · <b>M</b> mute</div>',
-      '<div class="controls"><b>WASD</b> 移動 · <b>滑鼠</b> 瞄準 · <b>左鍵</b> 攻擊 · <b>右鍵</b>/<b>E</b> 技能 · <b>空白鍵</b> 衝刺（羅文、薇斯佩拉：第二技能） · <b>Q</b> 絕招（3 級） · <b>F</b> 互動 · <b>R</b> 自動攻擊 · <b>1</b>-<b>3</b> 選擇祝福 · <b>M</b> 靜音</div>');
+  : L('<div class="controls"><b>WASD</b> move · <b>Mouse</b> aim · <b>LMB</b> attack · <b>RMB</b>/<b>E</b> skill · <b>Space</b> dash (Rowan, Lumen: second skill) · <b>Q</b> ultimate (Lv 3) · <b>F</b> interact · <b>R</b> auto attack · <b>1</b>-<b>3</b> pick boon · <b>M</b> mute</div>',
+      '<div class="controls"><b>WASD</b> 移動 · <b>滑鼠</b> 瞄準 · <b>左鍵</b> 攻擊 · <b>右鍵</b>/<b>E</b> 技能 · <b>空白鍵</b> 衝刺（羅文、露明：第二技能） · <b>Q</b> 絕招（3 級） · <b>F</b> 互動 · <b>R</b> 自動攻擊 · <b>1</b>-<b>3</b> 選擇祝福 · <b>M</b> 靜音</div>');
 // Full screen: Android and iPad browsers can do it for a page; iPhone Safari only does it for video, so there the way
 // is to add the game to the Home Screen (manifest.webmanifest makes it open full screen, without browser bars).
 const DE = document.documentElement, IPHONE = /iPhone|iPod/.test(navigator.userAgent);
