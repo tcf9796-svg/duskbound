@@ -28,14 +28,17 @@ const RARITIES = ['green', 'blue', 'purple', 'yellow', 'red'];
 const RARITY_NAMES = { green: 'Green', blue: 'Blue', purple: 'Purple', yellow: 'Yellow', red: 'Red' };
 const RARITY_COLORS = { green: '#7bd96f', blue: '#6fb6ff', purple: '#c27bff', yellow: '#f3d048', red: '#ff5a5a' };
 
-// Chapter talents (HERO_TALENTS in data.js): when does a player earn a pick?
-// UNRESOLVED DESIGN DECISION: guaranteed after every chapter, or only when earned? Until it is decided:
-//   'reward' (default) - only when that chapter's single reward roll lands on a talent reward ('t:...'). The roll,
-//                        its odds and the one-reward limit are unchanged; the pick comes with that talent reward.
-//   'every'            - a guaranteed pick after every chapter (an extra reward: needs an explicit decision).
-//   'off'              - no chapter talents.
+// Chapter rewards: rolling a reward after each chapter is switched off (decided 2026-11-23: a chapter talent pick
+// replaces it). With `roll: false` no reward is rolled or granted; the claim is still recorded, so the campaign clear
+// after the final chapter (difficulty unlocks) still works. Set `roll: true` to bring the rolls back.
+const CHAPTER_REWARDS = { roll: false };
+
+// Chapter talents (HERO_TALENTS in data.js): when does a player earn a pick? (decided 2026-11-23: after every chapter)
+//   'every' (current) - a pick after every completed chapter: `cards` random talents of the hero, not yet picked.
+//   'reward'          - only when that chapter's reward roll lands on a talent reward ('t:...'); needs rolls on.
+//   'off'             - no chapter talents.
 // Never after the final chapter (the run ends there, and chapter talents only last for the run).
-const CHAPTER_TALENT = { policy: 'reward' };
+const CHAPTER_TALENT = { policy: 'every', cards: 3 };
 function earnsChapterTalent(item, chapter, policy = CHAPTER_TALENT.policy) {
   if (policy === 'off' || !(chapter >= 1 && chapter < CHAPTERS)) return false;
   if (policy === 'every') return true;
@@ -231,6 +234,6 @@ function itemLabel(item) {
   if (k === 'c') return 'Character: ' + (typeof HEROES !== 'undefined' && HEROES[a] ? HEROES[a].name : a);
   return item;
 }
-if (typeof module !== 'undefined') module.exports = { mergeProfiles, CHAPTER_TALENT, earnsChapterTalent, CHAPTERS, DIFFICULTIES, PARTY_SCALE, REWARD_ODDS, REWARD_POOLS, REWARD_FALLBACK, RARITIES, UPGRADES, WEAPONS, START_TALENT_CAP,
+if (typeof module !== 'undefined') module.exports = { mergeProfiles, CHAPTER_TALENT, CHAPTER_REWARDS, earnsChapterTalent, CHAPTERS, DIFFICULTIES, PARTY_SCALE, REWARD_ODDS, REWARD_POOLS, REWARD_FALLBACK, RARITIES, UPGRADES, WEAPONS, START_TALENT_CAP,
   checkOdds, rarityFor, rollRarity, rollReward, itemAvailable, newProfile, sanitizeProfile, loadProfile, saveProfile, grantReward, recordCampaignClear, highestUnlocked,
   loadoutOf, sanitizeLoadout, applyLoadout, exportProfile, importProfile, itemLabel, ODDS_TOTAL };

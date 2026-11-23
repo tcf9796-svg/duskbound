@@ -132,21 +132,17 @@ boon lifecycle: a pick lasts for the rest of the run, is cleared when a new run 
 profile. So there is no "owned" state to keep apart from "selected": all five are available each run, minus the
 ones already picked this run. Making them permanent would be a progression change that needs its own decision.
 
-**Earning a pick: UNRESOLVED DESIGN DECISION.** Whether a pick is guaranteed after every chapter, or only earned, has
-not been decided. `CHAPTER_TALENT.policy` in `meta.js`:
+**Earning a pick (decided 2026-11-23): after every chapter, and chapter reward rolls are off.** Finishing a chapter
+no longer rolls a reward (`CHAPTER_REWARDS.roll = false` in `meta.js`); instead every player earns one chapter talent
+pick (`CHAPTER_TALENT.policy = 'every'`). The claim (`run:chapter:profile`) is still recorded with no item, so a pick
+can't be earned twice and the campaign clear after the final chapter still unlocks the next difficulty. Never after
+the final chapter (the run ends there). Side effect: the unlockable heroes are only won through the roll, so they
+can't be won while rolls are off. Other settings: `policy: 'reward'` (a pick only when the roll lands on a `t:`
+reward; needs rolls on) and `'off'`.
 
-| policy | a pick is earned when | reward odds / limits |
-|---|---|---|
-| `reward` **(default)** | that chapter's single reward roll lands on a talent reward (`t:...`) | unchanged: the pick rides on that one reward; no extra roll |
-| `every` | every chapter (a guaranteed extra reward) | needs an explicit decision before switching on |
-| `off` | never | unchanged |
-
-Never after the final chapter (the run ends there). Earned once per claim (`run:chapter:profile`), so it can't be
-earned twice. With the current pools, about a quarter of rolls are talent rewards, falling as starting talents run
-out (owned ones are skipped and their rarity's fallback upgrade is given instead).
-
-**Picking.** At the start of the next chapter the player sees cards for their hero's remaining talents (name,
-abilities, description, limits) and chooses one: tap or click a card, press 1-5, or Tab to a card and press Enter.
+**Picking.** At the start of the next chapter the player sees 3 cards (`CHAPTER_TALENT.cards`), drawn at random from
+their hero's talents not yet picked this run (fewer when fewer are left; name, abilities, description, limits), and
+chooses one: tap or click a card, press its number, or Tab to a card and press Enter.
 Solo pauses while the cards are open; co-op keeps running. A guest's choice goes to the host (`ctpick`); the host
 accepts it only if it answers the current offer (`ctSeq`) with one of that hero's offered talents, then applies it.
 The guest sees it as selected once the host's snapshot lists it (`tl`). **Build panel:** desktop HUD under the
