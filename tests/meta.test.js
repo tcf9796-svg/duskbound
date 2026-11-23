@@ -52,7 +52,15 @@ ok(M.recordCampaignClear(q, 'nightmare', 'r0') === null && q.unlocked.length ===
 ok(M.recordCampaignClear(q, 'normal', 'r1') === 'nightmare' && JSON.stringify(q.unlocked) === '["normal","nightmare"]', 'Normal clear unlocks Nightmare only');
 ok(M.recordCampaignClear(q, 'normal', 'r1') === null && q.cleared.normal === 1, 'same run cannot count twice');
 ok(M.recordCampaignClear(q, 'normal', 'r2') === null && q.unlocked.length === 2, 'Normal again unlocks nothing new');
-ok(M.recordCampaignClear(q, 'nightmare', 'r3') === 'hell' && M.recordCampaignClear(q, 'hell', 'r4') === 'inferno' && M.recordCampaignClear(q, 'inferno', 'r5') === null, 'chain Nightmare->Hell->Inferno, nothing after');
+const extra = pr => JSON.stringify(pr.characters.filter(c => !['bramble', 'wick', 'vesper'].includes(c)));
+ok(extra(q) === '[]', 'a Normal clear unlocks no hero');
+ok(M.recordCampaignClear(q, 'nightmare', 'r3') === 'hell' && extra(q) === '["rowan"]', 'Nightmare clear unlocks Rowan');
+ok(M.recordCampaignClear(q, 'hell', 'r4') === 'inferno' && extra(q) === '["rowan","mira"]', 'Hell clear unlocks Mira');
+ok(M.recordCampaignClear(q, 'inferno', 'r5') === null && extra(q) === '["rowan","mira","vespera"]', 'Inferno clear unlocks Vespera, nothing after');
+ok(M.recordCampaignClear(q, 'nightmare', 'r6') === null && extra(q).split(',').length === 3, 'clearing again adds no duplicate');
+{ const old = M.newProfile(); old.unlocked = ['normal', 'nightmare', 'hell']; old.cleared = { normal: 1, nightmare: 2 }; const st3 = store(); M.saveProfile(st3, old); const re = M.loadProfile(st3);
+  ok(extra(re) === '["rowan"]', 'a profile that cleared Nightmare before this change gets Rowan when loaded'); }
+ok(M.clearHeroOf('mira') === 'hell' && M.clearHeroOf('bramble') === null, 'each unlockable hero names its difficulty');
 const st2 = store(); M.saveProfile(st2, q); ok(JSON.stringify(M.loadProfile(st2).unlocked) === '["normal","nightmare","hell","inferno"]', 'unlocks survive restart');
 // --- tampered saves and loadouts are repaired / capped
 const bad = M.sanitizeProfile({ id: 'p_abcdefgh12', unlocked: ['inferno'], upgrades: { dmg: 9999, hp: -5, bogus: 3 }, weapons: ['nope', 'mothfang'], equipped: { bramble: 'mothfang' }, talents: { keen: 7, fake: 1 } });
@@ -95,10 +103,11 @@ ok(M.sanitizeProfile({ ...hp }).characters.includes('rowan'), 'unlocked hero sur
   ok(M.mergeProfiles(old, M.newProfile()).upgrades.dmg === 10, 'upgrades older than the reward history are not lost');
 }
 // --- chapter talents: when a pick is earned (policy is an unresolved design decision; default must not add a reward)
-ok(M.CHAPTER_TALENT.policy === 'reward', 'chapter talent policy defaults to "reward"');
-ok(M.earnsChapterTalent('t:keen', 1) && M.earnsChapterTalent('t:exec', 4), 'a roll landing on a talent reward earns a pick');
-ok(!M.earnsChapterTalent('u:hp:4', 1) && !M.earnsChapterTalent('w:thornmaul', 2) && !M.earnsChapterTalent('c:rowan', 1) && !M.earnsChapterTalent(null, 1), 'other rewards (or none) earn no pick');
+ok(M.CHAPTER_TALENT.policy === 'every' && M.CHAPTER_TALENT.cards === 3, 'a pick of 3 cards after every chapter');
+ok(M.CHAPTER_REWARDS.roll === false, 'chapter reward rolls are switched off');
+ok(M.earnsChapterTalent('t:keen', 1, 'reward') && M.earnsChapterTalent('t:exec', 4, 'reward'), '(reward policy) a roll landing on a talent reward earns a pick');
+ok(!M.earnsChapterTalent('u:hp:4', 1, 'reward') && !M.earnsChapterTalent('w:thornmaul', 2, 'reward') && !M.earnsChapterTalent('c:rowan', 1, 'reward') && !M.earnsChapterTalent(null, 1, 'reward') && M.earnsChapterTalent(null, 1), '(reward policy) other rewards (or none) earn no pick');
 ok(!M.earnsChapterTalent('t:keen', M.CHAPTERS) && !M.earnsChapterTalent('t:keen', 0), 'never after the final chapter');
 ok(M.earnsChapterTalent('u:hp:4', 3, 'every') && !M.earnsChapterTalent('t:keen', 3, 'off'), 'the "every" and "off" settings');
-{ const inv = { weapons: [], talents: {}, upgrades: {}, characters: [], chapter: 2 }; let picks = 0, rolls = 0; for (let i = 0; i < 4000; i++) { const r = M.rollReward(inv); rolls++; if (M.earnsChapterTalent(r.item, 2)) picks++; } ok(rolls === 4000 && picks > 0 && picks < rolls, 'picks ride on the existing single roll (one reward per roll, ' + (100 * picks / rolls).toFixed(1) + '% of rolls)'); }
+{ const inv = { weapons: [], talents: {}, upgrades: {}, characters: [], chapter: 2 }; let picks = 0, rolls = 0; for (let i = 0; i < 4000; i++) { const r = M.rollReward(inv); rolls++; if (M.earnsChapterTalent(r.item, 2, 'reward')) picks++; } ok(rolls === 4000 && picks > 0 && picks < rolls, 'picks ride on the existing single roll (one reward per roll, ' + (100 * picks / rolls).toFixed(1) + '% of rolls)'); }
 console.log((fails ? 'FAILED ' + fails : 'all passed') + ' (' + n + ' checks)'); process.exit(fails ? 1 : 0);

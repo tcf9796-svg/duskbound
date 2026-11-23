@@ -605,14 +605,17 @@ const RARITIES = ['green', 'blue', 'purple', 'yellow', 'red'];
 const RARITY_NAMES = { green: 'Green', blue: 'Blue', purple: 'Purple', yellow: 'Yellow', red: 'Red' };
 const RARITY_COLORS = { green: '#7bd96f', blue: '#6fb6ff', purple: '#c27bff', yellow: '#f3d048', red: '#ff5a5a' };
 
-// Chapter talents (HERO_TALENTS in data.js): when does a player earn a pick?
-// UNRESOLVED DESIGN DECISION: guaranteed after every chapter, or only when earned? Until it is decided:
-//   'reward' (default) - only when that chapter's single reward roll lands on a talent reward ('t:...'). The roll,
-//                        its odds and the one-reward limit are unchanged; the pick comes with that talent reward.
-//   'every'            - a guaranteed pick after every chapter (an extra reward: needs an explicit decision).
-//   'off'              - no chapter talents.
+// Chapter rewards: rolling a reward after each chapter is switched off (decided 2026-11-23: a chapter talent pick
+// replaces it). With `roll: false` no reward is rolled or granted; the claim is still recorded, so the campaign clear
+// after the final chapter (difficulty unlocks) still works. Set `roll: true` to bring the rolls back.
+const CHAPTER_REWARDS = { roll: false };
+
+// Chapter talents (HERO_TALENTS in data.js): when does a player earn a pick? (decided 2026-11-23: after every chapter)
+//   'every' (current) - a pick after every completed chapter: `cards` random talents of the hero, not yet picked.
+//   'reward'          - only when that chapter's reward roll lands on a talent reward ('t:...'); needs rolls on.
+//   'off'             - no chapter talents.
 // Never after the final chapter (the run ends there, and chapter talents only last for the run).
-const CHAPTER_TALENT = { policy: 'reward' };
+const CHAPTER_TALENT = { policy: 'every', cards: 3 };
 function earnsChapterTalent(item, chapter, policy = CHAPTER_TALENT.policy) {
   if (policy === 'off' || !(chapter >= 1 && chapter < CHAPTERS)) return false;
   if (policy === 'every') return true;
@@ -710,6 +713,7 @@ function sanitizeProfile(p) {
   for (const [k, v] of Object.entries(p.talents || {})) if (typeof TALENTS === 'undefined' || TALENTS.some(t => t.id === k)) out.talents[k] = Math.max(0, Math.min(START_TALENT_CAP, v | 0));
   out.rewards = (Array.isArray(p.rewards) ? p.rewards : []).slice(-60);
   if (p.claims && typeof p.claims === 'object') for (const k of Object.keys(p.claims).slice(-500)) out.claims[k] = 1;
+  clearHeroes(out);
   return out;
 }
 function loadProfile(store) {
@@ -758,11 +762,20 @@ function grantReward(prof, claim, rarity, item, meta = {}) {
   return true;
 }
 // Records a full five-chapter clear on a difficulty. Unlocks only the next difficulty. Idempotent per run id.
+// Unlockable heroes come from campaign clears: finishing all five chapters on a difficulty unlocks its hero for good.
+// Also applied whenever a profile is read, so profiles that cleared a difficulty earlier get the hero too.
+const CLEAR_HEROES = { nightmare: 'rowan', hell: 'mira', inferno: 'vespera' };
+const clearHeroOf = hero => Object.keys(CLEAR_HEROES).find(d => CLEAR_HEROES[d] === hero) || null;
+function clearHeroes(prof) {
+  const got = [];
+  for (const d in CLEAR_HEROES) if ((prof.cleared[d] || 0) > 0 && !prof.characters.includes(CLEAR_HEROES[d])) { prof.characters.push(CLEAR_HEROES[d]); got.push(CLEAR_HEROES[d]); }
+  return got;
+}
 function recordCampaignClear(prof, diff, runId) {
   const claim = 'clear:' + runId;
   if (!runId || prof.claims[claim]) return null;
   const i = DIFFICULTIES.findIndex(d => d.id === diff); if (i < 0 || !prof.unlocked.includes(diff)) return null;
-  prof.claims[claim] = 1; prof.cleared[diff] = (prof.cleared[diff] || 0) + 1;
+  prof.claims[claim] = 1; prof.cleared[diff] = (prof.cleared[diff] || 0) + 1; clearHeroes(prof);
   const next = DIFFICULTIES[i + 1];
   if (next && !prof.unlocked.includes(next.id)) { prof.unlocked.push(next.id); return next.id; }
   return null;
@@ -808,7 +821,7 @@ function itemLabel(item) {
   if (k === 'c') return 'Character: ' + (typeof HEROES !== 'undefined' && HEROES[a] ? HEROES[a].name : a);
   return item;
 }
-if (typeof module !== 'undefined') module.exports = { mergeProfiles, CHAPTER_TALENT, earnsChapterTalent, CHAPTERS, DIFFICULTIES, PARTY_SCALE, REWARD_ODDS, REWARD_POOLS, REWARD_FALLBACK, RARITIES, UPGRADES, WEAPONS, START_TALENT_CAP,
+if (typeof module !== 'undefined') module.exports = { mergeProfiles, CHAPTER_TALENT, CHAPTER_REWARDS, CLEAR_HEROES, clearHeroOf, clearHeroes, earnsChapterTalent, CHAPTERS, DIFFICULTIES, PARTY_SCALE, REWARD_ODDS, REWARD_POOLS, REWARD_FALLBACK, RARITIES, UPGRADES, WEAPONS, START_TALENT_CAP,
   checkOdds, rarityFor, rollRarity, rollReward, itemAvailable, newProfile, sanitizeProfile, loadProfile, saveProfile, grantReward, recordCampaignClear, highestUnlocked,
   loadoutOf, sanitizeLoadout, applyLoadout, exportProfile, importProfile, itemLabel, ODDS_TOTAL };
 </script>
@@ -1716,7 +1729,8 @@ const ctEligible = p => (HERO_TALENTS[p.hero] || []).filter(t => p.ct.indexOf(t.
 function offerChapterTalent(p) {
   if (p.ctChoice || p.ctPending <= 0) return;
   const list = ctEligible(p); if (!list.length) { p.ctPending = 0; return; } // all five picked this run
-  p.ctChoice = list.map(t => t.id); p.ctSeq++;
+  for (let i = list.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [list[i], list[j]] = [list[j], list[i]]; }
+  p.ctChoice = list.slice(0, CHAPTER_TALENT.cards || 3).map(t => t.id); p.ctSeq++; // random cards from the ones left
 }
 // The host (or solo game) accepts a pick only if it answers the current offer with one of its own eligible talents.
 function applyChapterTalent(p, id, seq) {
@@ -2951,7 +2965,7 @@ function chapterComplete() {
     const claim = key + ':' + pid;
     let r = net.claims.get(claim);
     if (!r) {
-      const roll = rollReward({ ...(p.lo || {}), chapter: game.chapter }); r = { claim, pid, id: p.id, name: p.name, rarity: roll.rarity, item: roll.item, ch: game.chapter, diff: game.diff, run: game.runId, final: game.over === 'final' }; net.claims.set(claim, r);
+      const roll = CHAPTER_REWARDS.roll ? rollReward({ ...(p.lo || {}), chapter: game.chapter }) : { rarity: null, item: null }; r = { claim, pid, id: p.id, name: p.name, rarity: roll.rarity, item: roll.item, ch: game.chapter, diff: game.diff, run: game.runId, final: game.over === 'final' }; net.claims.set(claim, r);
       // chapter talent pick: earned with this roll's result (CHAPTER_TALENT in meta.js); once per claim, never rerolled
       if (earnsChapterTalent(r.item, game.chapter)) { r.ct = 1; p.ctPending = (p.ctPending || 0) + 1; }
     }
@@ -2974,7 +2988,12 @@ function receiveReward(m) {
   if (grantReward(PROFILE, m.claim, m.rarity, m.rarity ? m.item : null, { chapter: m.ch, diff: m.diff })) {
     if (m.rarity) banner(rarityName(m.rarity) + ' reward', itemLabel(m.item), 4, me && me.id);
   }
-  if (m.final) { const un = recordCampaignClear(PROFILE, m.diff, m.run); if (un) setTimeout(() => banner(DIFF(un).name + ' unlocked', 'Campaign cleared on ' + DIFF(m.diff).name, 5), 4200); }
+  if (m.final) {
+    const had = PROFILE.characters.slice(), un = recordCampaignClear(PROFILE, m.diff, m.run);
+    if (un) setTimeout(() => banner(DIFF(un).name + ' unlocked', 'Campaign cleared on ' + DIFF(m.diff).name, 5), 4200);
+    const hero = PROFILE.characters.find(h => !had.includes(h));
+    if (hero) setTimeout(() => banner('Character: ' + HEROES[hero].name, 'Campaign cleared on ' + DIFF(m.diff).name, 5), un ? 9400 : 4200);
+  }
   saveMe();
 }
 const rarityName = r => RARITY_NAMES[r] || '';
@@ -2989,7 +3008,7 @@ function expireAway() {
 }
 
 // ---------- netcode ----------
-const PEER_PREFIX = 'duskbound-v6-'; // bump whenever messages change, so mismatched versions never meet
+const PEER_PREFIX = 'duskbound-v8-'; // bump whenever messages change, so mismatched versions never meet
 const noNetMsg = () => window.DUSK_NO_NET ? 'Online co-op is not available on this page. Solo works here; for co-op, open the downloaded duskbound.html file or a copy on your own website.' : 'Online play needs an internet connection (the networking library did not load).';
 function wrapConn(c) {
   const w = { peerId: c.peer, send: d => { try { c.send(d); } catch (e) { } }, onData: null, onClose: null, close: () => { try { c.close(); } catch (e) { } } };
@@ -3745,6 +3764,7 @@ function heroCards(sel, compact) {
     const H2 = HEROES[id], R = H2.rarity && RARITY[H2.rarity], open = unlocked(id);
     const rar = R ? '<span class="rar" style="color:' + R.color + ';border-color:' + R.color + '">' + T(RARITY_NAMES[H2.rarity]) + '</span>' : '';
     const body = open ? (compact ? '' : '<p><i>' + T(H2.blurb) + '</i></p>') + '<ul>' + H2.kit.map(k => '<li>' + T(k) + '</li>').join('') + '</ul>'
+      : clearHeroOf(id) ? '<p class="lock">' + L('Locked. Clear all five chapters on ' + DIFF(clearHeroOf(id)).name + ' to unlock.', '未解鎖。在' + T(DIFF(clearHeroOf(id)).name) + '難度通關全部五章即可解鎖。') + '</p>'
       : '<p class="lock">' + L('Locked. Can be won as a ' + RARITY_NAMES[H2.rarity] + ' chapter reward from Chapter ' + R.chapter + ' on.', '未解鎖。從第 ' + R.chapter + ' 章起，可在章節獎勵中以' + T(RARITY_NAMES[H2.rarity]) + '獎勵獲得。') + '</p>';
     h += '<div class="card' + (id === sel ? ' sel' : '') + (compact ? ' compact' : '') + (open ? '' : ' locked') + '" data-hero="' + id + '"><span class="key">' + (open ? i + 1 : '🔒') + '</span><canvas width="170" height="' + (compact ? 96 : 120) + '" data-p="' + id + '"></canvas><div class="tag" style="color:' + H2.color + '">' + T(H2.title) + '</div><h3>' + T(H2.name) + rar + '</h3>' + body + '</div>';
   });
@@ -3957,7 +3977,8 @@ function chooseTalent(i) {
 function showEnd() {
   if (!me) return;
   const st = '<div class="stats">' + players.map(p => esc(p.name) + ' — ' + T(HEROES[p.hero].name) + ' · ' + L('Lv ', '等級 ') + p.level + ' · ' + L(p.kills + ' slain', '擊殺 ' + p.kills)).join('<br>') + '<br>' + T('Chapter ' + game.chapter) + '</div>';
-  const rw = game.rewards ? '<div class="stats"><b>' + L('Chapter reward', '章節獎勵') + '</b><br>' + game.rewards.map(r => esc(r.name) + ' — ' + (r.rarity ? '<span style="color:' + RARITY_COLORS[r.rarity] + '">' + T(RARITY_NAMES[r.rarity]) + '</span> · ' + esc(T(itemLabel(r.item))) : L('No reward', '沒有獎勵')) + (r.ct ? ' · <b>' + L('+ chapter talent pick', '+ 章節天賦選擇') + '</b>' : '')).join('<br>') + '</div>' : '';
+  const rws = game.rewards && (CHAPTER_REWARDS.roll ? game.rewards : game.rewards.filter(r => r.ct));
+  const rw = rws && rws.length ? '<div class="stats"><b>' + (CHAPTER_REWARDS.roll ? L('Chapter reward', '章節獎勵') : L('Chapter talent', '章節天賦')) + '</b><br>' + rws.map(r => esc(r.name) + ' — ' + (r.rarity ? '<span style="color:' + RARITY_COLORS[r.rarity] + '">' + T(RARITY_NAMES[r.rarity]) + '</span> · ' + esc(T(itemLabel(r.item))) : CHAPTER_REWARDS.roll ? L('No reward', '沒有獎勵') : '') + (r.ct ? (r.rarity || CHAPTER_REWARDS.roll ? ' · ' : '') + '<b>' + L('choose a hero talent next chapter', '下一章選擇英雄天賦') + '</b>' : '')).join('<br>') + '</div>' : '';
   const bl = game.over === 'win' ? buildHtml(me) : '';
   const guest = net.mode === 'client', wait = '<div class="wait">' + L('Waiting for the host…', '等待房主…') + '</div><button id="leave" class="ghost">' + L('Leave party', '離開隊伍') + '</button>';
   if (game.over === 'dead') show('<h2>' + L('The dusk takes you', '你被暮色吞沒') + '</h2><div class="sub">' + L('The wood closes over another lantern.', '森林又吞沒了一盞燈火。') + '</div>' + st + rw + (guest ? wait : '<button id="again">' + (net.mode === 'host' ? L('Back to the lobby', '回到大廳') : L('Try again', '再試一次')) + '</button>'), true);

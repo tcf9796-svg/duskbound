@@ -23,7 +23,8 @@ const ctEligible = p => (HERO_TALENTS[p.hero] || []).filter(t => p.ct.indexOf(t.
 function offerChapterTalent(p) {
   if (p.ctChoice || p.ctPending <= 0) return;
   const list = ctEligible(p); if (!list.length) { p.ctPending = 0; return; } // all five picked this run
-  p.ctChoice = list.map(t => t.id); p.ctSeq++;
+  for (let i = list.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [list[i], list[j]] = [list[j], list[i]]; }
+  p.ctChoice = list.slice(0, CHAPTER_TALENT.cards || 3).map(t => t.id); p.ctSeq++; // random cards from the ones left
 }
 // The host (or solo game) accepts a pick only if it answers the current offer with one of its own eligible talents.
 function applyChapterTalent(p, id, seq) {

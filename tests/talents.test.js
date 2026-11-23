@@ -14,6 +14,7 @@ const PRE = `
   const lost = e => e.maxHp - e.hp;
   function atNight() { game.time = DAY + 1; night = 1; } function atDay() { game.time = 1; night = 0; }
 `;
+const heroIds = ['splinter', 'territory', 'rampart', 'growth', 'sunseed'];
 const run = (code) => { const w = makeWorld({}); return vm.runInContext(PRE + code, w); };
 
 // ===== earning, picking, lifecycle =====
@@ -21,45 +22,50 @@ const run = (code) => { const w = makeWorld({}); return vm.runInContext(PRE + co
   const r = run(`(() => {
     const out = {};
     out.policy = CHAPTER_TALENT.policy;
-    out.rules = [earnsChapterTalent('t:keen', 1), earnsChapterTalent('u:hp:4', 1), earnsChapterTalent('t:keen', 5), earnsChapterTalent('u:hp:4', 2, 'every'), earnsChapterTalent('t:keen', 2, 'off')];
+    out.rules = [earnsChapterTalent('t:keen', 1, 'reward'), earnsChapterTalent('u:hp:4', 1, 'reward'), earnsChapterTalent('t:keen', 5), earnsChapterTalent('u:hp:4', 2, 'every'), earnsChapterTalent('t:keen', 2, 'off')];
     setup('bramble', []); me.lo = loadoutOf(PROFILE, 'bramble');
     const R = Math.random; let seq; const roll = arr => { seq = arr.slice(); Math.random = () => seq.length ? seq.shift() : 0.5; };
     // chapter 1 roll lands on a starting-talent reward (blue pool index 3 = t:keen)
     roll([0.5, 3.5 / 8]); game.over = 'win'; chapterComplete(); Math.random = R;
-    out.reward1 = game.rewards[0]; out.pend1 = me.ctPending;
+    out.reward1 = game.rewards[0]; out.pend1 = me.ctPending; out.profItems = PROFILE.rewards.filter(x => x.item).length; out.profTalents = JSON.stringify(PROFILE.talents);
     chapterComplete(); out.pendAgain = me.ctPending; // same claim: never twice
-    nextChapter(); update(1 / 60); out.offer = me.ctChoice && me.ctChoice.slice(); out.seq = me.ctSeq;
-    out.badId = applyChapterTalent(me, 'forked', me.ctSeq); out.badSeq = applyChapterTalent(me, 'territory', me.ctSeq + 1);
-    out.good = applyChapterTalent(me, 'territory', me.ctSeq); out.again = applyChapterTalent(me, 'territory', me.ctSeq);
-    out.ct = me.ct.slice(); out.pendAfter = me.ctPending;
-    // chapter 2 roll lands on an upgrade: no pick
+    nextChapter(); update(1 / 60); out.offer = me.ctChoice && me.ctChoice.slice(); out.seq = me.ctSeq; const pickId = me.ctChoice[0];
+    const notOffered = HERO_TALENTS.bramble.map(t => t.id).find(id => !me.ctChoice.includes(id));
+    out.badId = applyChapterTalent(me, 'forked', me.ctSeq) || applyChapterTalent(me, notOffered, me.ctSeq); out.badSeq = applyChapterTalent(me, pickId, me.ctSeq + 1);
+    out.good = applyChapterTalent(me, pickId, me.ctSeq); out.again = applyChapterTalent(me, pickId, me.ctSeq);
+    out.ct = me.ct.slice(); out.pendAfter = me.ctPending; out.pickId = pickId;
+    const seen = new Set(); for (let i = 0; i < 200; i++) { const q = newPlayer(9, 'bramble', 'Q'); q.ctPending = 1; offerChapterTalent(q); q.ctChoice.forEach(id => seen.add(id)); } out.seen = seen.size;
+    // chapter 2: no roll either, another pick
     roll([0.1, 0.1]); game.over = 'win'; chapterComplete(); Math.random = R; out.pend2 = me.ctPending; out.reward2 = game.rewards[0];
     // a later pick excludes what was already chosen
-    game.over = null; me.ctPending = 1; update(1 / 60); out.offer2 = me.ctChoice.slice();
+    game.over = null; me.ctPending = 1; update(1 / 60); out.offer2 = me.ctChoice.slice(); const keep = me.ct.slice(); me.ct = HERO_TALENTS.bramble.map(t => t.id).slice(0, 4); me.ctChoice = null; me.ctPending = 1; update(1 / 60); out.offerLast = me.ctChoice.slice(); me.ct = keep;
     // the final chapter never earns a pick
     me.ctChoice = null; me.ctPending = 0; game.chapter = CHAPTERS; roll([0.5, 3.5 / 8]); game.over = 'final'; chapterComplete(); Math.random = R; out.pendFinal = me.ctPending;
     // the pick lasts through chapters, not into a new run
-    out.keptAcrossChapter = me.ct.includes('territory');
+    out.keptAcrossChapter = me.ct.includes(pickId);
     players = [newPlayer(1, 'bramble', 'P1')]; me = players[0]; beginRun('normal'); out.newRun = me.ct.length;
     // solo pauses while the offer is open
-    me.ctPending = 1; update(1 / 60); const t0 = game.time; tick(1000); tick(1016); out.paused = game.time === t0 && !!me.ctChoice;
+    me.ctPending = 1; { const R2 = Math.random; Math.random = () => 0.999; update(1 / 60); Math.random = R2; } const t0 = game.time; tick(1000); tick(1016); out.paused = game.time === t0 && !!me.ctChoice;
     syncChoice(); out.cards = (choiceEl.innerHTML.match(/class="card ctc"/g) || []).length; out.html = choiceEl.innerHTML;
-    onKey('2'); out.keyPick = me.ct.slice(); out.closed = !me.ctChoice;
+    out.key2 = me.ctChoice[1]; onKey('2'); out.keyPick = me.ct.slice(); out.closed = !me.ctChoice;
     return out;
   })()`);
-  ok(r.policy === 'reward', 'policy defaults to "reward" (no extra guaranteed reward)');
+  ok(r.policy === 'every', 'a pick after every chapter');
   ok(JSON.stringify(r.rules) === '[true,false,false,true,false]', 'earning rule: talent reward yes, other reward no, final chapter no, "every" guaranteed, "off" never');
-  ok(r.reward1.item === 't:keen' && r.reward1.ct === 1 && r.pend1 === 1 && r.pendAgain === 1, 'a chapter roll that lands on a talent reward earns one pick, once per claim (' + JSON.stringify(r.reward1) + ')');
-  ok(r.offer && r.offer.length === 5 && r.offer[0] === 'splinter', 'next chapter offers the hero\'s five talents');
+  ok(r.reward1.rarity === null && r.reward1.item === null && r.reward1.ct === 1 && r.pend1 === 1 && r.pendAgain === 1, 'completing a chapter rolls no reward and earns one pick, once per claim (' + JSON.stringify(r.reward1) + ')');
+  ok(r.profItems === 0 && r.profTalents === '{}', 'nothing is added to the profile');
+  ok(r.offer && r.offer.length === 3 && new Set(r.offer).size === 3 && r.offer.every(id => heroIds.includes(id)), 'next chapter offers 3 of the hero talents (' + r.offer + ')');
+  ok(r.seen === 5, 'the 3 cards are random: all five talents appear across offers');
   ok(r.badId === false && r.badSeq === false && r.good === true && r.again === false, 'only a pick answering the current offer with one of the offered talents is accepted');
-  ok(r.ct.join() === 'territory' && r.pendAfter === 0, 'exactly one talent selected');
-  ok(r.pend2 === 0 && r.reward2.ct === 0, 'a roll landing on another reward earns no pick (' + r.reward2.item + ')');
-  ok(r.offer2.length === 4 && !r.offer2.includes('territory'), 'later offers leave out talents already picked this run');
+  ok(r.ct.join() === r.pickId && r.pendAfter === 0, 'exactly one talent selected');
+  ok(r.pend2 === 1 && r.reward2.ct === 1 && r.reward2.rarity === null, 'every chapter earns a pick, never a reward');
+  ok(r.offer2.length === 3 && !r.offer2.includes(r.pickId), 'later offers leave out talents already picked this run');
+  ok(r.offerLast.length === 1, 'with fewer than 3 left, the offer shows what is left');
   ok(r.pendFinal === 0, 'no pick after the final chapter');
   ok(r.keptAcrossChapter && r.newRun === 0, 'picks last for the run and reset for a new run');
   ok(r.paused, 'solo game pauses while the talent cards are open');
-  ok(r.cards === 5 && /Sweep/.test(r.html) && /Splintering Impact/.test(r.html) && /One explosion per foe per Sweep/.test(r.html), 'cards show name, ability, description and limits');
-  ok(r.keyPick.join() === 'territory' && r.closed, 'number key picks a card (2 = Briar Territory) and closes the offer');
+  ok(r.cards === 3 && /Sweep/.test(r.html) && /Splintering Impact/.test(r.html) && /One explosion per foe per Sweep/.test(r.html), 'cards show name, ability, description and limits');
+  ok(r.keyPick.join() === r.key2 && r.closed, 'number key picks a card (2 = second card) and closes the offer');
 }
 
 // ===== Bramble =====
