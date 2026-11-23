@@ -56,8 +56,10 @@ page by republishing `dist/artifact.html` to the URL above.
 
 - Phones first: landscape layout, safe areas (notch), touch controls, iPhone Safari quirks (audio session switches
   to `play-and-record` only while the mic is on; menus are sticky so a swipe hides Safari's bars).
-- Host is authoritative. Rewards: one roll per player per chapter (green 45 / blue 30 / purple 15 / yellow 7 /
-  red 3 %, no "no reward"), claims keyed `run:chapter:profile`, never rerolled; boss phases and summons never roll.
+- Host is authoritative. Chapter reward rolls are OFF (decided 2026-11-23, `CHAPTER_REWARDS.roll = false` in
+  `meta.js`): finishing a chapter grants a chapter talent pick instead. With rolls on: one roll per player per chapter
+  (green 45 / blue 30 / purple 15 / yellow 7 / red 3 %, no "no reward"). Claims stay keyed `run:chapter:profile` and
+  are still recorded (the campaign clear after Chapter 5 rides on them), never rerolled; boss phases and summons never roll.
 - Difficulty: Normal → Nightmare → Hell → Inferno; a five-chapter clear unlocks only the next; a party may only
   play a difficulty every member has unlocked.
 - Profiles use a random installation id (no device id exists on the web); rejoin needs the host's per-session
@@ -67,19 +69,20 @@ page by republishing `dist/artifact.html` to the URL above.
   apply difficulty and party scaling once and no chapter multiplier, keep every boss beatable solo with the starting
   heroes. Host runs the boss; guests apply pull/cage/slow locally. See DESIGN.md "Chapter bosses".
 - Chapters 4–5 biomes are placeholders (palettes only).
-- Six heroes: Bramble, Wick, Vesper (everyone has them) and the unlockable Rowan (Green), Mira (Blue), Vespera
-  (Purple). They are character rewards inside the one chapter roll (`c:<id>` in `REWARD_POOLS`), winnable from
-  Chapter 1 / 2 / 3; there is no separate character roll. Unlocks live in the profile (`PROFILE.characters`); the
+- Six heroes: Bramble, Wick, Vesper (everyone has them) and the unlockable Rowan, Mira and Vespera, unlocked for good
+  by a campaign clear (all five chapters): Nightmare → Rowan, Hell → Mira, Inferno → Vespera (`CLEAR_HEROES` in
+  `meta.js`, decided 2026-11-23; also granted on load to profiles that cleared earlier). The `c:<id>` items in
+  `REWARD_POOLS` only matter if chapter rolls are turned back on. Unlocks live in the profile (`PROFILE.characters`); the
   host only lets a guest play a hero their profile owns. Rowan and Vespera cast a second skill from the dash slot.
 - The boss is unsealed early by standing in the altar ring for `UNSEAL_TIME` (5 s, `data.js`), not by pressing F;
   any living player counts, the host keeps the time, progress drains when the ring is empty.
-- Network messages changed: `PEER_PREFIX` is `duskbound-v7-`. Bump it whenever messages change.
+- Network messages changed: `PEER_PREFIX` is `duskbound-v8-`. Bump it whenever messages change.
 - Work happens on a branch, then a pull request into `main`. Pull before starting, so PC and phone sessions don't
   drift apart again.
 - Online profiles merge, never overwrite (`mergeProfiles`); sign-in is email + password with no email
   confirmation (works in the Home Screen app; reset by emailed link); the profile id never changes mid-run; only the
   publishable key may appear in the game. Supabase project `ojsjccqugdnuhhmewtqy` (free plan, pauses after a week idle).
-- Chapter talents: five per hero (`HERO_TALENTS`), one pick per earned choice, kept for the run only (like boons).
-  When a pick is earned is UNDECIDED: `CHAPTER_TALENT.policy` stays `reward` (only when the chapter's single roll
-  lands on a `t:` talent reward) until someone decides; `every` would add a guaranteed reward. See DESIGN.md.
+- Chapter talents: five per hero (`HERO_TALENTS`), kept for the run only (like boons). Decided 2026-11-23: after
+  every chapter except the last, each player picks one of 3 random cards from their hero's talents not yet picked
+  (`CHAPTER_TALENT = { policy: 'every', cards: 3 }`). See DESIGN.md.
 - Every user-facing string needs a Traditional Chinese version.

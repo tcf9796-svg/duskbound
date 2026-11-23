@@ -959,7 +959,7 @@ function chapterComplete() {
     const claim = key + ':' + pid;
     let r = net.claims.get(claim);
     if (!r) {
-      const roll = rollReward({ ...(p.lo || {}), chapter: game.chapter }); r = { claim, pid, id: p.id, name: p.name, rarity: roll.rarity, item: roll.item, ch: game.chapter, diff: game.diff, run: game.runId, final: game.over === 'final' }; net.claims.set(claim, r);
+      const roll = CHAPTER_REWARDS.roll ? rollReward({ ...(p.lo || {}), chapter: game.chapter }) : { rarity: null, item: null }; r = { claim, pid, id: p.id, name: p.name, rarity: roll.rarity, item: roll.item, ch: game.chapter, diff: game.diff, run: game.runId, final: game.over === 'final' }; net.claims.set(claim, r);
       // chapter talent pick: earned with this roll's result (CHAPTER_TALENT in meta.js); once per claim, never rerolled
       if (earnsChapterTalent(r.item, game.chapter)) { r.ct = 1; p.ctPending = (p.ctPending || 0) + 1; }
     }
@@ -982,7 +982,12 @@ function receiveReward(m) {
   if (grantReward(PROFILE, m.claim, m.rarity, m.rarity ? m.item : null, { chapter: m.ch, diff: m.diff })) {
     if (m.rarity) banner(rarityName(m.rarity) + ' reward', itemLabel(m.item), 4, me && me.id);
   }
-  if (m.final) { const un = recordCampaignClear(PROFILE, m.diff, m.run); if (un) setTimeout(() => banner(DIFF(un).name + ' unlocked', 'Campaign cleared on ' + DIFF(m.diff).name, 5), 4200); }
+  if (m.final) {
+    const had = PROFILE.characters.slice(), un = recordCampaignClear(PROFILE, m.diff, m.run);
+    if (un) setTimeout(() => banner(DIFF(un).name + ' unlocked', 'Campaign cleared on ' + DIFF(m.diff).name, 5), 4200);
+    const hero = PROFILE.characters.find(h => !had.includes(h));
+    if (hero) setTimeout(() => banner('Character: ' + HEROES[hero].name, 'Campaign cleared on ' + DIFF(m.diff).name, 5), un ? 9400 : 4200);
+  }
   saveMe();
 }
 const rarityName = r => RARITY_NAMES[r] || '';
@@ -997,7 +1002,7 @@ function expireAway() {
 }
 
 // ---------- netcode ----------
-const PEER_PREFIX = 'duskbound-v7-'; // bump whenever messages change, so mismatched versions never meet
+const PEER_PREFIX = 'duskbound-v8-'; // bump whenever messages change, so mismatched versions never meet
 const noNetMsg = () => window.DUSK_NO_NET ? 'Online co-op is not available on this page. Solo works here; for co-op, open the downloaded duskbound.html file or a copy on your own website.' : 'Online play needs an internet connection (the networking library did not load).';
 function wrapConn(c) {
   const w = { peerId: c.peer, send: d => { try { c.send(d); } catch (e) { } }, onData: null, onClose: null, close: () => { try { c.close(); } catch (e) { } } };
@@ -1771,6 +1776,7 @@ function heroCards(sel, compact) {
     const H2 = HEROES[id], R = H2.rarity && RARITY[H2.rarity], open = unlocked(id);
     const rar = R ? '<span class="rar" style="color:' + R.color + ';border-color:' + R.color + '">' + T(RARITY_NAMES[H2.rarity]) + '</span>' : '';
     const body = open ? (compact ? '' : '<p><i>' + T(H2.blurb) + '</i></p>') + '<ul>' + H2.kit.map(k => '<li>' + T(k) + '</li>').join('') + '</ul>'
+      : clearHeroOf(id) ? '<p class="lock">' + L('Locked. Clear all five chapters on ' + DIFF(clearHeroOf(id)).name + ' to unlock.', '未解鎖。在' + T(DIFF(clearHeroOf(id)).name) + '難度通關全部五章即可解鎖。') + '</p>'
       : '<p class="lock">' + L('Locked. Can be won as a ' + RARITY_NAMES[H2.rarity] + ' chapter reward from Chapter ' + R.chapter + ' on.', '未解鎖。從第 ' + R.chapter + ' 章起，可在章節獎勵中以' + T(RARITY_NAMES[H2.rarity]) + '獎勵獲得。') + '</p>';
     h += '<div class="card' + (id === sel ? ' sel' : '') + (compact ? ' compact' : '') + (open ? '' : ' locked') + '" data-hero="' + id + '"><span class="key">' + (open ? i + 1 : '🔒') + '</span><canvas width="170" height="' + (compact ? 96 : 120) + '" data-p="' + id + '"></canvas><div class="tag" style="color:' + H2.color + '">' + T(H2.title) + '</div><h3>' + T(H2.name) + rar + '</h3>' + body + '</div>';
   });
@@ -1983,7 +1989,8 @@ function chooseTalent(i) {
 function showEnd() {
   if (!me) return;
   const st = '<div class="stats">' + players.map(p => esc(p.name) + ' — ' + T(HEROES[p.hero].name) + ' · ' + L('Lv ', '等級 ') + p.level + ' · ' + L(p.kills + ' slain', '擊殺 ' + p.kills)).join('<br>') + '<br>' + T('Chapter ' + game.chapter) + '</div>';
-  const rw = game.rewards ? '<div class="stats"><b>' + L('Chapter reward', '章節獎勵') + '</b><br>' + game.rewards.map(r => esc(r.name) + ' — ' + (r.rarity ? '<span style="color:' + RARITY_COLORS[r.rarity] + '">' + T(RARITY_NAMES[r.rarity]) + '</span> · ' + esc(T(itemLabel(r.item))) : L('No reward', '沒有獎勵')) + (r.ct ? ' · <b>' + L('+ chapter talent pick', '+ 章節天賦選擇') + '</b>' : '')).join('<br>') + '</div>' : '';
+  const rws = game.rewards && (CHAPTER_REWARDS.roll ? game.rewards : game.rewards.filter(r => r.ct));
+  const rw = rws && rws.length ? '<div class="stats"><b>' + (CHAPTER_REWARDS.roll ? L('Chapter reward', '章節獎勵') : L('Chapter talent', '章節天賦')) + '</b><br>' + rws.map(r => esc(r.name) + ' — ' + (r.rarity ? '<span style="color:' + RARITY_COLORS[r.rarity] + '">' + T(RARITY_NAMES[r.rarity]) + '</span> · ' + esc(T(itemLabel(r.item))) : CHAPTER_REWARDS.roll ? L('No reward', '沒有獎勵') : '') + (r.ct ? (r.rarity || CHAPTER_REWARDS.roll ? ' · ' : '') + '<b>' + L('choose a hero talent next chapter', '下一章選擇英雄天賦') + '</b>' : '')).join('<br>') + '</div>' : '';
   const bl = game.over === 'win' ? buildHtml(me) : '';
   const guest = net.mode === 'client', wait = '<div class="wait">' + L('Waiting for the host…', '等待房主…') + '</div><button id="leave" class="ghost">' + L('Leave party', '離開隊伍') + '</button>';
   if (game.over === 'dead') show('<h2>' + L('The dusk takes you', '你被暮色吞沒') + '</h2><div class="sub">' + L('The wood closes over another lantern.', '森林又吞沒了一盞燈火。') + '</div>' + st + rw + (guest ? wait : '<button id="again">' + (net.mode === 'host' ? L('Back to the lobby', '回到大廳') : L('Try again', '再試一次')) + '</button>'), true);
