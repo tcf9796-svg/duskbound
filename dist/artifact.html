@@ -90,6 +90,11 @@
   .card.locked:hover{transform:none;border-color:#4a4370;box-shadow:none}
   .card.locked canvas{filter:grayscale(.7) brightness(.55)}
   .card .lock{font-style:italic;color:#a9a3c4}
+  /* chapter talent cards (up to five) and the build panel */
+  #choice .ctc{width:190px} #choice.coop .ctc{width:172px} .ctcards{max-width:1060px}
+  .ctc .lim,.build .lim{font-size:11.5px;color:#a9a3c4;font-style:italic}
+  .card:focus{outline:2px solid #f3d48a;outline-offset:2px}
+  .build{max-width:760px;line-height:1.55}
   .rar{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;border:1px solid;border-radius:4px;padding:0 5px;margin-left:8px;vertical-align:middle;white-space:nowrap;display:inline-block}
   .reward{color:#d8d2ee;font-size:15px;margin-top:8px}
   .reward.won{font-size:18px;color:#f3d48a}
@@ -111,6 +116,7 @@
     .plist{font-size:13px;line-height:1.45;margin-bottom:6px} .code{font-size:20px;letter-spacing:5px} .stats{font-size:13px;line-height:1.5}
   }
   @media (max-height:420px){ .card ul{display:none} .card{width:150px} h1{font-size:26px} #overlay .card{flex-basis:160px} }
+  @media (max-height:540px){ #choice .ctc{width:150px;padding:6px 8px} #choice .ctc p{font-size:10.5px;margin-top:3px} .ctsub{display:none} .build{font-size:12px;line-height:1.4} }
 </style>
 <canvas id="game"></canvas>
 <div id="choice" class="hidden"></div>
@@ -235,6 +241,56 @@ const DAY = 65, NIGHT = 45, CYCLE = DAY + NIGHT, DAYS = 3, TOTAL = CYCLE * DAYS;
 // Progress drains at UNSEAL_DRAIN x speed while nobody stands in the ring.
 const UNSEAL_TIME = 5, UNSEAL_RADIUS = 58, UNSEAL_DRAIN = 1.5;
 
+
+// ---------- chapter talents ----------
+// Five per hero. A player picks ONE when they earn a chapter talent choice (when that happens is set by
+// CHAPTER_TALENT in meta.js) and keeps it for the rest of the run, like boons; nothing is saved to the profile.
+// `ab`: the abilities it changes (shown on the card). `v`: every tunable number of the effect (initial balance).
+const HERO_TALENTS = {
+  bramble: [
+    { id: 'splinter', name: 'Splintering Impact', ab: ['Sweep'], desc: 'A foe your Sweep knocks into a wall or another foe sets off a small thorn explosion.', limits: 'One explosion per foe per Sweep. Explosions never cause more explosions.', v: { window: 0.35, radius: 70, dmg: 0.6 } },
+    { id: 'territory', name: 'Briar Territory', ab: ['Briar Ring'], desc: 'Briar Ring leaves a thorn field for 4 s that damages and slows foes inside it.', limits: 'Damages every 0.5 s. Bosses are slowed for less time.', v: { life: 4, radius: 0.85, tick: 0.5, dmg: 0.35, slow: 0.8 } },
+    { id: 'rampart', name: 'Living Rampart', ab: ['Charge'], desc: 'Each foe your Charge strikes gives you a small shield. Charging into a caged or bound ally breaks them free.', limits: '+8 shield per foe, at most 30 shield from this talent. Shield lasts 6 s.', v: { per: 8, cap: 30, time: 6 } },
+    { id: 'growth', name: 'Unstoppable Growth', ab: ['Overgrowth'], desc: 'Each Sweep that hits during Overgrowth extends it by 0.5 s.', limits: 'Up to +3 s per Overgrowth (11 s in all). Thorn pulses and other effects do not extend it.', v: { per: 0.5, max: 3 } },
+    { id: 'sunseed', name: 'Sunseed Reserve', ab: ['Daybloom'], desc: 'At full health, Daybloom’s healing builds a barrier instead. The barrier stays after nightfall.', limits: 'Barrier holds at most 30.', v: { cap: 30 } }
+  ],
+  wick: [
+    { id: 'forked', name: 'Forked Cinders', ab: ['Cinder Bolt'], desc: 'A Cinder Bolt’s first hit throws two weaker sparks at two other nearby foes.', limits: 'Sparks never split. At most 4 sparks per attack, night bolts included.', v: { n: 2, cap: 4, dmg: 0.4, range: 260 } },
+    { id: 'coven', name: 'Lantern Coven', ab: ['Lantern'], desc: 'Lantern has two charges and two can burn at once, joined by a burning thread that hurts foes crossing it.', limits: 'Two lanterns at most (a third replaces the oldest). Thread damages every 0.5 s.', v: { charges: 2, recharge: 8, tick: 0.5, dmg: 0.5, width: 18, maxLen: 650 } },
+    { id: 'passage', name: 'Ember Passage', ab: ['Blink'], desc: 'Blink leaves a burning trail between where you left and where you land. Allies crossing it move faster.', limits: 'Trail lasts 3 s. Speed +25% for 1.5 s; crossing again refreshes it, never stacks.', v: { life: 3, tick: 0.5, dmg: 0.4, width: 26, haste: 0.25, hasteT: 1.5 } },
+    { id: 'constellation', name: 'Falling Constellation', ab: ['Cinderfall', 'Lantern'], desc: 'Cinderfall’s last star detonates your lanterns inside its area, consuming them in a burst of fire.', limits: 'Only your own lanterns; each detonates once.', v: { reach: 300, dmg: 3 } },
+    { id: 'midnight', name: 'Borrowed Midnight', ab: ['Blink', 'Nightflame'], desc: 'By day, Blink turns on Nightflame’s extra bolt for 5 s. At night, Blink makes your next attack’s extra bolt home in on a foe.', limits: 'Blinking again refreshes it; never more than one extra bolt.', v: { time: 5, turn: 6, range: 420 } }
+  ],
+  vesper: [
+    { id: 'returning', name: 'Returning Edge', ab: ['Twin Cuts'], desc: 'The blade thrown on every third attack flies back to you, cutting again at reduced damage.', limits: 'Each foe is hit at most once going out and once coming back. Returning blades don’t count as attacks.', v: { dmg: 0.6, speed: 760 } },
+    { id: 'silk', name: 'Silken Crossfire', ab: ['Blade Fan'], desc: 'Blade Fan leaves silk trails for 3 s that slow foes crossing them.', limits: 'At most 14 trails at once. Bosses are slowed for less time.', v: { life: 3, len: 440, width: 16, slow: 0.7, cap: 14 } },
+    { id: 'wingbeat', name: 'Wingbeat Riposte', ab: ['Flit', 'Twin Cuts'], desc: 'Flitting through a foe empowers your next attack to throw an extra piercing blade.', limits: 'Stores one empowered attack. The extra blade doesn’t count as an attack.', v: { dmg: 1.3 } },
+    { id: 'total', name: 'Total Eclipse', ab: ['Eclipse'], desc: 'Eclipse always strikes 8 times while foes remain, finding new targets when one falls. Repeat strikes on a foe deal reduced damage.', limits: '8 strikes at most. Ends if no foes are left.', v: { strikes: 8, repeat: 0.6, range: 520 } },
+    { id: 'lunar', name: 'Lunar Rhythm', ab: ['Moonlit', 'Flit'], desc: 'At night your critical hits speed up Flit’s recharge by 0.5 s. By day, every third attack does instead.', limits: 'At most once per second. Never more than two Flit charges.', v: { cut: 0.5, cd: 1 } }
+  ],
+  rowan: [
+    { id: 'reprisal', name: 'Thorn Reprisal', ab: ['Deep Roots', 'Briar Thrust'], desc: 'Blocking a hit empowers your next attack to send out a piercing wave of roots.', limits: 'Stores one empowered attack. The wave can’t empower another.', v: { dmg: 1.2, speed: 520, life: 0.6 } },
+    { id: 'grove', name: 'Walking Grove', ab: ['Shelterwood'], desc: 'Shelterwood moves with you instead of staying put, with a smaller radius.', limits: 'Radius 70% of normal.', v: { radius: 0.7 } },
+    { id: 'spreading', name: 'Spreading Roots', ab: ['Root Snare'], desc: 'When a rooted foe dies, its roots spread to up to two nearby foes.', limits: 'Once per Root Snare. Spread roots don’t spread again. Bosses are rooted for less time.', v: { n: 2, range: 220, time: 1.5 } },
+    { id: 'heartwood', name: 'Heartwood Bond', ab: ['Deep Roots'], desc: 'Reaching full Deep Roots charges shields the most wounded nearby ally, or you if no ally is near.', limits: '25 shield for 6 s. Once every 8 s.', v: { shield: 25, time: 6, cd: 8, range: 450 } },
+    { id: 'aftergrowth', name: 'Ancient Aftergrowth', ab: ['Ancient Sentinel'], desc: 'When Ancient Sentinel ends, a sapling grows for 6 s that heals nearby allies, you included, and reduces the damage they take.', limits: 'Heals every 0.5 s. Damage reduction 15% (doesn’t stack with Shelterwood; the stronger applies).', v: { life: 6, radius: 130, tick: 0.5, heal: 2, healPct: 0.015, dr: 0.15 } }
+  ],
+  mira: [
+    { id: 'echoing', name: 'Echoing Step', ab: ['Reflection Step'], desc: 'Your decoy repeats one Shattered Cuts combo at reduced damage.', limits: 'Copied cuts can’t make decoys or more copies.', v: { dmg: 0.4, gap: 0.25, range: 110 } },
+    { id: 'relay', name: 'Mirror Relay', ab: ['Mirror Exchange'], desc: 'Mirror Exchange leaves a second reflection, allowing one more swap before it fades.', limits: 'Two swaps at most in a row. The second reflection lasts 3 s.', v: { life: 3 } },
+    { id: 'splintered', name: 'Splintered Edge', ab: ['Blind Spot'], desc: 'Blind Spot hits make foes bleed.', limits: 'Up to 3 stacks for 3 s. Bleeding can’t add stacks.', v: { stacks: 3, time: 3, tick: 0.5, dmg: 0.12 } },
+    { id: 'opening', name: 'Shared Opening', ab: ['Mirror Exchange'], desc: 'Shattering a decoy marks nearby foes. A teammate’s next hit on a marked foe deals extra damage (your own, when playing solo).', limits: '+30% once per mark. Marks last 6 s.', v: { bonus: 0.3, time: 6 } },
+    { id: 'curtain', name: 'Final Curtain', ab: ['Hall of Mirrors'], desc: 'When Hall of Mirrors ends, each reflection bursts into glass shards.', limits: 'Each reflection bursts once, only when the ultimate runs out.', v: { radius: 90, dmg: 2 } }
+  ],
+  vespera: [
+    { id: 'wandering', name: 'Wandering Flame', ab: ['Ghostlight'], desc: 'Ghostlight passes through its first target and hits one more foe at reduced damage.', limits: 'Never hits the same foe twice.', v: { dmg: 0.6 } },
+    { id: 'merciful', name: 'Merciful Wisp', ab: ['Guiding Wisp'], desc: 'When a Guiding Wisp shield runs out, half of what’s left heals the protected player.', limits: 'Only when it expires on its own; a used-up shield heals nothing.', v: { pct: 0.5 } },
+    { id: 'succession', name: 'Soul Succession', ab: ['Soul Tether'], desc: 'When a tethered foe dies, its link passes to another nearby foe for the time left.', limits: 'Once per Soul Tether. Shared damage still never spreads again.', v: { range: 260 } },
+    { id: 'communion', name: 'Ember Communion', ab: ['Lingering Light'], desc: 'Collecting an ember also releases a small healing pulse for you and nearby allies.', limits: 'Each ember heals once. Energy is restored as usual.', v: { radius: 170, heal: 3, healPct: 0.02 } },
+    { id: 'rprocession', name: 'Returning Procession', ab: ['Midnight Procession'], desc: 'Midnight Procession comes back along its path for a second, weaker pass of damage and healing.', limits: 'Half strength on the way back; each foe is hit at most 3 times on it. Comes back only once.', v: { str: 0.5, hits: 3, step: 0.2 } }
+  ]
+};
+const heroTalent = (hero, id) => (HERO_TALENTS[hero] || []).find(t => t.id === id) || null;
 </script>
 <script>
 'use strict';
@@ -333,6 +389,39 @@ const ZH = {
   "Guiding Wisp": "引路幽光",
   "Soul Tether": "魂鏈",
   "Midnight Procession": "午夜行列",
+  // chapter talents
+  "Daybloom": "日華", "Nightflame": "夜焰", "Moonlit": "月照", "Blind Spot": "盲點", "Lingering Light": "殘光",
+  "Chapter talent": "章節天賦", "Freed": "已救出",
+  "Splintering Impact": "碎裂衝擊", "A foe your Sweep knocks into a wall or another foe sets off a small thorn explosion.": "被橫掃擊飛而撞上牆壁或其他敵人的敵人，會引發一次小型荊棘爆炸。", "One explosion per foe per Sweep. Explosions never cause more explosions.": "每次橫掃每名敵人最多一次爆炸。爆炸不會再引發爆炸。",
+  "Briar Territory": "荊棘領地", "Briar Ring leaves a thorn field for 4 s that damages and slows foes inside it.": "荊棘環留下持續 4 秒的荊棘地帶，傷害並減速其中的敵人。", "Damages every 0.5 s. Bosses are slowed for less time.": "每 0.5 秒造成傷害。首領的減速時間較短。",
+  "Living Rampart": "活木壁壘", "Each foe your Charge strikes gives you a small shield. Charging into a caged or bound ally breaks them free.": "衝鋒每擊中一名敵人就獲得少量護盾。衝向被囚禁或束縛的隊友可將其救出。", "+8 shield per foe, at most 30 shield from this talent. Shield lasts 6 s.": "每名敵人 +8 護盾，此天賦最多提供 30 護盾。護盾持續 6 秒。",
+  "Unstoppable Growth": "勢不可擋", "Each Sweep that hits during Overgrowth extends it by 0.5 s.": "瘋長期間，每次命中的橫掃使其延長 0.5 秒。", "Up to +3 s per Overgrowth (11 s in all). Thorn pulses and other effects do not extend it.": "每次瘋長最多延長 3 秒（總計 11 秒）。荊棘脈衝與其他效果不會延長。",
+  "Sunseed Reserve": "日種儲備", "At full health, Daybloom’s healing builds a barrier instead. The barrier stays after nightfall.": "生命全滿時，日華的回復會轉為累積屏障。入夜後屏障仍會保留。", "Barrier holds at most 30.": "屏障最多 30。",
+  "Forked Cinders": "分岔燼火", "A Cinder Bolt’s first hit throws two weaker sparks at two other nearby foes.": "燼火彈首次命中時，向附近另外兩名敵人射出兩道較弱的火花。", "Sparks never split. At most 4 sparks per attack, night bolts included.": "火花不會再分岔。每次攻擊最多 4 道火花（含夜晚的額外火彈）。",
+  "Lantern Coven": "燈籠集會", "Lantern has two charges and two can burn at once, joined by a burning thread that hurts foes crossing it.": "燈籠有兩次充能，可同時燃燒兩盞，並由燃燒的火線相連，傷害穿越的敵人。", "Two lanterns at most (a third replaces the oldest). Thread damages every 0.5 s.": "最多兩盞燈籠（第三盞會取代最舊的）。火線每 0.5 秒造成傷害。",
+  "Ember Passage": "餘燼通道", "Blink leaves a burning trail between where you left and where you land. Allies crossing it move faster.": "閃現會在出發點與落點之間留下燃燒的軌跡。穿越軌跡的隊友移動速度提升。", "Trail lasts 3 s. Speed +25% for 1.5 s; crossing again refreshes it, never stacks.": "軌跡持續 3 秒。速度 +25%，持續 1.5 秒；再次穿越會刷新時間，不會疊加。",
+  "Falling Constellation": "墜落星座", "Cinderfall’s last star detonates your lanterns inside its area, consuming them in a burst of fire.": "燼落的最後一顆星會引爆範圍內你的燈籠，將其消耗並造成火焰爆發。", "Only your own lanterns; each detonates once.": "只影響你自己的燈籠；每盞只會引爆一次。",
+  "Borrowed Midnight": "借來的午夜", "By day, Blink turns on Nightflame’s extra bolt for 5 s. At night, Blink makes your next attack’s extra bolt home in on a foe.": "白天時，閃現會開啟夜焰的額外火彈 5 秒。夜晚時，閃現使下一次攻擊的額外火彈追蹤敵人。", "Blinking again refreshes it; never more than one extra bolt.": "再次閃現會刷新效果；額外火彈永遠不超過一發。",
+  "Returning Edge": "回旋之刃", "The blade thrown on every third attack flies back to you, cutting again at reduced damage.": "每第三擊擲出的飛刃會飛回你身邊，以較低傷害再次斬擊。", "Each foe is hit at most once going out and once coming back. Returning blades don’t count as attacks.": "每名敵人去程與回程各最多被擊中一次。回程飛刃不算作攻擊。",
+  "Silken Crossfire": "絲線交錯", "Blade Fan leaves silk trails for 3 s that slow foes crossing them.": "刃扇留下持續 3 秒的絲線，使穿越的敵人減速。", "At most 14 trails at once. Bosses are slowed for less time.": "同時最多 14 條絲線。首領的減速時間較短。",
+  "Wingbeat Riposte": "振翅反擊", "Flitting through a foe empowers your next attack to throw an extra piercing blade.": "掠影穿過敵人後，下一次攻擊會額外擲出一把穿透飛刃。", "Stores one empowered attack. The extra blade doesn’t count as an attack.": "最多儲存一次強化攻擊。額外飛刃不算作攻擊。",
+  "Total Eclipse": "全蝕", "Eclipse always strikes 8 times while foes remain, finding new targets when one falls. Repeat strikes on a foe deal reduced damage.": "只要還有敵人，月蝕必定斬擊 8 次，目標倒下時會尋找新目標。重複斬擊同一名敵人時傷害降低。", "8 strikes at most. Ends if no foes are left.": "最多 8 次斬擊。沒有敵人時結束。",
+  "Lunar Rhythm": "月之韻律", "At night your critical hits speed up Flit’s recharge by 0.5 s. By day, every third attack does instead.": "夜晚時，暴擊使掠影的充能加快 0.5 秒。白天則改為每第三擊觸發。", "At most once per second. Never more than two Flit charges.": "每秒最多一次。掠影充能永遠不超過兩次。",
+  "Thorn Reprisal": "荊棘反擊", "Blocking a hit empowers your next attack to send out a piercing wave of roots.": "格擋攻擊後，下一次攻擊會放出一道穿透的根系波。", "Stores one empowered attack. The wave can’t empower another.": "最多儲存一次強化攻擊。根系波不會再觸發強化。",
+  "Walking Grove": "行走的樹林", "Shelterwood moves with you instead of staying put, with a smaller radius.": "庇護林會跟隨你移動而非固定不動，但範圍較小。", "Radius 70% of normal.": "範圍為原本的 70%。",
+  "Spreading Roots": "蔓延之根", "When a rooted foe dies, its roots spread to up to two nearby foes.": "被定身的敵人死亡時，根系會蔓延到附近最多兩名敵人。", "Once per Root Snare. Spread roots don’t spread again. Bosses are rooted for less time.": "每次根縛一次。蔓延的根系不會再蔓延。首領的定身時間較短。",
+  "Heartwood Bond": "心木之契", "Reaching full Deep Roots charges shields the most wounded nearby ally, or you if no ally is near.": "深根充能達到上限時，為附近傷勢最重的隊友加上護盾；附近沒有隊友時改為自己。", "25 shield for 6 s. Once every 8 s.": "25 護盾，持續 6 秒。每 8 秒最多一次。",
+  "Ancient Aftergrowth": "古木新生", "When Ancient Sentinel ends, a sapling grows for 6 s that heals nearby allies, you included, and reduces the damage they take.": "遠古哨衛結束時，長出一株持續 6 秒的樹苗，治療附近的隊友（包括你）並降低他們受到的傷害。", "Heals every 0.5 s. Damage reduction 15% (doesn’t stack with Shelterwood; the stronger applies).": "每 0.5 秒治療一次。傷害減免 15%（不與庇護林疊加，取較強者）。",
+  "Echoing Step": "回聲步", "Your decoy repeats one Shattered Cuts combo at reduced damage.": "你的分身會以較低傷害重複一次碎鏡斬連擊。", "Copied cuts can’t make decoys or more copies.": "複製的斬擊不會產生分身或更多複製。",
+  "Mirror Relay": "鏡之接力", "Mirror Exchange leaves a second reflection, allowing one more swap before it fades.": "鏡像交換會留下第二道倒影，在消失前可再交換一次。", "Two swaps at most in a row. The second reflection lasts 3 s.": "連續最多交換兩次。第二道倒影持續 3 秒。",
+  "Splintered Edge": "碎裂之刃", "Blind Spot hits make foes bleed.": "盲點攻擊會使敵人流血。", "Up to 3 stacks for 3 s. Bleeding can’t add stacks.": "最多 3 層，持續 3 秒。流血傷害不會增加層數。",
+  "Shared Opening": "共享破綻", "Shattering a decoy marks nearby foes. A teammate’s next hit on a marked foe deals extra damage (your own, when playing solo).": "擊碎分身會標記附近的敵人。隊友對被標記敵人的下一擊造成額外傷害（單人時為你自己的攻擊）。", "+30% once per mark. Marks last 6 s.": "每個標記 +30% 一次。標記持續 6 秒。",
+  "Final Curtain": "終幕", "When Hall of Mirrors ends, each reflection bursts into glass shards.": "鏡之迴廊結束時，每道倒影都會爆裂成玻璃碎片。", "Each reflection bursts once, only when the ultimate runs out.": "每道倒影只爆裂一次，且只在絕招時間結束時。",
+  "Wandering Flame": "游移之焰", "Ghostlight passes through its first target and hits one more foe at reduced damage.": "鬼火穿過第一個目標，並以較低傷害再擊中一名敵人。", "Never hits the same foe twice.": "不會重複擊中同一名敵人。",
+  "Merciful Wisp": "慈悲幽光", "When a Guiding Wisp shield runs out, half of what’s left heals the protected player.": "引路幽光的護盾時間結束時，剩餘量的一半會治療受保護的玩家。", "Only when it expires on its own; a used-up shield heals nothing.": "只在自然結束時觸發；已耗盡的護盾不會治療。",
+  "Soul Succession": "魂之傳承", "When a tethered foe dies, its link passes to another nearby foe for the time left.": "被連結的敵人死亡時，連結會在剩餘時間內轉移到附近另一名敵人。", "Once per Soul Tether. Shared damage still never spreads again.": "每次魂鏈一次。分攤的傷害仍不會再次擴散。",
+  "Ember Communion": "餘燼共融", "Collecting an ember also releases a small healing pulse for you and nearby allies.": "拾取餘燼時，同時為你和附近隊友釋放小範圍治療。", "Each ember heals once. Energy is restored as usual.": "每個餘燼只治療一次。能量照常回復。",
+  "Returning Procession": "歸返行列", "Midnight Procession comes back along its path for a second, weaker pass of damage and healing.": "午夜行列會沿原路返回，以較弱的效果再造成一次傷害與治療。", "Half strength on the way back; each foe is hit at most 3 times on it. Comes back only once.": "返程效果減半；返程中每名敵人最多被擊中 3 次。只會返回一次。",
   "Thicket": "灌木叢",
   "Shelterwood: +25% radius, +2s duration.": "庇護林：範圍 +25%，持續時間 +2 秒。",
   "Taproot": "主根",
@@ -515,6 +604,20 @@ const REWARD_ODDS = [['green', 4500], ['blue', 3000], ['purple', 1500], ['yellow
 const RARITIES = ['green', 'blue', 'purple', 'yellow', 'red'];
 const RARITY_NAMES = { green: 'Green', blue: 'Blue', purple: 'Purple', yellow: 'Yellow', red: 'Red' };
 const RARITY_COLORS = { green: '#7bd96f', blue: '#6fb6ff', purple: '#c27bff', yellow: '#f3d048', red: '#ff5a5a' };
+
+// Chapter talents (HERO_TALENTS in data.js): when does a player earn a pick?
+// UNRESOLVED DESIGN DECISION: guaranteed after every chapter, or only when earned? Until it is decided:
+//   'reward' (default) - only when that chapter's single reward roll lands on a talent reward ('t:...'). The roll,
+//                        its odds and the one-reward limit are unchanged; the pick comes with that talent reward.
+//   'every'            - a guaranteed pick after every chapter (an extra reward: needs an explicit decision).
+//   'off'              - no chapter talents.
+// Never after the final chapter (the run ends there, and chapter talents only last for the run).
+const CHAPTER_TALENT = { policy: 'reward' };
+function earnsChapterTalent(item, chapter, policy = CHAPTER_TALENT.policy) {
+  if (policy === 'off' || !(chapter >= 1 && chapter < CHAPTERS)) return false;
+  if (policy === 'every') return true;
+  return typeof item === 'string' && item.startsWith('t:');
+}
 
 // Permanent stat upgrades (stack up to cap). Applied when a run starts.
 const UPGRADES = {
@@ -705,7 +808,7 @@ function itemLabel(item) {
   if (k === 'c') return 'Character: ' + (typeof HEROES !== 'undefined' && HEROES[a] ? HEROES[a].name : a);
   return item;
 }
-if (typeof module !== 'undefined') module.exports = { mergeProfiles, CHAPTERS, DIFFICULTIES, PARTY_SCALE, REWARD_ODDS, REWARD_POOLS, REWARD_FALLBACK, RARITIES, UPGRADES, WEAPONS, START_TALENT_CAP,
+if (typeof module !== 'undefined') module.exports = { mergeProfiles, CHAPTER_TALENT, earnsChapterTalent, CHAPTERS, DIFFICULTIES, PARTY_SCALE, REWARD_ODDS, REWARD_POOLS, REWARD_FALLBACK, RARITIES, UPGRADES, WEAPONS, START_TALENT_CAP,
   checkOdds, rarityFor, rollRarity, rollReward, itemAvailable, newProfile, sanitizeProfile, loadProfile, saveProfile, grantReward, recordCampaignClear, highestUnlocked,
   loadoutOf, sanitizeLoadout, applyLoadout, exportProfile, importProfile, itemLabel, ODDS_TOTAL };
 </script>
@@ -901,6 +1004,9 @@ function drawEnemy(e) {
   c.restore();
   if (e.type !== 'boss' && e.hp < e.maxHp) { const w = r * 2; ctx.fillStyle = 'rgba(0,0,0,.6)'; ctx.fillRect(e.x - w / 2, e.y - r - 14, w, 4); ctx.fillStyle = e.elite ? '#f3d48a' : e.poisT > 0 ? '#a6e36a' : '#e25555'; ctx.fillRect(e.x - w / 2, e.y - r - 14, w * clamp(e.hp / e.maxHp, 0, 1), 4); }
   if (e.slowT > 0) { ctx.strokeStyle = '#7bc96f'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(e.x, e.y + r * 0.6, r * 0.9, 0, TAU); ctx.stroke(); }
+  // chapter talents: Shared Opening mark (a glass diamond) and Splintered Edge bleeding (red drops)
+  if (e.mark || e.markOn) { const y = e.y - r - 24; ctx.fillStyle = '#e8fbff'; ctx.strokeStyle = '#4a8a99'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(e.x, y - 7); ctx.lineTo(e.x + 5, y); ctx.lineTo(e.x, y + 7); ctx.lineTo(e.x - 5, y); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+  if (e.bleed || e.bleedOn) { ctx.fillStyle = '#e0312a'; for (let i = 0; i < 3; i++) { const x = e.x - 8 + i * 8, y = e.y - r * 0.2 + ((game.t * 30 + i * 7) % 14); ctx.beginPath(); ctx.arc(x, y, 2, 0, TAU); ctx.fill(); } }
   if (e.rootT > 0) {
     // Root Snare: roots curl up around the feet.
     ctx.strokeStyle = '#8a6238'; ctx.lineWidth = 3; ctx.lineCap = 'round';
@@ -1586,6 +1692,334 @@ function drawArena(c) { if (!game.boss || !game.arena) return; c.save(); c.strok
 </script>
 <script>
 'use strict';
+// Chapter talents (HERO_TALENTS in data.js, earning rule CHAPTER_TALENT in meta.js).
+// A player picks ONE of their hero's remaining talents when they have earned a pick; it lasts for the rest of the run.
+// Everything here runs on the host (or in solo) and is called from game.js; guests see the results in snapshots.
+// Guard rails shared by all effects: talent damage is flagged `proc` (never triggers venom, chain, more talents or
+// Soul Tether spreading when also `dot`), crowd control on bosses is scaled by ccScale, and spawned
+// projectiles / zones are capped.
+
+const hasT = (p, id) => !!(p && p.ct && p.ct.indexOf(id) >= 0);
+const tv = (p, id) => heroTalent(p.hero, id).v;
+// Slows and roots last this fraction as long on bosses; arena objects (anchored, hidden or immune) are never affected.
+const ccScale = e => e.anchor || e.invuln || e.hidden ? 0 : e.type === 'boss' ? 0.4 : 1;
+const TALENT_PROJ_CAP = 200, TALENT_ZONE_CAP = 40;
+const projRoom = () => projs.length < TALENT_PROJ_CAP;
+const tzones = () => zones.filter(z => z.tal && z.life > 0).length;
+const hasteMul = p => p.hasteT > 0 ? p.hasteMul : 1;
+// distance from point (px,py) to the segment (x,y)-(x2,y2)
+function segD(px, py, x, y, x2, y2) { const dx = x2 - x, dy = y2 - y, l = dx * dx + dy * dy || 1, t = clamp(((px - x) * dx + (py - y) * dy) / l, 0, 1); return Math.hypot(px - x - dx * t, py - y - dy * t); }
+function tzone(o) { o.tal = true; o.friendly = true; o.oid = o.owner ? o.owner.id : 0; o.delay = 0; if (tzones() < TALENT_ZONE_CAP) zones.push(o); return o; }
+
+// ---------- picking ----------
+const ctEligible = p => (HERO_TALENTS[p.hero] || []).filter(t => p.ct.indexOf(t.id) < 0);
+function offerChapterTalent(p) {
+  if (p.ctChoice || p.ctPending <= 0) return;
+  const list = ctEligible(p); if (!list.length) { p.ctPending = 0; return; } // all five picked this run
+  p.ctChoice = list.map(t => t.id); p.ctSeq++;
+}
+// The host (or solo game) accepts a pick only if it answers the current offer with one of its own eligible talents.
+function applyChapterTalent(p, id, seq) {
+  const t = heroTalent(p.hero, id);
+  if (!t || !p.ctChoice || seq !== p.ctSeq || p.ctChoice.indexOf(id) < 0 || p.ct.indexOf(id) >= 0) return false;
+  p.ct.push(id); p.ctPending = Math.max(0, p.ctPending - 1); p.ctChoice = null;
+  if (id === 'coven') { p.lanCh = t.v.charges; p.lanRe = 0; }
+  sfx('level', null, p.id); banner(t.name, 'Chapter talent', 2.5, p.id);
+  return true;
+}
+
+// ---------- normal attacks (manual or automatic: both go through doAttack) ----------
+// Bramble's Sweep: `hits` are the foes it struck.
+function talentSweep(p, hits) {
+  if (hasT(p, 'splinter')) { const v = tv(p, 'splinter'); for (const e of hits) if (e.type !== 'boss' && !e.anchor && !e.dead) e.splint = { p, t: v.window, used: false }; }
+  if (hasT(p, 'growth') && p.ultT > 0 && hits.length) { const v = tv(p, 'growth'), add = Math.min(v.per, v.max - p.ultExt); if (add > 0) { p.ultT += add; p.ultExt += add; } }
+}
+// Splintering Impact: a foe knocked by a Sweep explodes once if the knock carries it into a wall or another foe.
+// (bx, by): where it moved to before walls pushed it back.
+function splinterCheck(e, dt, bx, by) {
+  const s = e.splint; if (!s) return;
+  if ((s.t -= dt) <= 0 || s.used || e.dead) { e.splint = null; return; }
+  if (Math.hypot(e.kbx, e.kby) < 40) return; // only while it is actually being knocked
+  const wall = Math.hypot(e.x - bx, e.y - by) > 0.5, other = !wall && enemies.some(q => q !== e && !q.dead && dist(q, e) < q.r + e.r + 2);
+  if (!wall && !other) return;
+  s.used = true; e.splint = null; const v = tv(s.p, 'splinter');
+  ring(e.x, e.y, v.radius, '#9fe08a'); burst(e.x, e.y, '#9fe08a', 12, 220, 3);
+  for (const q of enemies) if (!q.dead && dist(q, e) < v.radius + q.r) hitEnemy(s.p, q, s.p.dmg * v.dmg, { proc: true, quiet: true, color: '#9fe08a' });
+}
+// Wick's Cinder Bolt volley. Returns { bonus, home, fork } for the bolts about to be thrown.
+function wickVolley(p) {
+  const bonus = night > 0.5 || (hasT(p, 'midnight') && p.bmT > 0) ? 1 : 0; // never more than one extra bolt
+  const home = bonus && night > 0.5 && p.bmHome; if (home) p.bmHome = false;
+  return { bonus, home, fork: hasT(p, 'forked') ? { sparks: 0 } : null };
+}
+// Vesper's Twin Cuts, after the combo counter moved: third-cut blade options and day-time Lunar Rhythm.
+function vesperCut(p, third) {
+  if (hasT(p, 'lunar') && third && night <= 0.5) lunarCut(p);
+  if (p.wingbeat) { p.wingbeat = false; if (projRoom()) shoot(p.x, p.y, p.face + 0.12, 780, { owner: p, dmg: p.dmg * tv(p, 'wingbeat').dmg, life: 0.6, pierce: 2, color: '#f0e8ff', kind: 'blade' }); }
+}
+function lunarCut(p) { if (p.lrCd > 0) return; const v = tv(p, 'lunar'); p.lrCd = v.cd; if (p.dashes < p.dashMax) p.dashRe -= v.cut; }
+// Rowan's Briar Thrust: a stored Thorn Reprisal goes out with it.
+function rowanThrust(p) {
+  if (!p.reprisal) return; p.reprisal = false; const v = tv(p, 'reprisal');
+  if (projRoom()) shoot(p.x + Math.cos(p.face) * 20, p.y + Math.sin(p.face) * 20, p.face, v.speed, { owner: p, dmg: p.dmg * v.dmg, life: v.life, r: 14, pierce: 99, color: '#a9c46c', kind: 'root' });
+}
+
+// ---------- projectiles ----------
+// Before moving: homing bolts and returning blades steer.
+function talentProjSteer(q, dt) {
+  if (q.back) {
+    const o = q.owner; if (!o || o.down) { q.life = 0; return; }
+    const a = angTo(q, o), sp = Math.hypot(q.vx, q.vy) || 760; q.vx = Math.cos(a) * sp; q.vy = Math.sin(a) * sp;
+    if (dist(q, o) < 26) q.life = 0;
+  } else if (q.home) {
+    if (!q.tgt || !targetable(q.tgt)) { let b = null, bd = q.home.range; for (const e of enemies) { if (!targetable(e)) continue; const d = dist(e, q); if (d < bd) { bd = d; b = e; } } q.tgt = b; }
+    if (q.tgt) { const sp = Math.hypot(q.vx, q.vy), cur = Math.atan2(q.vy, q.vx), na = cur + clamp(angDiff(angTo(q, q.tgt), cur), -q.home.turn * dt, q.home.turn * dt); q.vx = Math.cos(na) * sp; q.vy = Math.sin(na) * sp; }
+  }
+}
+// When a projectile's flight ends (time or a wall): a Returning Edge blade turns back, once.
+function talentProjEnd(q) {
+  if (!q.ret || q.back || !q.owner) return false;
+  const v = tv(q.owner, 'returning'); q.back = true; q.life = 1.4; q.hit = new Set(); q.pierce = 99; q.dmg *= v.dmg;
+  const a = angTo(q, q.owner); q.vx = Math.cos(a) * v.speed; q.vy = Math.sin(a) * v.speed; return true;
+}
+// After a friendly projectile hits e.
+function talentProjHit(q, e) {
+  if (q.falloff) q.dmg *= q.falloff; // Wandering Flame: weaker after the first target
+  if (q.fork && !q.forked) { // Forked Cinders: first impact only; sparks never fork
+    q.forked = true; const p = q.owner, v = tv(p, 'forked');
+    const near = enemies.filter(o => o !== e && targetable(o) && dist(o, e) < v.range).sort((a, b) => dist(a, e) - dist(b, e));
+    for (let i = 0; i < v.n && i < near.length && q.fork.sparks < v.cap && projRoom(); i++) { q.fork.sparks++; shoot(e.x, e.y, angTo(e, near[i]), 560, { owner: p, dmg: p.dmg * v.dmg, life: 0.6, r: 5, color: '#ffd27a', kind: 'fire', hit: new Set([e]) }); }
+  }
+}
+
+// ---------- skills, dashes, ultimates ----------
+// Lantern Coven: is a lantern ready? (charges replace the plain cooldown)
+function covenReady(p) { return !hasT(p, 'coven') || p.lanCh > 0; }
+function covenUse(p, z) {
+  const v = tv(p, 'coven'); p.lanCh--; if (p.lanRe <= 0) p.lanRe = v.recharge * p.cdr;
+  p.tSkill = p.lanCh > 0 ? 0.35 : p.lanRe;
+  const mine = zones.filter(o => o.lantern && o.owner === p && o.life > 0 && o !== z);
+  while (mine.length >= v.charges) mine.shift().life = 0; // a third lantern replaces the oldest
+  z.coven = true; z.oid = p.id;
+}
+function briarTerritory(p, R) { const v = tv(p, 'territory'); tzone({ kind: 'thorns', owner: p, x: p.x, y: p.y, r: R * v.radius, life: v.life, max: v.life, tickT: 0, color: '#7bc96f' }); }
+function silkTrails(p, angles) {
+  const v = tv(p, 'silk'), mine = zones.filter(z => z.kind === 'silk' && z.owner === p && z.life > 0);
+  for (const a of angles) {
+    while (mine.length >= v.cap) mine.shift().life = 0;
+    mine.push(tzone({ kind: 'silk', owner: p, x: p.x, y: p.y, x2: p.x + Math.cos(a) * v.len, y2: p.y + Math.sin(a) * v.len, r: v.width, life: v.life, max: v.life, color: '#e6dcff' }));
+  }
+}
+// Mira's Mirror Exchange, after the swap: Shared Opening marks, Mirror Relay's second reflection.
+function miraExchange(p, z, ox, oy, R) {
+  if (hasT(p, 'opening')) { const v = tv(p, 'opening'); for (const e of enemies) if (!e.dead && !e.noDrop && dist(e, { x: ox, y: oy }) < R + e.r) e.mark = { by: p, t: v.time }; }
+  if (hasT(p, 'relay') && !z.relay) {
+    const v = tv(p, 'relay');
+    p.decoy = { kind: 'decoy', dec: true, friendly: true, owner: p, oid: p.id, x: ox, y: oy, r: 15, life: v.life, max: v.life, color: HEROES.mira.color, relay: true };
+    zones.push(p.decoy); p.decoyOn = true; p.tSkill = 0.4; burst(ox, oy, '#e8fbff', 10, 160);
+  }
+}
+// Mira's Reflection Step decoy.
+function miraDecoy(p, z) { if (hasT(p, 'echoing')) { const v = tv(p, 'echoing'); z.echo = { n: 3, t: v.gap }; } }
+// The dash connected with foe e (Bramble's Charge, Vesper's Flit).
+function talentDashHit(p, e) {
+  if (p.hero === 'bramble' && hasT(p, 'rampart')) { const v = tv(p, 'rampart'); p.shield = Math.max(p.shield, Math.min(v.cap, p.shield + v.per)); p.shieldT = Math.max(p.shieldT, v.time); }
+  if (p.hero === 'vesper' && hasT(p, 'wingbeat')) p.wingbeat = true; // stores one
+}
+// While Bramble charges with Living Rampart: an ally held by a cage or binding is freed on contact.
+function rampartFree(p) {
+  if (p.hero !== 'bramble' || !hasT(p, 'rampart')) return;
+  for (const q of players) if (q !== p && !q.down && dist(p, q) < p.r + q.r + 22) { const cg = cageOn(q); if (cg) { killEnemy(cg, null); floatText(q.x, q.y - 34, 'Freed', '#9fe08a', 15); } }
+}
+// Wick's Blink from (x0,y0) to where Wick is now.
+function wickBlink(p, x0, y0) {
+  if (hasT(p, 'passage')) { const v = tv(p, 'passage'); tzone({ kind: 'etrail', owner: p, x: x0, y: y0, x2: p.x, y2: p.y, r: v.width, life: v.life, max: v.life, tickT: 0, color: '#ff9b3d' }); }
+  if (hasT(p, 'midnight')) { if (night > 0.5) p.bmHome = true; else p.bmT = tv(p, 'midnight').time; } // refreshes, never stacks
+}
+// Total Eclipse: 8 strikes while foes remain; a foe already struck takes reduced damage.
+function eclipseStart(p) {
+  const v = tv(p, 'total'), list = enemies.filter(e => targetable(e) && dist(e, p) < v.range).sort((a, b) => dist(a, p) - dist(b, p)).slice(0, v.strikes);
+  if (!list.length) return false;
+  p.flurry = { total: true, list, left: v.strikes, struck: new Map(), t: 0 }; return true;
+}
+function eclipseNext(p) {
+  const f = p.flurry, v = tv(p, 'total');
+  let e = f.list.find(o => targetable(o) && !f.struck.has(o));
+  if (!e) e = enemies.find(o => targetable(o) && !f.struck.has(o) && dist(o, p) < v.range); // a new foe replaces a fallen one
+  if (!e) { let best = null, n = 1e9; for (const [o, k] of f.struck) if (targetable(o) && k < n) { n = k; best = o; } e = best; } // revisit
+  return e;
+}
+// An ultimate ran out on its own (never on going down, loading or leaving a chapter).
+function talentUltEnd(p) {
+  if (p.hero === 'rowan' && hasT(p, 'aftergrowth')) { const v = tv(p, 'aftergrowth'); tzone({ kind: 'sapling', owner: p, x: p.x, y: p.y, r: v.radius, life: v.life, max: v.life, tickT: 0, color: '#9fe08a', dr: v.dr }); ring(p.x, p.y, v.radius, '#9fe08a'); }
+  if (p.hero === 'mira' && hasT(p, 'curtain')) {
+    const v = tv(p, 'curtain');
+    for (const s of mirrorSpots(p)) { ring(s.x, s.y, v.radius, '#e8fbff'); burst(s.x, s.y, '#e8fbff', 16, 260, 4); for (const e of enemies) if (!e.dead && dist(e, s) < v.radius + e.r) hitEnemy(p, e, p.dmg * v.dmg, { proc: true, quiet: true, color: '#bff6ff' }); }
+    sfx('shatter', p);
+  }
+}
+
+// ---------- taking hits, healing, shields ----------
+// Rowan blocked a frontal hit; `reached` = this block filled Deep Roots.
+function rowanBlock(p, reached) {
+  if (hasT(p, 'reprisal')) p.reprisal = true; // stores one
+  if (reached && hasT(p, 'heartwood') && p.hbCd <= 0) {
+    const v = tv(p, 'heartwood'); p.hbCd = v.cd;
+    let t = null, lo = 2; for (const q of players) if (q !== p && !q.down && dist(q, p) < v.range && q.hp / q.maxHp < lo) { lo = q.hp / q.maxHp; t = q; }
+    t = t || p; t.shield = Math.max(t.shield, v.shield); t.shieldT = Math.max(t.shieldT, v.time);
+    addFx({ kind: 'bolt', x: p.x, y: p.y, x2: t.x, y2: t.y, life: 0.3, max: 0.3, color: '#d8c08a' }); ring(t.x, t.y, 40, '#d8c08a'); sfx('shield', t);
+  }
+}
+// Damage reduction from zones: Shelterwood 35% or an Aftergrowth sapling; the stronger one applies, they never stack.
+function zoneDR(p) {
+  let dr = inShelter(p) ? 0.35 : 0;
+  for (const z of zones) if (z.kind === 'sapling' && z.life > 0 && dist(z, p) < z.r + p.r) dr = Math.max(dr, z.dr);
+  return dr;
+}
+// Guiding Wisp from caster c onto t: Merciful Wisp remembers how much it gave (a replacement starts over).
+function wispGiven(c, t, amount) { t.mercy = hasT(c, 'merciful') ? { amt: amount, pct: tv(c, 'merciful').pct } : null; }
+function shieldExpired(p) { if (p.mercy && p.shield > 0) heal(p, Math.min(p.shield, p.mercy.amt) * p.mercy.pct); p.mercy = null; }
+// Sunseed Reserve: Daybloom's healing at full health tops up a barrier (kept after nightfall, capped).
+function sunseed(p, perSec, dt) { if (hasT(p, 'sunseed') && perSec > 0) p.barrier = Math.min(tv(p, 'sunseed').cap, (p.barrier || 0) + perSec * dt); }
+// Lingering Light ember collected by p.
+function emberCollected(p) {
+  if (!hasT(p, 'communion')) return; const v = tv(p, 'communion');
+  ring(p.x, p.y, v.radius, '#86f0cf'); for (const q of players) if (!q.down && dist(q, p) < v.radius) heal(q, v.heal + v.healPct * q.maxHp);
+}
+
+// ---------- deaths ----------
+function talentKill(e) {
+  // Spreading Roots: once per Root Snare cast; spread roots don't spread again.
+  const c = e.rootCast;
+  if (c && !c.spread && e.rootT > 0) {
+    c.spread = true; const v = tv(c.p, 'spreading');
+    const near = enemies.filter(o => o !== e && targetable(o) && ccScale(o) > 0 && dist(o, e) < v.range).sort((a, b) => dist(a, e) - dist(b, e)).slice(0, v.n);
+    for (const o of near) { o.rootT = Math.max(o.rootT || 0, v.time * ccScale(o)); o.rootCast = null; addFx({ kind: 'bolt', x: e.x, y: e.y, x2: o.x, y2: o.y, life: 0.25, max: 0.25, color: '#8a6238' }); }
+  }
+  // Soul Succession: the link moves to another nearby foe, once per Soul Tether.
+  if (e.tid) {
+    const g = tethers.find(g => g.id === e.tid);
+    if (g && !g.moved && g.t > 0 && g.owner && hasT(g.owner, 'succession')) {
+      const v = tv(g.owner, 'succession'), o = enemies.filter(o => o !== e && targetable(o) && !o.tid && dist(o, e) < v.range).sort((a, b) => dist(a, e) - dist(b, e))[0];
+      if (o) { g.moved = true; g.list.push(o); o.tid = g.id; ring(o.x, o.y, o.r + 14, '#86f0cf'); addFx({ kind: 'bolt', x: e.x, y: e.y, x2: o.x, y2: o.y, life: 0.25, max: 0.25, color: '#86f0cf' }); }
+    }
+  }
+}
+
+// ---------- per-frame upkeep ----------
+function talentPlayerTick(p, dt) {
+  if (p.hasteT > 0) p.hasteT -= dt; if (p.bmT > 0) p.bmT -= dt; if (p.lrCd > 0) p.lrCd -= dt; if (p.hbCd > 0) p.hbCd -= dt;
+  if (hasT(p, 'coven')) { const v = tv(p, 'coven'); if (p.lanCh < v.charges) { p.lanRe -= dt; if (p.lanRe <= 0) { p.lanCh++; p.lanRe = p.lanCh < v.charges ? v.recharge * p.cdr : 0; p.tSkill = Math.min(p.tSkill, 0); } } }
+}
+// Bleed and marks on a foe (host).
+function talentEnemyTick(e, dt) {
+  if (e.mark && (e.mark.t -= dt) <= 0) e.mark = null;
+  const b = e.bleed; if (!b) return;
+  if ((b.t -= dt) <= 0) { e.bleed = null; return; }
+  if ((b.tick -= dt) <= 0) { const v = tv(b.p, 'splintered'); b.tick = v.tick; hitEnemy(b.p, e, Math.max(1, b.p.dmg * v.dmg * b.n), { flat: true, proc: true, dot: true, quiet: true, color: '#ff6b6b' }); }
+}
+// Blind Spot hit by Mira (direct hits only: bleed ticks can't add stacks).
+function blindSpotHit(p, e, o) { if (o.proc || !hasT(p, 'splintered')) return; const v = tv(p, 'splintered'); e.bleed = { p, n: Math.min(v.stacks, (e.bleed ? e.bleed.n : 0) + 1), t: v.time, tick: e.bleed ? e.bleed.tick : v.tick }; }
+// Shared Opening: a teammate's (or solo Mira's own) next direct hit on a marked foe; returns the damage multiplier.
+function markBonus(p, e, o) { if (!e.mark || o.proc || o.flat || (e.mark.by === p && players.length > 1)) return 1; const b = tv(e.mark.by, 'opening').bonus; e.mark = null; return 1 + b; }
+
+// Talent zones, ticked inside the zone loop of update(); returns true if it handled z.
+function talentZone(z, dt) {
+  const o = z.owner;
+  switch (z.kind) {
+    case 'thorns': {
+      z.life -= dt; if ((z.tickT -= dt) > 0) return true; const v = tv(o, 'territory'); z.tickT = v.tick;
+      for (const e of enemies) if (!e.dead && dist(e, z) < z.r + e.r) { hitEnemy(o, e, o.dmg * v.dmg, { proc: true, quiet: true, color: '#9fe08a' }); e.slowT = Math.max(e.slowT || 0, v.slow * ccScale(e)); }
+      return true;
+    }
+    case 'silk': { z.life -= dt; const v = tv(o, 'silk'); for (const e of enemies) if (!e.dead && segD(e.x, e.y, z.x, z.y, z.x2, z.y2) < z.r + e.r) e.slowT = Math.max(e.slowT || 0, v.slow * ccScale(e)); return true; }
+    case 'etrail': {
+      z.life -= dt; const v = tv(o, 'passage');
+      for (const q of players) if (!q.down && segD(q.x, q.y, z.x, z.y, z.x2, z.y2) < z.r + q.r) { q.hasteT = v.hasteT; q.hasteMul = 1 + v.haste; } // refresh, never stack
+      if ((z.tickT -= dt) <= 0) { z.tickT = v.tick; for (const e of enemies) if (!e.dead && segD(e.x, e.y, z.x, z.y, z.x2, z.y2) < z.r + e.r) hitEnemy(o, e, o.dmg * v.dmg, { proc: true, quiet: true, color: '#ff9b3d' }); }
+      if (Math.random() < 0.4) { const k = Math.random(); parts.push({ x: z.x + (z.x2 - z.x) * k, y: z.y + (z.y2 - z.y) * k, vx: 0, vy: -40, life: 0.4, max: 0.4, color: '#ff9b3d', size: 3 }); }
+      return true;
+    }
+    case 'sapling': {
+      z.life -= dt; if ((z.tickT -= dt) > 0) return true; const v = tv(o, 'aftergrowth'); z.tickT = v.tick;
+      for (const q of players) if (!q.down && dist(q, z) < z.r + q.r) heal(q, v.heal + v.healPct * q.maxHp);
+      return true;
+    }
+  }
+  return false;
+}
+// Extra behaviour of existing zones (called for each zone before its normal update).
+function talentZonePre(z, dt) {
+  const o = z.owner;
+  if (z.kind === 'shelter' && z.follow && o) { z.x = o.x; z.y = o.y; } // Walking Grove
+  if (z.kind === 'decoy' && z.echo && z.echo.n > 0 && z.life > 0 && o) { // Echoing Step: one copied combo
+    if ((z.echo.t -= dt) <= 0) {
+      const v = tv(o, 'echoing'); z.echo.t = v.gap; const fin = --z.echo.n === 0;
+      let tg = null, bd = v.range; for (const e of enemies) { if (!targetable(e)) continue; const d = dist(e, z); if (d < bd) { bd = d; tg = e; } }
+      if (tg) meleeArc(o, fin ? 84 : 72, fin ? 2.2 : 1.4, o.dmg * (fin ? 1.8 : 1) * v.dmg, { from: z, face: angTo(z, tg), proc: true, quiet: true, color: '#9ee7f2' });
+    }
+  }
+  if (z.kind === 'proc' && o && hasT(o, 'rprocession') && !z.back) { // remember the path for the return trip
+    const v = tv(o, 'rprocession'); z.path = z.path || [{ x: z.x, y: z.y }];
+    if ((z.pathT = (z.pathT || 0) - dt) <= 0) { z.pathT = v.step; if (z.path.length < 120) z.path.push({ x: z.x, y: z.y }); }
+  }
+}
+// A Midnight Procession ran its course: Returning Procession sends it back along its path once.
+function procEnded(z) {
+  const o = z.owner; if (!o || z.back || z.returned || !z.path || !hasT(o, 'rprocession')) return;
+  z.returned = true; const v = tv(o, 'rprocession'), path = z.path.slice().reverse(), life = path.length * v.step + 0.5;
+  zones.push({ kind: 'proc', friendly: true, owner: o, oid: o.id, back: true, path, x: z.x, y: z.y, r: z.r, delay: 0, life, max: life, vx: 0, vy: 0, tickT: 0, color: z.color, str: v.str, hits: new Map(), hitCap: v.hits });
+}
+// Movement of a returning procession (it follows its recorded path instead of hunting).
+function procBackStep(z, dt) {
+  const n = z.path[0]; if (!n) { z.vx = z.vy = 0; return; }
+  const d = dist(z, n), sp = 260; if (d < 12) { z.path.shift(); return; }
+  z.vx = (n.x - z.x) / d * sp; z.vy = (n.y - z.y) / d * sp;
+}
+// Lantern Coven's burning threads, once per frame.
+function covenThreads(dt) {
+  for (const p of players) {
+    if (!hasT(p, 'coven')) continue; const v = tv(p, 'coven');
+    const L2 = zones.filter(z => z.lantern && z.owner === p && z.life > 0 && z.delay <= 0); if (L2.length < 2) continue;
+    const [a, b] = L2; if (dist(a, b) > v.maxLen) continue;
+    if ((p.threadT = (p.threadT || 0) - dt) > 0) continue; p.threadT = v.tick;
+    for (const e of enemies) if (!e.dead && segD(e.x, e.y, a.x, a.y, b.x, b.y) < v.width + e.r) hitEnemy(p, e, p.dmg * v.dmg, { proc: true, quiet: true, color: '#ffb347' });
+  }
+}
+// Falling Constellation: Cinderfall's final star z detonates the caster's lanterns inside the ultimate's area.
+function constellation(z) {
+  const p = z.owner; if (!z.final || !p || !hasT(p, 'constellation')) return; const v = tv(p, 'constellation');
+  for (const l of zones) if (l.lantern && l.owner === p && l.life > 0 && !l.det && Math.hypot(l.x - z.cx, l.y - z.cy) < v.reach) {
+    l.det = true; l.life = 0; ring(l.x, l.y, l.r, '#ffd27a'); burst(l.x, l.y, '#ffd27a', 26, 340, 5); sfx('boom', l);
+    for (const e of enemies) if (!e.dead && dist(e, l) < l.r + e.r) hitEnemy(p, e, p.dmg * v.dmg, { proc: true, kb: 160, color: '#ffd27a' });
+  }
+}
+
+// ---------- drawing (host and guests) ----------
+function drawTalentZone(c, z) {
+  const a = clamp(z.life / 0.5, 0, 1);
+  if (z.kind === 'thorns') {
+    c.globalAlpha = 0.16 * a; circ(c, z.x, z.y, z.r, '#7bc96f'); c.globalAlpha = 0.7 * a; c.fillStyle = '#5d8a3f';
+    for (let i = 0; i < 14; i++) { const q = i * 2.39996, d = z.r * Math.sqrt((i + 0.5) / 14), x = z.x + Math.cos(q) * d, y = z.y + Math.sin(q) * d; c.beginPath(); c.moveTo(x - 4, y + 3); c.lineTo(x, y - 7); c.lineTo(x + 4, y + 3); c.fill(); }
+  } else if (z.kind === 'silk' || z.kind === 'etrail') {
+    c.globalAlpha = (z.kind === 'silk' ? 0.45 : 0.6) * a; c.strokeStyle = z.kind === 'silk' ? '#efe8ff' : '#ff9b3d'; c.lineWidth = z.kind === 'silk' ? 2 : z.r * 0.8; c.lineCap = 'round';
+    c.beginPath(); c.moveTo(z.x, z.y); c.lineTo(z.x2, z.y2); c.stroke();
+  } else if (z.kind === 'sapling') {
+    c.globalAlpha = 0.16 * a; circ(c, z.x, z.y, z.r, '#9fe08a'); c.globalAlpha = a; c.fillStyle = '#5d4023'; c.fillRect(z.x - 2, z.y - 14, 4, 16); ell(c, z.x, z.y - 18, 10, 8, '#7da353'); ell(c, z.x + 6, z.y - 22, 6, 5, '#a9c46c');
+  }
+  c.globalAlpha = 1;
+}
+// Burning threads between a Coven caster's two lanterns.
+function drawThreads(c) {
+  const by = {}; for (const z of zones) if (z.lantern && z.coven && z.life > 0) (by[z.oid] = by[z.oid] || []).push(z);
+  c.strokeStyle = '#ffb347'; c.lineWidth = 3; c.globalAlpha = 0.6 + Math.sin(game.t * 9) * 0.2;
+  for (const k in by) { const l = by[k]; if (l.length < 2) continue; c.beginPath(); c.moveTo(l[0].x, l[0].y - 8); c.lineTo(l[1].x, l[1].y - 8); c.stroke(); }
+  c.globalAlpha = 1;
+}
+const TALENT_ZONES = new Set(['thorns', 'silk', 'etrail', 'sapling']);
+</script>
+<script>
+'use strict';
 /* DUSKBOUND — an original top-down action roguelike with online co-op.
    Solo, or up to 4 players peer-to-peer: the host simulates the world, guests send input and render snapshots.
    Files: data.js (content), art.js (procedural sprites), audio.js (synth), game.js (simulation, netcode, UI). */
@@ -1815,7 +2249,10 @@ function newPlayer(pid, hero, name) {
     ultT: 0, pulse: 0, combo: 0, flurry: null, talents: {}, h: {}, walk: 0, moving: false, healAcc: 0,
     pending: 0, choice: null, choiceSeq: 0, choiceTitle: '', down: false, rev: 0, tp: 0, remote: false,
     aim: { x: 0, y: 0 }, in: { mx: 0, my: 0, l: false, skill: false, dash: false, ult: false, interact: false, aim: { x: 0, y: 0 } }, cds: [0, 0, 0, 0],
-    roots: 0, lan: LANTERN_MAX, lanMax: LANTERN_MAX, shield: 0, shieldT: 0, decoy: null, decoyOn: false
+    roots: 0, lan: LANTERN_MAX, lanMax: LANTERN_MAX, shield: 0, shieldT: 0, decoy: null, decoyOn: false,
+    // chapter talents (talents.js): picked ids, earned picks, the open offer; plus their effect state
+    ct: [], ctPending: 0, ctChoice: null, ctSeq: 0, barrier: 0, hasteT: 0, hasteMul: 1, bmT: 0, bmHome: false, wingbeat: false, reprisal: false,
+    lrCd: 0, hbCd: 0, ultExt: 0, lanCh: 0, lanRe: 0, mercy: null, threadT: 0
   };
 }
 const dashCdOf = p => (HEROES[p.hero].dashCd || DASH_CD) * p.cdr;
@@ -1944,14 +2381,16 @@ function hitEnemy(p, e, dmg, o = {}) {
     d *= p.dmgMul * (1 + p.nightDmg * night) * (p.ultT > 0 && p.hero === 'bramble' ? 1.5 : 1);
     if (p.exec && e.hp < e.maxHp * 0.3) d *= 1 + p.exec;
     // Blind Spot: the foe is busy with an ally or a decoy.
-    if (p.hero === 'mira' && e.aggro && e.tgt && e.tgt !== p) { d *= 1.4 + 0.2 * (p.h.glint || 0); o = Object.assign({}, o, { color: '#bff6ff' }); }
+    if (p.hero === 'mira' && e.aggro && e.tgt && e.tgt !== p) { d *= 1.4 + 0.2 * (p.h.glint || 0); o = Object.assign({}, o, { color: '#bff6ff' }); blindSpotHit(p, e, o); }
+    d *= markBonus(p, e, o); // Shared Opening
     crit = !o.noCrit && Math.random() < p.crit + (p.hero === 'vesper' ? 0.15 * night : 0);
     if (crit) d *= p.critMul;
+    if (crit && p.hero === 'vesper' && night > 0.5 && hasT(p, 'lunar')) lunarCut(p);
   }
   if (e.invuln) { if (!o.quiet) floatText(e.x, e.y - e.r - 4, T('Immune'), '#9a96b8', 12); return 0; }
   if (e.armor) d *= 1 - e.armor; if (e.vuln) d *= BOSS_VULN;
   d = Math.max(1, Math.round(d)); if (bossLinkHit(e, d)) { e.flash = 0.1; floatText(e.x, e.y - e.r - 4, d, '#9ff0ff', 15); return d; } e.hp -= d; e.flash = 0.1;
-  if (!o.shared && e.tid) shareTether(p, e, d);
+  if (!o.shared && !o.dot && e.tid) shareTether(p, e, d); // direct damage only
   if (!e.aggro) alertPack(e);
   if (o.kb && e.type !== 'boss' && !e.anchor) { const a = angTo(p, e); e.kbx += Math.cos(a) * o.kb; e.kby += Math.sin(a) * o.kb; }
   floatText(e.x, e.y - e.r - 4, d + (crit ? '!' : ''), crit ? '#ffd24a' : o.color || '#fff', crit ? 19 : 14);
@@ -1976,6 +2415,7 @@ function killEnemy(e, p) {
   if (e.dead) return; e.dead = true;
   if (e.noDrop) { burst(e.x, e.y, '#d9c8a0', 14, 220, 4); sfx('die', e); return; } // boss arena objects: no loot, no kill credit, never end the chapter
   if (p) p.kills++;
+  talentKill(e);
   // Lingering Light: while a Lanternkeeper is in the party, the fallen leave embers for her lantern.
   if (players.some(q => q.hero === 'vespera')) pickups.push({ id: nextId++, kind: 'lume', x: e.x, y: e.y, val: e.elite || e.type === 'boss' ? 20 : 6, vx: 0, vy: 0, t: rand(TAU), life: 8 });
   burst(e.x, e.y, e.type === 'wisp' ? '#8fd0ff' : '#b79bd6', e.elite || e.type === 'boss' ? 40 : 12, 240, 4); sfx('die', e);
@@ -1996,14 +2436,18 @@ function hurtPlayer(p, dmg, src) {
   let raw = dmg; const sentinel = p.hero === 'rowan' && p.ultT > 0;
   if (p.hero === 'rowan' && src && Math.abs(angDiff(angTo(p, src), p.face)) < 1.05) {
     raw *= 0.5; ring(p.x + Math.cos(p.face) * 18, p.y + Math.sin(p.face) * 18, 26, '#d8c08a'); sfx('block', p);
-    if (p.roots < ROOTS_MAX) { p.roots++; floatText(p.x, p.y - 44, 'Blocked · root ' + p.roots, '#d8c08a', 13); } else floatText(p.x, p.y - 44, 'Blocked', '#d8c08a', 13);
+    let reached = false;
+    if (p.roots < ROOTS_MAX) { p.roots++; reached = p.roots === ROOTS_MAX; floatText(p.x, p.y - 44, 'Blocked · root ' + p.roots, '#d8c08a', 13); } else floatText(p.x, p.y - 44, 'Blocked', '#d8c08a', 13);
+    rowanBlock(p, reached);
   }
-  if (inShelter(p)) raw *= 0.65;
+  raw *= 1 - zoneDR(p); // Shelterwood or an Aftergrowth sapling, the stronger
   let d = Math.max(1, Math.round(raw * (1 - Math.min(sentinel ? 0.8 : 0.6, p.armor + (sentinel ? 0.35 : 0)))));
-  if (p.shield > 0) {
+  if (p.barrier > 0) { const a = Math.min(p.barrier, d); p.barrier -= a; d -= a; } // Sunseed Reserve
+  if (d > 0 && p.shield > 0) {
     const a = Math.min(p.shield, d); p.shield -= a; d -= a;
     if (d <= 0) { p.iT = 0.55; floatText(p.x, p.y - 30, 'Absorbed', '#86f0cf', 14); burst(p.x, p.y, '#86f0cf', 8, 160); sfx('shield', null, p.id); return; }
   }
+  if (d <= 0) { p.iT = 0.55; floatText(p.x, p.y - 30, 'Absorbed', '#d8f0a0', 14); return; }
   p.hp -= d; p.iT = 0.55; shake(9, null, p.id); sfx('hurt', null, p.id);
   floatText(p.x, p.y - 30, '-' + d, '#ff6b6b', 17); burst(p.x, p.y, '#ff6b6b', 10, 200);
   if (p.spite) { ring(p.x, p.y, 130, '#ff9b6b'); for (const e of enemies) if (!e.dead && dist(e, p) < 130 + e.r) hitEnemy(p, e, 14 * p.spite + p.dmg, { proc: true, kb: 250, color: '#ff9b6b' }); }
@@ -2012,7 +2456,7 @@ function hurtPlayer(p, dmg, src) {
       p.embers--; p.hp = p.maxHp * 0.5; p.iT = 2.5; banner('An Ember rekindles you', p.embers + ' remaining', 2.5, p.id); sfx('ult', p); ring(p.x, p.y, 260, '#ffb347');
       for (const e of enemies) if (!e.dead && dist(e, p) < 260) hitEnemy(p, e, 40, { proc: true, kb: 600 });
     } else {
-      p.hp = 0; p.down = true; p.rev = 0; p.flurry = null; p.dashT = 0; p.ultT = 0; p.shield = 0;
+      p.hp = 0; p.down = true; p.rev = 0; p.flurry = null; p.dashT = 0; p.ultT = 0; p.shield = 0; p.mercy = null;
       if (players.every(q => q.down)) { game.over = 'dead'; showEnd(); }
       else banner(p.name + ' has fallen', 'Stand beside them to revive.', 3);
     }
@@ -2021,11 +2465,11 @@ function hurtPlayer(p, dmg, src) {
 function hurtNear(x, y, R, dmg) { for (const q of players) if (!q.down && Math.hypot(q.x - x, q.y - y) < R + q.r) hurtPlayer(q, dmg, { x, y }); }
 // o.from: swing from this point instead of the player (Mira's reflections).
 function meleeArc(p, range, arc, dmg, o = {}) {
-  let n = 0; const s = o.from || p;
-  addFx({ kind: 'arc', x: s.x, y: s.y, a: p.face, r: range, arc, color: o.color || '#fff', life: 0.14, max: 0.14 });
+  let n = 0; const s = o.from || p, fa = o.face ?? p.face;
+  addFx({ kind: 'arc', x: s.x, y: s.y, a: fa, r: range, arc, color: o.color || '#fff', life: 0.14, max: 0.14 });
   for (const e of enemies) {
     if (e.dead || !e.near) continue;
-    if (dist(e, s) < range + e.r && Math.abs(angDiff(angTo(s, e), p.face)) < arc / 2 + 0.15) { hitEnemy(p, e, dmg, o); n++; }
+    if (dist(e, s) < range + e.r && Math.abs(angDiff(angTo(s, e), fa)) < arc / 2 + 0.15) { hitEnemy(p, e, dmg, o); n++; if (o.hits) o.hits.push(e); }
   }
   return n;
 }
@@ -2037,24 +2481,27 @@ function doAttack(p) {
   const H = p.hero; p.tAtk = p.atkCd / p.asMul; p.swing = 1;
   const cg = cageOn(p); if (cg && cg.type === 'cage') { hitEnemy(p, cg, p.dmg * 1.2, { color: '#d9b26a' }); sfx('hit', p); return; }
   if (H === 'bramble') {
-    const n = meleeArc(p, 98 * (1 + 0.3 * (p.h.wide || 0)) * (p.ultT > 0 ? 1.25 : 1), 2.3, p.dmg, { kb: 170, color: '#9fe08a' });
+    const hits = [], n = meleeArc(p, 98 * (1 + 0.3 * (p.h.wide || 0)) * (p.ultT > 0 ? 1.25 : 1), 2.3, p.dmg, { kb: 170, color: '#9fe08a', hits }); talentSweep(p, hits);
     if (p.ultT > 0 && n) heal(p, 2 * n); sfx('slash', p);
   } else if (H === 'wick') {
-    const n = 1 + (p.h.fork || 0) + (night > 0.5 ? 1 : 0);
-    for (let i = 0; i < n; i++) shoot(p.x + Math.cos(p.face) * 18, p.y + Math.sin(p.face) * 18, p.face + (i - (n - 1) / 2) * 0.13, 640, { owner: p, dmg: p.dmg, life: 0.85, pierce: p.h.pierce || 0, color: '#ffb347', kind: 'fire' });
+    const vl = wickVolley(p), n = 1 + (p.h.fork || 0) + vl.bonus, hm = vl.home ? tv(p, 'midnight') : null;
+    for (let i = 0; i < n; i++) shoot(p.x + Math.cos(p.face) * 18, p.y + Math.sin(p.face) * 18, p.face + (i - (n - 1) / 2) * 0.13, 640, { owner: p, dmg: p.dmg, life: 0.85, pierce: p.h.pierce || 0, color: '#ffb347', kind: 'fire', fork: vl.fork, home: hm && i === n - 1 ? { turn: hm.turn, range: hm.range } : null });
     sfx('bolt', p);
   } else if (H === 'rowan') {
-    meleeArc(p, 118 * (p.ultT > 0 ? 1.25 : 1), 0.75, p.dmg * (p.ultT > 0 ? 1.3 : 1), { kb: 140, color: '#d8c08a' }); sfx('slash', p);
+    meleeArc(p, 118 * (p.ultT > 0 ? 1.25 : 1), 0.75, p.dmg * (p.ultT > 0 ? 1.3 : 1), { kb: 140, color: '#d8c08a' }); sfx('slash', p); rowanThrust(p);
   } else if (H === 'mira') {
     // Shattered Cuts: cut, cut, then a wider finishing slash.
     const fin = ++p.combo % 3 === 0, col = fin ? '#ffffff' : '#bff6ff';
     meleeArc(p, fin ? 84 : 72, fin ? 2.2 : 1.4, p.dmg * (fin ? 1.8 : 1), { kb: fin ? 120 : 30, color: col }); sfx('blade', p);
     if (p.ultT > 0) for (const s of mirrorSpots(p)) meleeArc(p, fin ? 84 : 72, fin ? 2.2 : 1.4, p.dmg * (fin ? 1.8 : 1) * 0.4, { from: s, quiet: true, proc: true, color: '#9ee7f2' });
   } else if (H === 'vespera') {
-    shoot(p.x + Math.cos(p.face) * 18, p.y + Math.sin(p.face) * 18, p.face, 600, { owner: p, dmg: p.dmg, life: 0.9, r: 7, color: '#86f0cf', kind: 'ghost' }); sfx('bolt', p);
+    const wf = hasT(p, 'wandering') ? tv(p, 'wandering').dmg : 0; // Wandering Flame: one more target, weaker
+    shoot(p.x + Math.cos(p.face) * 18, p.y + Math.sin(p.face) * 18, p.face, 600, { owner: p, dmg: p.dmg, life: 0.9, r: 7, color: '#86f0cf', kind: 'ghost', pierce: wf ? 1 : 0, falloff: wf }); sfx('bolt', p);
   } else {
     meleeArc(p, 80 * (1 + 0.15 * (p.h.lunar || 0)), 1.7, p.dmg, { kb: 60, color: '#d9ccff' }); sfx('blade', p);
-    if (++p.combo % 3 === 0) shoot(p.x, p.y, p.face, 780, { owner: p, dmg: p.dmg * 1.3, life: 0.6, pierce: 2, color: '#e6dcff', kind: 'blade' });
+    const third = ++p.combo % 3 === 0;
+    if (third) shoot(p.x, p.y, p.face, 780, { owner: p, dmg: p.dmg * 1.3, life: 0.6, pierce: 2, color: '#e6dcff', kind: 'blade', ret: hasT(p, 'returning') });
+    vesperCut(p, third);
   }
 }
 // Guiding Wisp's target: the living ally nearest the aim point. Only a solo Lanternkeeper may shield herself.
@@ -2070,17 +2517,19 @@ function doSkill(p) {
   if (H === 'vespera') {
     const t = wispTarget(p); if (!t) { floatText(p.x, p.y - 34, 'No ally to guide', '#aaa', 13); p.tSkill = 0.6; return; }
     p.lan -= LANTERN_COST; p.tSkill = HEROES[H].skillCd * p.cdr; sfx('shield', p);
-    t.shield = Math.max(t.shield, (30 + 3 * p.level) * (1 + 0.5 * (p.h.kindred || 0))); t.shieldT = 6;
+    const amt = (30 + 3 * p.level) * (1 + 0.5 * (p.h.kindred || 0)); t.shield = Math.max(t.shield, amt); t.shieldT = 6; wispGiven(p, t, amt);
     addFx({ kind: 'bolt', x: p.x, y: p.y, x2: t.x, y2: t.y, life: 0.3, max: 0.3, color: '#86f0cf' }); ring(t.x, t.y, 40, '#86f0cf'); burst(t.x, t.y, '#c9fff0', 14, 160);
     return;
   }
+  if (H === 'wick' && !covenReady(p)) return; // Lantern Coven: out of charges
   p.tSkill = HEROES[H].skillCd * p.cdr; sfx('skill', p);
   if (H === 'rowan') {
     // Root Snare, strengthened by every Deep Roots charge.
     const k = p.roots, tr = p.h.taproot || 0, R = 170 * (1 + 0.12 * k), T = 1.6 + 0.3 * k + 0.5 * tr;
     ring(p.x, p.y, R, '#8a6238'); burst(p.x, p.y, '#a9c46c', 24, 340, 4); shake(5, p); sfx('root', p);
     if (k) floatText(p.x, p.y - 44, 'Deep Roots ×' + k, '#d8c08a', 15);
-    for (const e of enemies) if (!e.dead && dist(e, p) < R + e.r) { e.rootT = e.type === 'boss' ? T * 0.4 : T; hitEnemy(p, e, p.dmg * 1.3 * (1 + 0.2 * k) * (1 + 0.4 * tr), { color: '#d8c08a' }); }
+    const cast = hasT(p, 'spreading') ? { p, spread: false } : null; // Spreading Roots: once per cast
+    for (const e of enemies) if (!e.dead && dist(e, p) < R + e.r) { e.rootT = e.type === 'boss' ? T * 0.4 : T; e.rootCast = cast; hitEnemy(p, e, p.dmg * 1.3 * (1 + 0.2 * k) * (1 + 0.4 * tr), { color: '#d8c08a' }); }
     p.roots = 0;
     return;
   }
@@ -2092,17 +2541,22 @@ function doSkill(p) {
     z.life = 0; p.decoy = null; p.decoyOn = false; sfx('shatter', { x: ox, y: oy });
     const R = 125; ring(ox, oy, R, '#9ee7f2'); burst(ox, oy, '#e8fbff', 26, 320, 4); shake(4, p);
     for (const e of enemies) if (!e.dead && dist(e, { x: ox, y: oy }) < R + e.r) hitEnemy(p, e, p.dmg * 3.2 * (1 + 0.4 * (p.h.facets || 0)), { kb: 200, color: '#bff6ff' });
+    miraExchange(p, z, ox, oy, R);
     return;
   }
   if (H === 'bramble') {
     const k = p.h.ring || 0, R = 150 * (1 + 0.2 * k); ring(p.x, p.y, R, '#7bc96f'); burst(p.x, p.y, '#7bc96f', 30, 380, 4); shake(5, p);
     for (const e of enemies) if (!e.dead && dist(e, p) < R + e.r) { hitEnemy(p, e, p.dmg * 2.4 * (1 + 0.5 * k), { kb: 220, color: '#9fe08a' }); e.slowT = 2.5; }
+    if (hasT(p, 'territory')) briarTerritory(p, R);
   } else if (H === 'wick') {
     const k = p.h.lantern || 0, a = angTo(p, m), d = Math.min(420, dist(p, m));
-    zones.push({ kind: 'burn', friendly: true, owner: p, x: p.x + Math.cos(a) * d, y: p.y + Math.sin(a) * d, r: 110 * (1 + 0.25 * k), delay: 0, life: 5 + 2 * k, max: 5 + 2 * k, dmg: p.dmg * 1.9, tickT: 0, color: '#ffb347', lantern: true });
+    const z = { kind: 'burn', friendly: true, owner: p, oid: p.id, x: p.x + Math.cos(a) * d, y: p.y + Math.sin(a) * d, r: 110 * (1 + 0.25 * k), delay: 0, life: 5 + 2 * k, max: 5 + 2 * k, dmg: p.dmg * 1.9, tickT: 0, color: '#ffb347', lantern: true };
+    zones.push(z); if (hasT(p, 'coven')) covenUse(p, z);
   } else {
-    const n = 5 + 2 * (p.h.fan || 0);
-    for (let i = 0; i < n; i++) shoot(p.x, p.y, p.face + (i - (n - 1) / 2) * (1.0 / n), 720, { owner: p, dmg: p.dmg * 1.6, life: 0.65, pierce: 3, color: '#e6dcff', kind: 'blade' });
+    const n = 5 + 2 * (p.h.fan || 0), angs = [];
+    for (let i = 0; i < n; i++) angs.push(p.face + (i - (n - 1) / 2) * (1.0 / n));
+    if (hasT(p, 'silk')) silkTrails(p, angs);
+    for (let i = 0; i < n; i++) shoot(p.x, p.y, angs[i], 720, { owner: p, dmg: p.dmg * 1.6, life: 0.65, pierce: 3, color: '#e6dcff', kind: 'blade' });
   }
 }
 // Movement half of a dash; runs on whichever machine owns the player's position.
@@ -2116,42 +2570,44 @@ function doDash(p, a) {
   if (HEROES[p.hero].alt && slotBlock(p, 2)) return;
   p.dashes--; if (p.dashRe <= 0) p.dashRe = dashCdOf(p);
   if (HEROES[p.hero].alt) return doAlt(p);
+  const x0 = p.x, y0 = p.y;
   sfx('dash', p); p.dashHit = new Set(); p.iT = Math.max(p.iT, 0.3);
   if (p.hero === 'mira') {
     // Reflection Step leaves a decoy where Mira stood; only one per Mira.
     if (p.decoy) p.decoy.life = 0;
     const T = 4 + 2 * (p.h.facets || 0);
     p.decoy = { kind: 'decoy', dec: true, friendly: true, owner: p, x: p.x, y: p.y, r: 15, life: T, max: T, color: HEROES.mira.color };
-    zones.push(p.decoy); p.decoyOn = true; burst(p.x, p.y, '#e8fbff', 10, 160);
+    zones.push(p.decoy); p.decoyOn = true; burst(p.x, p.y, '#e8fbff', 10, 160); miraDecoy(p, p.decoy);
   }
   if (p.hero === 'wick') {
     burst(p.x, p.y, '#ffb347', 14, 200);
     zones.push({ kind: 'burn', friendly: true, owner: p, x: p.x, y: p.y, r: 55, delay: 0, life: 2, max: 2, dmg: p.dmg * 1.5, tickT: 0, color: '#ffb347' });
   }
   if (p.remote) { p.dashA = a; if (p.hero === 'wick') { p.x = p.tx; p.y = p.ty; } else p.dashT = 0.18; } else startDashMove(p, a);
-  if (p.hero === 'wick') burst(p.x, p.y, '#ffb347', 14, 200);
+  if (p.hero === 'wick') { burst(p.x, p.y, '#ffb347', 14, 200); wickBlink(p, x0, y0); }
 }
 function doAlt(p) {
   const m = p.aim; sfx('skill', p);
   if (p.hero === 'rowan') {
     // Shelterwood: a grove at Rowan's feet where allies take less damage.
     const k = p.h.thicket || 0, T = 6 + 2 * k;
-    zones.push({ kind: 'shelter', friendly: true, owner: p, x: p.x, y: p.y, r: 150 * (1 + 0.25 * k), delay: 0, life: T, max: T, color: '#a9c46c' });
-    ring(p.x, p.y, 150 * (1 + 0.25 * k), '#a9c46c'); burst(p.x, p.y, '#cfe89a', 20, 260, 4);
+    const z = { kind: 'shelter', friendly: true, owner: p, oid: p.id, x: p.x, y: p.y, r: 150 * (1 + 0.25 * k), delay: 0, life: T, max: T, color: '#a9c46c' };
+    if (hasT(p, 'grove')) { z.follow = true; z.r *= tv(p, 'grove').radius; } // Walking Grove
+    zones.push(z); ring(p.x, p.y, z.r, '#a9c46c'); burst(p.x, p.y, '#cfe89a', 20, 260, 4);
   } else if (p.hero === 'vespera') {
     // Soul Tether: link the foes nearest the aim point.
     const a = angTo(p, m), d = Math.min(500, dist(p, m)), c = { x: p.x + Math.cos(a) * d, y: p.y + Math.sin(a) * d };
     const list = enemies.filter(e => !e.dead && e.near && dist(e, c) < 220 + e.r).sort((x, y) => dist(x, c) - dist(y, c)).slice(0, 4);
     if (list.length < 2) { floatText(p.x, p.y - 34, 'Needs two foes to tether', '#aaa', 13); p.dashes++; p.dashRe = p.dashes < p.dashMax ? p.dashRe : 0; return; }
     p.lan -= LANTERN_COST; sfx('tether', p);
-    const g = { id: nextId++, list, t: 6 };
+    const g = { id: nextId++, list, t: 6, owner: p, moved: false };
     for (const e of list) { if (e.tid) { const o = tethers.find(o => o.id === e.tid); if (o) o.list = o.list.filter(q => q !== e); } e.tid = g.id; ring(e.x, e.y, e.r + 14, '#86f0cf'); }
     tethers.push(g);
   }
 }
 function doUlt(p) {
   const H = p.hero, m = p.aim; p.tUlt = ULT_CD * p.cdr; sfx('ult', p); shake(8, p);
-  if (H === 'bramble') { p.ultT = 8; p.pulse = 0; ring(p.x, p.y, 180, '#7bc96f'); }
+  if (H === 'bramble') { p.ultT = 8; p.pulse = 0; p.ultExt = 0; ring(p.x, p.y, 180, '#7bc96f'); }
   else if (H === 'rowan') { p.ultT = 8; p.pulse = 0; ring(p.x, p.y, 220, '#a9c46c'); burst(p.x, p.y, '#cfe89a', 30, 300, 5); banner('Ancient Sentinel', 'The wood rallies to you.', 2, p.id); }
   else if (H === 'mira') { p.ultT = 7; ring(p.x, p.y, 90, '#9ee7f2'); for (const s of mirrorSpots(p)) burst(s.x, s.y, '#e8fbff', 12, 180); sfx('shatter', p); }
   else if (H === 'vespera') {
@@ -2160,8 +2616,9 @@ function doUlt(p) {
     zones.push({ kind: 'proc', friendly: true, owner: p, x: p.x, y: p.y, r: 80, delay: 0, life: HEROES.vespera.ultTime, max: HEROES.vespera.ultTime, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, tickT: 0, color: '#86f0cf' });
   }
   else if (H === 'wick') {
-    for (let i = 0; i < 12; i++) { const a = rand(TAU), d = i === 0 ? 0 : rand(40, 210); zones.push({ kind: 'blast', friendly: true, owner: p, x: m.x + Math.cos(a) * d, y: m.y + Math.sin(a) * d, r: 88, delay: 0.5 + i * 0.2, max: 0.5 + i * 0.2, dmg: p.dmg * 4.2, color: '#ff7a2f' }); }
+    for (let i = 0; i < 12; i++) { const a = rand(TAU), d = i === 0 ? 0 : rand(40, 210); zones.push({ kind: 'blast', friendly: true, owner: p, x: m.x + Math.cos(a) * d, y: m.y + Math.sin(a) * d, r: 88, delay: 0.5 + i * 0.2, max: 0.5 + i * 0.2, dmg: p.dmg * 4.2, color: '#ff7a2f', final: i === 11, cx: m.x, cy: m.y }); }
   } else {
+    if (hasT(p, 'total')) { if (!eclipseStart(p)) p.tUlt = 1; return; } // Total Eclipse
     const list = enemies.filter(e => !e.dead && dist(e, p) < 520).sort((a, b) => dist(a, p) - dist(b, p)).slice(0, 8);
     if (!list.length) { p.tUlt = 1; return; }
     if (list.length < 8) { const base = list.slice(); while (list.length < 8) list.push(base[list.length % base.length]); }
@@ -2180,14 +2637,21 @@ function collideWorld(o, r) {
 const dashDir = (p, inp) => (inp.mx || inp.my) ? Math.atan2(inp.my, inp.mx) : p.face;
 function walk(p, inp, dt) {
   const sp = p.spd * p.spdMul * (p.hero === 'vesper' ? 1 + 0.15 * night : 1) * (inp.l && p.hero !== 'vesper' && p.hero !== 'mira' ? 0.8 : 1) * (p.hero === 'rowan' && p.ultT > 0 ? 0.85 : 1);
-  const sl = bindSlow(p); p.x += inp.mx * sp * sl * dt; p.y += inp.my * sp * sl * dt; if (inp.mx || inp.my) p.walk += dt;
+  const sl = bindSlow(p) * hasteMul(p); p.x += inp.mx * sp * sl * dt; p.y += inp.my * sp * sl * dt; if (inp.mx || inp.my) p.walk += dt;
 }
 const trail = p => parts.push({ x: p.x, y: p.y, vx: 0, vy: 0, life: 0.25, max: 0.25, color: HEROES[p.hero].color, size: 9 });
+// One Eclipse blink-strike on e (mult: Total Eclipse's reduced repeat damage).
+function eclipseStrike(p, e, mult) {
+  const a = rand(TAU); burst(p.x, p.y, '#cdbcff', 8); addFx({ kind: 'bolt', x: p.x, y: p.y, x2: e.x, y2: e.y, life: 0.2, max: 0.2, color: '#cdbcff' });
+  p.x = p.tx = e.x + Math.cos(a) * (e.r + 20); p.y = p.ty = e.y + Math.sin(a) * (e.r + 20); p.tp++; p.face = a + Math.PI; p.swing = 1;
+  hitEnemy(p, e, p.dmg * 3.6 * mult, { color: '#e6dcff' }); sfx('blade', p);
+}
 function updPlayer(p, inp, dt) {
   p.tAtk -= dt; p.tSkill -= dt; p.tUlt -= dt; p.iT -= dt; p.swing = Math.max(0, p.swing - dt * 6);
   if (p.dashes < p.dashMax) { p.dashRe -= dt; if (p.dashRe <= 0) { p.dashes++; p.dashRe = p.dashes < p.dashMax ? dashCdOf(p) : 0; } }
   p.cds = [p.atkCd / p.asMul, HEROES[p.hero].skillCd * p.cdr, dashCdOf(p), ULT_CD * p.cdr];
-  if (p.shieldT > 0) { p.shieldT -= dt; if (p.shieldT <= 0) p.shield = 0; }
+  if (p.shieldT > 0) { p.shieldT -= dt; if (p.shieldT <= 0) { shieldExpired(p); p.shield = 0; } }
+  talentPlayerTick(p, dt);
   if (p.hero === 'vespera') p.lan = Math.min(p.lanMax, p.lan + (4 + (p.h.deepwick || 0)) * dt);
   if (p.decoy && p.decoy.life <= 0) p.decoy = null;
   p.decoyOn = !!p.decoy;
@@ -2203,22 +2667,22 @@ function updPlayer(p, inp, dt) {
   if (p.remote) { const k = Math.min(1, dt * 25); p.x += (p.tx - p.x) * k; p.y += (p.ty - p.y) * k; if (p.moving) p.walk += dt; }
   if (p.dashT > 0) {
     p.dashT -= dt; if (!p.remote) { p.x += Math.cos(p.dashA) * 920 * dt; p.y += Math.sin(p.dashA) * 920 * dt; }
-    trail(p);
+    trail(p); rampartFree(p);
     for (const e of enemies) if (!e.dead && e.near && !p.dashHit.has(e) && dist(e, p) < p.r + e.r + 14) {
-      p.dashHit.add(e); hitEnemy(p, e, p.dmg * (p.hero === 'bramble' ? 1.6 : 1.2 * (p.h.ghost ? 2 : 1)), { kb: p.hero === 'bramble' ? 380 : 0, color: HEROES[p.hero].color });
+      p.dashHit.add(e); hitEnemy(p, e, p.dmg * (p.hero === 'bramble' ? 1.6 : 1.2 * (p.h.ghost ? 2 : 1)), { kb: p.hero === 'bramble' ? 380 : 0, color: HEROES[p.hero].color }); talentDashHit(p, e);
       if (p.h.bulwark) heal(p, 4 * p.h.bulwark);
     }
   } else if (!p.remote) walk(p, inp, dt);
   if (!p.remote) bossLocalMove(p, dt);
   if (p.flurry) {
     const f = p.flurry; p.iT = Math.max(p.iT, 0.25); f.t -= dt;
-    if (f.t <= 0) {
+    if (f.t <= 0 && f.total) {
+      const e = f.left > 0 ? eclipseNext(p) : null;
+      if (e) { const k = f.struck.get(e) || 0; f.struck.set(e, k + 1); f.left--; eclipseStrike(p, e, k ? tv(p, 'total').repeat : 1); f.t = 0.1; }
+      if (!e || f.left <= 0) p.flurry = null;
+    } else if (f.t <= 0) {
       let e = f.list.shift(); while (e && e.dead) e = f.list.shift();
-      if (e) {
-        const a = rand(TAU); burst(p.x, p.y, '#cdbcff', 8); addFx({ kind: 'bolt', x: p.x, y: p.y, x2: e.x, y2: e.y, life: 0.2, max: 0.2, color: '#cdbcff' });
-        p.x = p.tx = e.x + Math.cos(a) * (e.r + 20); p.y = p.ty = e.y + Math.sin(a) * (e.r + 20); p.tp++; p.face = a + Math.PI; p.swing = 1;
-        hitEnemy(p, e, p.dmg * 3.6, { color: '#e6dcff' }); sfx('blade', p); f.t = 0.1;
-      }
+      if (e) { eclipseStrike(p, e, 1); f.t = 0.1; }
       if (!f.list.length || !e) p.flurry = null;
     }
   } else {
@@ -2228,11 +2692,12 @@ function updPlayer(p, inp, dt) {
   }
   if (!p.remote) collideWorld(p, p.r);
   if (p.ultT > 0) {
-    p.ultT -= dt; p.pulse -= dt;
+    p.ultT -= dt; p.pulse -= dt; if (p.ultT <= 0 && !p.down) talentUltEnd(p); // ran out on its own
     if (p.pulse <= 0 && p.hero === 'bramble') { p.pulse = 1; ring(p.x, p.y, 125, '#7bc96f'); for (const e of enemies) if (!e.dead && dist(e, p) < 125 + e.r) hitEnemy(p, e, p.dmg * 1.2, { proc: true, color: '#9fe08a', quiet: true }); }
     else if (p.pulse <= 0 && p.hero === 'rowan') { p.pulse = 1.2; ring(p.x, p.y, 220, '#d8c08a'); for (const e of enemies) if (!e.dead && dist(e, p) < 650) e.aggro = true; }
   }
   const regen = p.dayRegen * (1 - night) + (p.hero === 'bramble' ? 1.5 * (1 - night) : 0); if (regen > 0 && p.hp < p.maxHp) p.hp = Math.min(p.maxHp, p.hp + regen * dt);
+  else if (p.hero === 'bramble' && p.hp >= p.maxHp) sunseed(p, 1.5 * (1 - night), dt); // Daybloom's excess
   if (inp.interact) interact(p);
 }
 function updFx(dt) {
@@ -2296,22 +2761,25 @@ function update(dt) {
   }
   // projectiles
   for (const q of projs) {
+    if (q.friendly && (q.back || q.home)) talentProjSteer(q, dt);
     q.life -= dt; q.x += q.vx * dt; q.y += q.vy * dt;
     if (q.x < 0 || q.y < 0 || q.x > world.S || q.y > world.S) q.life = 0;
-    for (const b of world.obs) if (Math.abs(q.x - b.x) < b.cr && Math.abs(q.y - b.y) < b.cr && dist(q, b) < b.cr) { q.life = 0; burst(q.x, q.y, q.color, 4, 100, 2); break; }
-    if (q.life <= 0) continue;
+    if (!q.back) for (const b of world.obs) if (Math.abs(q.x - b.x) < b.cr && Math.abs(q.y - b.y) < b.cr && dist(q, b) < b.cr) { q.life = 0; burst(q.x, q.y, q.color, 4, 100, 2); break; }
+    if (q.life <= 0) { if (q.friendly) talentProjEnd(q); continue; } // a Returning Edge blade turns back
     if (q.friendly) {
-      for (const e of enemies) if (!e.dead && e.near && !q.hit.has(e) && dist(e, q) < e.r + q.r) { q.hit.add(e); hitEnemy(q.owner, e, q.dmg, { kb: 60, color: q.color }); if (q.pierce-- <= 0) { q.life = 0; break; } }
+      for (const e of enemies) if (!e.dead && e.near && !q.hit.has(e) && dist(e, q) < e.r + q.r) { q.hit.add(e); hitEnemy(q.owner, e, q.dmg, { kb: 60, color: q.color }); talentProjHit(q, e); if (q.pierce-- <= 0) { q.life = 0; break; } }
     } else for (const p of players) if (!p.down && dist(q, p) < p.r + q.r - 2) { if (p.iT <= 0) { hurtPlayer(p, q.dmg, { x: q.x - q.vx, y: q.y - q.vy }); q.life = 0; } break; }
   }
   projs = projs.filter(q => q.life > 0);
   // zones
   for (const z of zones) {
+    talentZonePre(z, dt);
+    if (z.tal && talentZone(z, dt)) continue;
     if (z.delay > 0) {
       z.delay -= dt;
       if (z.delay <= 0 && z.kind === 'blast') {
         sfx('boom', z); burst(z.x, z.y, z.color, 22, 320, 5); ring(z.x, z.y, z.r, z.color); shake(5, z);
-        if (z.friendly) { for (const e of enemies) if (!e.dead && dist(e, z) < z.r + e.r) hitEnemy(z.owner, e, z.dmg, { kb: 200, color: z.color }); }
+        if (z.friendly) { for (const e of enemies) if (!e.dead && dist(e, z) < z.r + e.r) hitEnemy(z.owner, e, z.dmg, { kb: 200, color: z.color }); constellation(z); }
         else hurtNear(z.x, z.y, z.r - 4, z.dmg);
         z.life = 0;
       }
@@ -2325,16 +2793,19 @@ function update(dt) {
     else if (z.kind === 'proc') {
       // Guided: locks on to the nearest foe (within 700) and turns toward it, picking the next one when it falls.
       // With nothing to chase it keeps flying straight. Guests just follow the velocity in the snapshots.
-      if (!z.tgt || !targetable(z.tgt)) { let b = null, bd = 700; for (const e of enemies) { if (!targetable(e)) continue; const d = dist(e, z); if (d < bd) { bd = d; b = e; } } z.tgt = b; }
-      if (z.tgt) { const sp = Math.hypot(z.vx, z.vy) || 260, cur = Math.atan2(z.vy, z.vx), na = cur + clamp(angDiff(angTo(z, z.tgt), cur), -4.5 * dt, 4.5 * dt); z.vx = Math.cos(na) * sp; z.vy = Math.sin(na) * sp; }
+      if (z.back) procBackStep(z, dt); // Returning Procession: follows its path back, no hunting
+      else if (!z.tgt || !targetable(z.tgt)) { let b = null, bd = 700; for (const e of enemies) { if (!targetable(e)) continue; const d = dist(e, z); if (d < bd) { bd = d; b = e; } } z.tgt = b; }
+      if (z.tgt && !z.back) { const sp = Math.hypot(z.vx, z.vy) || 260, cur = Math.atan2(z.vy, z.vx), na = cur + clamp(angDiff(angTo(z, z.tgt), cur), -4.5 * dt, 4.5 * dt); z.vx = Math.cos(na) * sp; z.vy = Math.sin(na) * sp; }
       z.life -= dt; z.tickT -= dt; z.x += z.vx * dt; z.y += z.vy * dt;
       if (z.tickT <= 0) {
-        z.tickT = 0.3; const o = z.owner;
-        for (const e of enemies) if (!e.dead && dist(e, z) < z.r + e.r) hitEnemy(o, e, o.dmg * 0.9, { proc: true, quiet: true, color: '#86f0cf' });
-        for (const q of players) if (!q.down && dist(q, z) < z.r + q.r) heal(q, 2 + 0.03 * q.maxHp);
+        z.tickT = 0.3; const o = z.owner, s = z.str || 1;
+        for (const e of enemies) if (!e.dead && dist(e, z) < z.r + e.r) { if (z.hits) { const k = z.hits.get(e) || 0; if (k >= z.hitCap) continue; z.hits.set(e, k + 1); } hitEnemy(o, e, o.dmg * 0.9 * s, { proc: true, quiet: true, color: '#86f0cf' }); }
+        for (const q of players) if (!q.down && dist(q, z) < z.r + q.r) heal(q, (2 + 0.03 * q.maxHp) * s);
       }
+      if (z.life <= 0) procEnded(z);
     }
   }
+  covenThreads(dt);
   zones = zones.filter(z => z.kind === 'blast' ? z.life !== 0 : z.life > 0);
   updHazards(dt, true);
   // pickups — experience, gold and sigils are shared by the whole party
@@ -2353,13 +2824,14 @@ function update(dt) {
       if (k.kind === 'xp') { for (const q of players) gainXp(q, k.val); sfx('xp', p); }
       else if (k.kind === 'gold') { for (const q of players) q.gold += k.val; sfx('gold', p); }
       else if (k.kind === 'heart') { heal(p, k.val); sfx('heal', p); }
-      else if (k.kind === 'lume') { p.lan = Math.min(p.lanMax, p.lan + k.val); sfx('xp', p); }
+      else if (k.kind === 'lume') { p.lan = Math.min(p.lanMax, p.lan + k.val); sfx('xp', p); emberCollected(p); }
       else if (k.kind === 'sigil') { for (const q of players) { q.pending++; q.choiceTitle = 'Sigil claimed'; } sfx('level'); }
     }
   }
   pickups = pickups.filter(k => !k.dead);
   enemies = enemies.filter(e => !e.dead);
   for (const p of players) if (p.pending > 0 && !p.choice) rollChoice(p);
+  for (const p of players) if (p.ctPending > 0 && !p.ctChoice) offerChapterTalent(p);
   updFx(dt);
 }
 function gainXp(p, v) {
@@ -2368,6 +2840,7 @@ function gainXp(p, v) {
 }
 function updEnemy(e, dt) {
   e.flash -= dt;
+  talentEnemyTick(e, dt); if (e.dead) return; // bleed, marks
   if (e.poisT > 0) { e.poisT -= dt; e.poisTick -= dt; if (e.poisTick <= 0) { e.poisTick = 0.5; e.hp -= e.poisD * 0.5; floatText(e.x, e.y - e.r, Math.round(e.poisD * 0.5), '#a6e36a', 12); if (e.hp <= 0) { killEnemy(e, e.poisBy); return; } } }
   // p may be a player or one of Mira's decoys (p.dec); decoys draw attacks but cannot be hurt.
   const p = enemyTarget(e); e.tgt = p; if (!p) return;
@@ -2443,9 +2916,11 @@ function updEnemy(e, dt) {
   }
   if (e.anchor || e.hidden) mx = my = 0, e.kbx = e.kby = 0;
   if (e.rootT > 0) mx = my = 0; // Root Snare: rooted foes still swing and spit, but cannot move
-  e.x += (mx + e.kbx) * dt; e.y += (my + e.kby) * dt; const f = Math.pow(0.003, dt); e.kbx *= f; e.kby *= f;
+  e.x += (mx + e.kbx) * dt; e.y += (my + e.kby) * dt;
   if (mx || my) e.dir = mx < 0 ? -1 : 1;
-  collideWorld(e, e.type === 'boss' ? 20 : e.r);
+  const bx = e.x, by = e.y; collideWorld(e, e.type === 'boss' ? 20 : e.r);
+  if (e.splint) splinterCheck(e, dt, bx, by); // Splintering Impact
+  const f = Math.pow(0.003, dt); e.kbx *= f; e.kby *= f;
 }
 function nearPoi(p) { let best = null, bd = 80; for (const o of world.pois) { if (o.kind === 'camp') continue; const d = dist(o, p); if (d < bd) { bd = d; best = o; } } return best; }
 const merchCost = o => 40 + 30 * o.uses;
@@ -2504,10 +2979,14 @@ function chapterComplete() {
     const pid = p.lo && p.lo.pid; if (!pid || seen.has(pid)) continue; seen.add(pid);
     const claim = key + ':' + pid;
     let r = net.claims.get(claim);
-    if (!r) { const roll = rollReward({ ...(p.lo || {}), chapter: game.chapter }); r = { claim, pid, id: p.id, name: p.name, rarity: roll.rarity, item: roll.item, ch: game.chapter, diff: game.diff, run: game.runId, final: game.over === 'final' }; net.claims.set(claim, r); }
+    if (!r) {
+      const roll = rollReward({ ...(p.lo || {}), chapter: game.chapter }); r = { claim, pid, id: p.id, name: p.name, rarity: roll.rarity, item: roll.item, ch: game.chapter, diff: game.diff, run: game.runId, final: game.over === 'final' }; net.claims.set(claim, r);
+      // chapter talent pick: earned with this roll's result (CHAPTER_TALENT in meta.js); once per claim, never rerolled
+      if (earnsChapterTalent(r.item, game.chapter)) { r.ct = 1; p.ctPending = (p.ctPending || 0) + 1; }
+    }
     list.push(r); deliverReward(r);
   }
-  game.rewards = list.map(r => ({ id: r.id, name: r.name, rarity: r.rarity, item: r.item }));
+  game.rewards = list.map(r => ({ id: r.id, name: r.name, rarity: r.rarity, item: r.item, ct: r.ct ? 1 : 0 }));
   for (const c of net.conns) if (c.inGame) c.send({ t: 'rewards', ch: game.chapter, list: game.rewards });
 }
 // Sends (or, for the host, applies) one player's result. Receivers ignore claims they already applied.
@@ -2539,7 +3018,7 @@ function expireAway() {
 }
 
 // ---------- netcode ----------
-const PEER_PREFIX = 'duskbound-v6-'; // bump whenever messages change, so mismatched versions never meet
+const PEER_PREFIX = 'duskbound-v7-'; // bump whenever messages change, so mismatched versions never meet
 const noNetMsg = () => window.DUSK_NO_NET ? 'Online co-op is not available on this page. Solo works here; for co-op, open the downloaded duskbound.html file or a copy on your own website.' : 'Online play needs an internet connection (the networking library did not load).';
 function wrapConn(c) {
   const w = { peerId: c.peer, send: d => { try { c.send(d); } catch (e) { } }, onData: null, onClose: null, close: () => { try { c.close(); } catch (e) { } } };
@@ -2803,9 +3282,10 @@ function hostRecv(c, d) {
   if (c.pending) { if (d.t === 'hello') greetClient(c, d); return; }
   if (!net.conns.includes(c)) return;
   if (d.t === 'hero') { const q = net.lobby.find(q => q.id === c.pid); if (q && HEROES[d.hero] && game.state === 'lobby' && ownsHero(sanitizeLoadout(d.lo, d.hero), d.hero)) { q.hero = d.hero; const lo = sanitizeLoadout(d.lo, d.hero); if (lo.valid && q.lo && lo.pid === q.lo.pid) q.lo = lo; if (!partyDiffOk(net.diff)) net.diff = bestCommonDiff(); sendLobby(); showLobby(); } }
-  else if (d.t === 'i' || d.t === 'pick') {
+  else if (d.t === 'i' || d.t === 'pick' || d.t === 'ctpick') {
     const p = players.find(q => q.id === c.pid); if (!p || game.state !== 'play') return;
     if (d.t === 'pick') { if (d.q === p.choiceSeq) applyPick(p, d.i | 0); return; }
+    if (d.t === 'ctpick') { applyChapterTalent(p, String(d.id || ''), d.q); return; } // validated there
     const I = p.in; I.l = !!d.l; if (d.r) I.skill = true; I.aim = { x: num(d.ax), y: num(d.ay) };
     if (d.tp === p.tp && !p.down) { p.tx = clamp(num(d.x, p.x), 30, world.S - 30); p.ty = clamp(num(d.y, p.y), 30, world.S - 30); p.face = num(d.f); p.moving = !!d.m; }
     if (d.d != null) { I.dash = true; I.dashA = num(d.d); }
@@ -2826,8 +3306,8 @@ function snapPlayer(p) {
     id: p.id, x: r1(p.x), y: r1(p.y), f: r2(p.face), hp: r1(p.hp), mh: p.maxHp, lv: p.level, xp: r1(p.xp), g: p.gold, k: p.kills, em: p.embers,
     ta: r2(Math.max(0, p.tAtk)), ts: r2(Math.max(0, p.tSkill)), tu: r2(Math.max(0, p.tUlt)), d: p.dashes, dr: r2(p.dashRe), dm: p.dashMax, cds: p.cds.map(r2),
     it: p.iT > 0 ? 1 : 0, sw: r2(p.swing), ut: r1(Math.max(0, p.ultT)), mv: p.moving ? 1 : 0, dn: p.down ? 1 : 0, rv: r2(p.rev), dt: p.dashT > 0 ? 1 : 0, tp: p.tp,
-    fl: p.flurry ? 1 : 0, sp: r1(p.spd * p.spdMul), pr: p.pickR | 0,
-    rc: p.roots, ln: r1(p.lan), lm: p.lanMax, sh: r1(p.shield), dc: p.decoyOn ? 1 : 0
+    fl: p.flurry ? 1 : 0, sp: r1(p.spd * p.spdMul * hasteMul(p)), pr: p.pickR | 0,
+    rc: p.roots, ln: r1(p.lan), lm: p.lanMax, sh: r1(p.shield), dc: p.decoyOn ? 1 : 0, br: r1(p.barrier || 0), tl: p.ct
   };
 }
 function sendSnaps() {
@@ -2839,13 +3319,14 @@ function sendSnaps() {
     const nr = o => Math.abs(o.x - cp.x) < 1150 && Math.abs(o.y - cp.y) < 850;
     c.send({
       t: 's', g, P, O,
-      E: enemies.filter(e => !e.dead && nr(e)).map(e => [e.id, ETN.indexOf(e.type), e.x | 0, e.y | 0, r1(e.r), r3(Math.max(0, e.hp / e.maxHp)), e.elite ? 1 : 0, STN.indexOf(e.state), r2(e.a), e.flash > 0 ? 1 : 0, e.slowT > 0 ? 1 : 0, e.poisT > 0 ? 1 : 0, e.dir || 1, e.rootT > 0 ? 1 : 0, e.tid || 0]),
+      E: enemies.filter(e => !e.dead && nr(e)).map(e => [e.id, ETN.indexOf(e.type), e.x | 0, e.y | 0, r1(e.r), r3(Math.max(0, e.hp / e.maxHp)), e.elite ? 1 : 0, STN.indexOf(e.state), r2(e.a), e.flash > 0 ? 1 : 0, e.slowT > 0 ? 1 : 0, e.poisT > 0 ? 1 : 0, e.dir || 1, e.rootT > 0 ? 1 : 0, e.tid || 0, e.bleed ? 1 : 0, e.mark ? 1 : 0]),
       Q: projs.filter(nr).map(q => [q.x | 0, q.y | 0, q.vx | 0, q.vy | 0, q.r, q.kind, q.color, r2(q.life)]),
       X: hazards.filter(h => Math.abs(h.x - cp.x) < 1700 && Math.abs(h.y - cp.y) < 1400 || h.k === 'tsunami' || h.k === 'wall' || h.k === 'beam').map(hzSnap),
-      Z: zones.filter(nr).map(z => [z.x | 0, z.y | 0, z.r | 0, z.kind, r2(Math.max(0, z.delay || 0)), r2(z.max), r2(z.life || 0), z.friendly ? 1 : 0, z.lantern ? 1 : 0, z.color, z.vx | 0, z.vy | 0]),
+      Z: zones.filter(nr).map(z => [z.x | 0, z.y | 0, z.r | 0, z.kind, r2(Math.max(0, z.delay || 0)), r2(z.max), r2(z.life || 0), z.friendly ? 1 : 0, z.lantern ? 1 : 0, z.color, z.vx | 0, z.vy | 0, z.x2 | 0, z.y2 | 0, z.oid || 0, z.coven ? 1 : 0]),
       K: pickups.filter(nr).map(k => [k.id, k.kind, k.x | 0, k.y | 0]),
       ev: evQ.filter(e => (!e.to || e.to === c.pid) && (e.x === undefined || Math.hypot(e.x - cp.x, e.y - cp.y) < 1200)).map(e => ({ k: e.k, a: e.a })),
-      c: cp.choice ? { q: cp.choiceSeq, ids: cp.choice.map(t => t.id), title: cp.choiceTitle } : 0, tal: cp.talents, st: statsOf(cp)
+      c: cp.choice ? { q: cp.choiceSeq, ids: cp.choice.map(t => t.id), title: cp.choiceTitle } : 0, tal: cp.talents, st: statsOf(cp),
+      ct: cp.ctChoice ? { q: cp.ctSeq, ids: cp.ctChoice } : 0
     });
   }
   evQ.length = 0;
@@ -2881,7 +3362,7 @@ function clientRecv(d) {
   else if (d.t === 'rewards' && Array.isArray(d.list)) { game.rewards = d.list.slice(0, 4); if (game.over) showEnd(); }
   else if (d.t === 'lobby') { players = []; net.myId = d.you; net.lobby = d.players; net.code = d.code; net.diff = DIFF(d.diff).id; game = newGame(); game.state = 'lobby'; me = null; showLobby(); }
   else if (d.t === 'world') {
-    game = newGame(); game.chapter = d.ch; game.diff = DIFF(d.diff).id; game.runId = String(d.run || ''); night = 0; net.myId = d.you; net.out = {}; net.pickedSeq = -1; clearEntities();
+    game = newGame(); game.chapter = d.ch; game.diff = DIFF(d.diff).id; game.runId = String(d.run || ''); night = 0; net.myId = d.you; net.out = {}; net.pickedSeq = -1; net.ctPicked = -1; clearEntities();
     world = { S: d.S, pal: PAL[(d.ch - 1) % PAL.length], obs: d.obs.map(o => ({ x: o[0], y: o[1], r: o[2], cr: o[3], tree: !!o[4], v: o[5], tone: o[6] })), pois: d.pois.map(o => ({ kind: o[0], x: o[1], y: o[2], r: o[3], used: false, uses: 0, seen: o[0] === 'altar' })) };
     groundPat = makeGround(world.pal);
     players = d.players.map(q => { const p = newPlayer(q.id, q.hero, q.name); p.x = p.tx = q.x; p.y = p.ty = q.y; p.tp = q.tp; return p; });
@@ -2905,6 +3386,7 @@ function applySnap(s) {
     p.tAtk = q.ta; p.tSkill = q.ts; p.tUlt = q.tu; p.dashRe = q.dr; p.dashMax = q.dm; p.cds = q.cds; if (!(p === me && p.dashLock > 0)) p.dashes = q.d;
     p.iT = q.it ? 0.2 : 0; p.swing = q.sw; p.ultT = q.ut; p.down = !!q.dn; p.rev = q.rv; p.flurry = q.fl ? 1 : null; p.spd = q.sp; p.spdMul = 1; p.pickR = q.pr;
     p.roots = q.rc | 0; p.lan = num(q.ln); p.lanMax = num(q.lm, LANTERN_MAX); p.shield = num(q.sh); p.decoyOn = !!q.dc;
+    p.barrier = num(q.br); p.ct = Array.isArray(q.tl) ? q.tl.filter(id => heroTalent(p.hero, id)) : [];
     if (p === me) { if (q.tp !== p.tp) { p.x = q.x; p.y = q.y; p.tp = q.tp; p.dashT = 0; } }
     else { p.tx = q.x; p.ty = q.y; p.face = q.f; p.moving = !!q.mv; p.dashT = q.dt ? 0.05 : 0; if (dist(p, { x: q.x, y: q.y }) > 300) { p.x = q.x; p.y = q.y; } }
   }
@@ -2913,14 +3395,16 @@ function applySnap(s) {
   enemies = s.E.map(a => {
     const e = old.get(a[0]) || { id: a[0], x: a[2], y: a[3], ph: (a[0] * 1.7) % TAU, flash: 0, near: true };
     e.type = ETN[a[1]]; e.tx = a[2]; e.ty = a[3]; e.r = a[4]; e.hp = a[5]; e.maxHp = 1; e.elite = !!a[6]; e.state = STN[a[7]]; e.a = a[8];
-    if (a[9]) e.flash = 0.1; e.slowT = a[10]; e.poisT = a[11]; e.dir = a[12]; e.rootT = a[13]; e.tid = a[14]; return e;
+    if (a[9]) e.flash = 0.1; e.slowT = a[10]; e.poisT = a[11]; e.dir = a[12]; e.rootT = a[13]; e.tid = a[14]; e.bleedOn = !!a[15]; e.markOn = !!a[16]; return e;
   });
   projs = s.Q.map(a => ({ x: a[0], y: a[1], vx: a[2], vy: a[3], r: a[4], kind: a[5], color: a[6], life: a[7] }));
-  zones = s.Z.map(a => ({ x: a[0], y: a[1], r: a[2], kind: a[3], delay: a[4], max: a[5], life: a[6], friendly: !!a[7], lantern: !!a[8], color: a[9], vx: a[10], vy: a[11] }));
+  zones = s.Z.map(a => ({ x: a[0], y: a[1], r: a[2], kind: a[3], delay: a[4], max: a[5], life: a[6], friendly: !!a[7], lantern: !!a[8], color: a[9], vx: a[10], vy: a[11], x2: a[12], y2: a[13], oid: a[14], coven: !!a[15] }));
   const oldK = new Map(pickups.map(k => [k.id, k]));
   pickups = s.K.map(a => { const k = oldK.get(a[0]) || { id: a[0], x: a[2], y: a[3], t: a[0] % 7 }; k.kind = a[1]; k.tx = a[2]; k.ty = a[3]; return k; });
   for (const e of s.ev) applyEv(e);
   me.talents = s.tal || {}; me.st = s.st || null;
+  // chapter talent offer: shown until the player picks; the pick only takes effect once the host accepts it (tl)
+  if (s.ct && s.ct.q !== net.ctPicked && Array.isArray(s.ct.ids)) { me.ctChoice = s.ct.ids.filter(id => heroTalent(me.hero, id)); me.ctSeq = s.ct.q; } else me.ctChoice = null;
   if (s.c && s.c.q !== net.pickedSeq) { me.choice = s.c.ids.map(id => TALENTS.find(t => t.id === id)).filter(Boolean); me.choiceSeq = s.c.q; me.choiceTitle = s.c.title; } else me.choice = null;
 }
 function clientUpdate(dt) {
@@ -3014,10 +3498,12 @@ function render() {
   const inView = (o, m = 80) => o.x > cam.x - m && o.x < cam.x + VW + m && o.y > cam.y - m && o.y < cam.y + VH + m;
   for (const z of zones) {
     if (!inView(z, 150)) continue;
-    if (z.kind === 'shelter' || z.kind === 'decoy' || z.kind === 'proc') drawZone(c, z);
+    if (TALENT_ZONES.has(z.kind)) drawTalentZone(c, z);
+    else if (z.kind === 'shelter' || z.kind === 'decoy' || z.kind === 'proc') drawZone(c, z);
     else if (z.kind === 'burn') { const a = Math.min(1, z.life / 0.5); c.globalAlpha = 0.28 * a; circ(c, z.x, z.y, z.r, z.color); c.globalAlpha = 0.7 * a; c.strokeStyle = z.color; c.lineWidth = 2; c.beginPath(); c.arc(z.x, z.y, z.r, 0, TAU); c.stroke(); c.globalAlpha = 1; if (z.lantern) { circ(c, z.x, z.y - 8, 7, '#fff1c2'); c.fillStyle = '#4a3a2a'; c.fillRect(z.x - 6, z.y - 18, 12, 3); c.fillRect(z.x - 6, z.y - 1, 12, 3); } }
     else { const k = 1 - clamp(z.delay / z.max, 0, 1), col = z.friendly ? '255,140,60' : '220,60,255'; c.fillStyle = 'rgba(' + col + ',.16)'; c.beginPath(); c.arc(z.x, z.y, z.r, 0, TAU); c.fill(); c.fillStyle = 'rgba(' + col + ',.35)'; c.beginPath(); c.arc(z.x, z.y, z.r * k, 0, TAU); c.fill(); c.strokeStyle = 'rgba(' + col + ',.9)'; c.lineWidth = 2; c.beginPath(); c.arc(z.x, z.y, z.r, 0, TAU); c.stroke(); }
   }
+  drawThreads(c); // Lantern Coven
   drawArena(c); drawHazards(c); // boss arena outline, warnings and active hazards
   for (const k of pickups) if (inView(k)) drawPickup(k);
   const list = [];
@@ -3130,7 +3616,7 @@ function drawHUD() {
   if (p.hero === 'rowan') { c.fillStyle = '#d8c08a'; c.fillText(T('Deep Roots') + ' ' + '●'.repeat(p.roots) + '○'.repeat(Math.max(0, ROOTS_MAX - p.roots)), bx, by + 52); }
   else if (p.hero === 'vespera') { c.fillStyle = '#86f0cf'; c.fillText(T('Lantern'), bx, by + 52); c.fillStyle = '#16302a'; rr(c, bx + 52, by + 44, bw - 52, 8, 3); c.fill(); c.fillStyle = '#86f0cf'; rr(c, bx + 52, by + 44, Math.max(4, (bw - 52) * clamp(p.lan / p.lanMax, 0, 1)), 8, 3); c.fill(); }
   else if (p.hero === 'mira') { c.fillStyle = p.decoyOn ? '#bff6ff' : '#6d7f86'; c.fillText(T(p.decoyOn ? 'Decoy standing' : 'No decoy — dash to leave one'), bx, by + 52); }
-  if (p.shield > 0) { c.fillStyle = '#86f0cf'; c.textAlign = 'right'; c.fillText(T('Shield') + ' ' + Math.ceil(p.shield), bx + bw, by + 52); c.textAlign = 'left'; }
+  if (p.shield + (p.barrier || 0) > 0) { c.fillStyle = '#86f0cf'; c.textAlign = 'right'; c.fillText(T('Shield') + ' ' + Math.ceil(p.shield + (p.barrier || 0)), bx + bw, by + 52); c.textAlign = 'left'; }
   const b1 = slotBlock(p, 1), b2 = H2.alt ? slotBlock(p, 2) : null;
   const cd = p.cds, ab = [[T('LMB'), T(H2.names[0]), p.tAtk, cd[0], true], [T('RMB'), T(H2.names[1]), p.tSkill, cd[1], !b1, b1 && T(b1)], [T('SPACE'), T(H2.names[2]) + (p.dashMax > 1 ? ' ×' + p.dashes : ''), p.dashes > 0 ? 0 : p.dashRe, cd[2], !b2, b2 && T(b2)], ['Q', T(H2.names[3]), p.tUlt, cd[3], p.level >= 3, T('Lv 3')]];
   const s = 58, gap = 12, ax = W / 2 - (s * 4 + gap * 3) / 2, ay = H - s - 30;
@@ -3198,6 +3684,11 @@ function drawHUD() {
   if (game.boss) circ(c, mx + game.boss.x * k, my + game.boss.y * k, 5, '#ff5ad6');
   for (const q of players) if (q !== p) { if (q.down) { const bl = Math.sin(game.t * 8) > -0.3; circ(c, mx + q.x * k, my + q.y * k, bl ? 6 : 4, '#ff3b3b'); if (bl) { c.strokeStyle = '#fff'; c.lineWidth = 1.5; c.beginPath(); c.arc(mx + q.x * k, my + q.y * k, 6, 0, TAU); c.stroke(); } } else circ(c, mx + q.x * k, my + q.y * k, 3.5, HEROES[q.hero].color); }
   circ(c, mx + p.x * k, my + p.y * k, 3.5, '#fff');
+  if (!TU && p.ct && p.ct.length) {
+    const names = p.ct.map(id => T((heroTalent(p.hero, id) || { name: id }).name)), bh = 22 + names.length * 16, by0 = my + ms + 32;
+    c.fillStyle = 'rgba(8,8,16,.75)'; rr(c, mx - 4, by0, ms + 8, bh, 6); c.fill(); c.textAlign = 'left'; c.font = '12px Georgia'; c.fillStyle = '#f3d48a'; c.fillText(L('Talents', '天賦'), mx + 4, by0 + 15);
+    c.fillStyle = HEROES[p.hero].color; names.forEach((nm, i) => c.fillText('• ' + nm, mx + 4, by0 + 31 + i * 16));
+  }
   c.font = '11px Georgia'; c.fillStyle = '#8e88ab'; c.textAlign = 'right'; c.fillText(TU ? (net.mode === 'solo' ? '' : L('Room ', '房間 ') + net.code) : L('F interact · ', 'F 互動 · ') + (net.mode === 'solo' ? L('P pause · ', 'P 暫停 · ') : L('Room ', '房間 ') + net.code + ' · ') + L('M mute', 'M 靜音'), W - 18, my + ms + 22);
   if (game.banner) { const b = game.banner, a = clamp(Math.min(b.t, b.max - b.t) / 0.4, 0, 1); c.globalAlpha = a; c.textAlign = 'center'; c.font = 'bold ' + Math.round(Math.min(44, W / 13)) + 'px Georgia'; c.fillStyle = 'rgba(0,0,0,.6)'; const bt = T(b.text), bs = T(b.sub); c.fillText(bt, W / 2 + 2, H * 0.27 + 2); c.fillStyle = '#f3d48a'; c.fillText(bt, W / 2, H * 0.27); c.font = 'italic 18px Georgia'; c.fillStyle = '#d8d2ee'; c.fillText(bs, W / 2, H * 0.27 + 30); c.globalAlpha = 1; }
   if (!p.down && p.hp < p.maxHp * 0.3) { const g = c.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, H * 0.8); g.addColorStop(0, 'rgba(160,0,0,0)'); g.addColorStop(1, 'rgba(160,0,0,' + (0.3 + Math.sin(game.t * 5) * 0.1) + ')'); c.fillStyle = g; c.fillRect(0, 0, W, H); }
@@ -3467,7 +3958,26 @@ function onTap(el, fn) {
   el.addEventListener('touchcancel', () => { id = null; });
 }
 let shownChoice = '';
+// One chapter-talent card: name, the abilities it changes, what it does and its limits.
+function talentCard(hero, t, i, key) {
+  return '<div class="card ctc" tabindex="0" role="button" data-i="' + i + '">' + (key ? '<span class="key">' + (i + 1) + '</span>' : '') + '<div class="tag" style="color:' + HEROES[hero].color + '">' + t.ab.map(T).join(' · ') + '</div><h3>' + T(t.name) + '</h3><p>' + T(t.desc) + '</p><p class="lim">' + T(t.limits) + '</p></div>';
+}
+// The build panel: a player's chapter talents this run (pause screen, co-op menu, chapter end).
+function buildHtml(p) {
+  if (!p || !HERO_TALENTS[p.hero]) return '';
+  const got = (p.ct || []).map(id => heroTalent(p.hero, id)).filter(Boolean);
+  return '<div class="stats prof build"><b>' + L('Chapter talents', '章節天賦') + '</b> <i>' + L('(this run)', '（本局）') + '</i><br>' + (got.length ? got.map(t => '<span style="color:' + HEROES[p.hero].color + '">' + T(t.name) + '</span> — ' + t.ab.map(T).join(' · ') + ': ' + T(t.desc) + ' <i class="lim">' + T(t.limits) + '</i>').join('<br>') : '<i>' + L('none yet', '尚無') + '</i>') + '</div>';
+}
 function syncChoice() {
+  const ct = me && game.state === 'play' && !game.over && me.ctChoice && me.ctChoice.length;
+  if (ct) {
+    const key = 'ct' + me.ctSeq + ':' + me.ctChoice.join(','); if (key === shownChoice) return; shownChoice = key;
+    let h = '<h2>' + L('Chapter talent — choose one', '章節天賦 — 選擇一項') + '</h2><div class="sub ctsub">' + L('It lasts for the rest of this run. Tap or click a card, or press its number.', '效果持續到本局結束。點選卡片，或按下對應的數字鍵。') + '</div><div class="cards ctcards">';
+    me.ctChoice.forEach((id, i) => { const t = heroTalent(me.hero, id); if (t) h += talentCard(me.hero, t, i, true); });
+    choiceEl.className = net.mode === 'solo' ? 'solo' : 'coop'; choiceEl.innerHTML = h + '</div>';
+    choiceEl.querySelectorAll('.card').forEach(cd => { onTap(cd, () => chooseChapterTalent(+cd.dataset.i)); cd.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); chooseChapterTalent(+cd.dataset.i); } }; });
+    return;
+  }
   const on = me && game.state === 'play' && !game.over && me.choice && me.choice.length;
   const key = on ? me.choiceSeq + ':' + me.choice.map(t => t.id).join(',') : '';
   if (key === shownChoice) return; shownChoice = key;
@@ -3476,6 +3986,14 @@ function syncChoice() {
   me.choice.forEach((t, i) => { const rk = me.talents[t.id] || 0; h += '<div class="card" data-i="' + i + '"><span class="key">' + (i + 1) + '</span><div class="tag"' + (t.hero ? ' style="color:' + HEROES[t.hero].color + '"' : '') + '>' + T(t.hero ? HEROES[t.hero].name : 'Boon') + '</div><h3>' + T(t.name) + '</h3><p>' + T(t.desc) + '</p><div class="pips">' + '●'.repeat(rk + 1) + '○'.repeat(Math.max(0, t.max - rk - 1)) + '</div></div>'; });
   choiceEl.className = net.mode === 'solo' ? 'solo' : 'coop'; choiceEl.innerHTML = h + '</div>';
   choiceEl.querySelectorAll('.card').forEach(cd => onTap(cd, () => chooseTalent(+cd.dataset.i)));
+}
+// Solo / host: applied at once (applyChapterTalent validates). Guest: sent to the host; the effect starts when the host accepts.
+function chooseChapterTalent(i) {
+  if (!me || !me.ctChoice || !me.ctChoice[i] || game.state !== 'play') return;
+  const id = me.ctChoice[i];
+  if (net.mode === 'client') { net.host.send({ t: 'ctpick', id, q: me.ctSeq }); net.ctPicked = me.ctSeq; me.ctChoice = null; playSfx('pick'); }
+  else applyChapterTalent(me, id, me.ctSeq);
+  mouse.l = mouse.r = false;
 }
 function chooseTalent(i) {
   if (!me || !me.choice || !me.choice[i] || game.state !== 'play') return;
@@ -3486,10 +4004,11 @@ function chooseTalent(i) {
 function showEnd() {
   if (!me) return;
   const st = '<div class="stats">' + players.map(p => esc(p.name) + ' — ' + T(HEROES[p.hero].name) + ' · ' + L('Lv ', '等級 ') + p.level + ' · ' + L(p.kills + ' slain', '擊殺 ' + p.kills)).join('<br>') + '<br>' + T('Chapter ' + game.chapter) + '</div>';
-  const rw = game.rewards ? '<div class="stats"><b>' + L('Chapter reward', '章節獎勵') + '</b><br>' + game.rewards.map(r => esc(r.name) + ' — ' + (r.rarity ? '<span style="color:' + RARITY_COLORS[r.rarity] + '">' + T(RARITY_NAMES[r.rarity]) + '</span> · ' + esc(T(itemLabel(r.item))) : L('No reward', '沒有獎勵'))).join('<br>') + '</div>' : '';
+  const rw = game.rewards ? '<div class="stats"><b>' + L('Chapter reward', '章節獎勵') + '</b><br>' + game.rewards.map(r => esc(r.name) + ' — ' + (r.rarity ? '<span style="color:' + RARITY_COLORS[r.rarity] + '">' + T(RARITY_NAMES[r.rarity]) + '</span> · ' + esc(T(itemLabel(r.item))) : L('No reward', '沒有獎勵')) + (r.ct ? ' · <b>' + L('+ chapter talent pick', '+ 章節天賦選擇') + '</b>' : '')).join('<br>') + '</div>' : '';
+  const bl = game.over === 'win' ? buildHtml(me) : '';
   const guest = net.mode === 'client', wait = '<div class="wait">' + L('Waiting for the host…', '等待房主…') + '</div><button id="leave" class="ghost">' + L('Leave party', '離開隊伍') + '</button>';
   if (game.over === 'dead') show('<h2>' + L('The dusk takes you', '你被暮色吞沒') + '</h2><div class="sub">' + L('The wood closes over another lantern.', '森林又吞沒了一盞燈火。') + '</div>' + st + rw + (guest ? wait : '<button id="again">' + (net.mode === 'host' ? L('Back to the lobby', '回到大廳') : L('Try again', '再試一次')) + '</button>'), true);
-  else if (game.over === 'win') show('<h2>' + L(bossCfg(game.chapter).name + ' falls', T(bossCfg(game.chapter).name) + '倒下了') + '</h2><div class="sub">' + L('The path runs deeper. ' + PAL[game.chapter % PAL.length].name + ' awaits — and ' + bossCfg(game.chapter + 1).name + ', who is stronger still.', '道路通往更深處。' + T(PAL[game.chapter % PAL.length].name) + '在等著你，還有更加強大的' + T(bossCfg(game.chapter + 1).name) + '。') + '</div>' + st + rw + (guest ? wait : '<button id="next">' + L('Press on', '繼續前進') + '</button>'), true);
+  else if (game.over === 'win') show('<h2>' + L(bossCfg(game.chapter).name + ' falls', T(bossCfg(game.chapter).name) + '倒下了') + '</h2><div class="sub">' + L('The path runs deeper. ' + PAL[game.chapter % PAL.length].name + ' awaits — and ' + bossCfg(game.chapter + 1).name + ', who is stronger still.', '道路通往更深處。' + T(PAL[game.chapter % PAL.length].name) + '在等著你，還有更加強大的' + T(bossCfg(game.chapter + 1).name) + '。') + '</div>' + st + rw + bl + (guest ? wait : '<button id="next">' + L('Press on', '繼續前進') + '</button>'), true);
   else show('<h1>' + L('DAWN', '黎明') + '</h1><div class="sub">' + L('Nezha lowers his spear: the divine trial is won. For the first time in an age, morning comes and stays.', '哪吒放下火尖槍：神之試煉已經通過。漫長歲月以來，晨光第一次降臨並且留了下來。') + '</div>' + st + rw + (guest ? wait : '<button id="again">' + (net.mode === 'host' ? L('Back to the lobby', '回到大廳') : L('Play again', '再玩一次')) + '</button>'));
   if ($('again')) $('again').onclick = endRun;
   if ($('next')) $('next').onclick = nextChapter;
@@ -3502,7 +4021,7 @@ function endRun() {
 function nextChapter() {
   if (game.over !== 'win') return;
   const ch = game.chapter + 1, keep = { diff: game.diff, runId: game.runId }; game = newGame(); Object.assign(game, keep); game.chapter = ch; night = 0;
-  for (const p of players) { p.down = false; p.rev = 0; p.flurry = null; p.dashT = 0; if (p.hp <= 0) p.hp = 1; }
+  for (const p of players) { p.down = false; p.rev = 0; p.flurry = null; p.dashT = 0; p.ultT = 0; if (p.hp <= 0) p.hp = 1; } // cleanup: no Final Curtain / Aftergrowth
   genWorld(); for (const p of players) heal(p, p.maxHp * 0.5);
   hide(); banner(world.pal.name, chapterSub(), 4); sfx('dawn');
   if (net.mode === 'host') sendWorld();
@@ -3519,7 +4038,7 @@ function micErrorText(name) {
 // Voice & sound panel. In co-op play it opens over the running game (soft) and does not pause.
 async function showVoice(back, soft) {
   const nameOf = pid => { const q = players.find(p => p.id === pid) || net.lobby.find(q => q.id === pid); return q ? q.name : '#' + pid; };
-  let h = '<h2>' + L('Voice & sound', '語音與音效') + '</h2>';
+  let h = '<h2>' + L('Voice & sound', '語音與音效') + '</h2>' + (soft && game.state === 'play' ? buildHtml(me) : '');
   if (!NetT.voice || !Voice.supported()) h += '<div class="sub">' + L('Voice chat needs the GitHub Pages version of the game (direct connections). It is not available on this page.', '語音聊天需要 GitHub Pages 版本（直接連線），此頁面無法使用。') + '</div>';
   else {
     const devs = Voice.micStream ? await Voice.devices() : [];
@@ -3551,12 +4070,13 @@ function onKey(k) {
   if (k === 'm' && AU.ctx) { AU.muted = !AU.muted; AU.master.gain.value = AU.muted ? 0 : 0.55; }
   const n = '123456789'.indexOf(k);
   if (n >= 0 && (game.state === 'menu' || game.state === 'lobby')) selectHero(Object.keys(HEROES)[n]);
+  else if (n >= 0 && n < 5 && game.state === 'play' && me && me.ctChoice) chooseChapterTalent(n);
   else if (n >= 0 && n < 3 && game.state === 'play') chooseTalent(n);
   else if ((k === 'p' || k === 'escape') && game.state === 'play' && net.mode !== 'solo' && !game.over && overlay.className === 'hidden') showVoice(hide, true);
-  else if ((k === 'p' || k === 'escape') && game.state === 'play' && net.mode === 'solo' && !game.over && !(me && me.choice)) {
+  else if ((k === 'p' || k === 'escape') && game.state === 'play' && net.mode === 'solo' && !game.over && !(me && (me.choice || me.ctChoice))) {
     game.paused = !game.paused;
     if (game.paused) {
-      show('<h2>' + L('Paused', '暫停') + '</h2>' + controlsHtml() + '<div class="row"><button id="res">' + L('Resume', '繼續') + '</button>' + (touch.on ? '<button id="mute" class="ghost">' + muteLabel() + '</button><button id="quit" class="ghost">' + L('Quit run', '放棄本局') + '</button>' : '') + langBtnHtml() + fsRowHtml() + '</div>', true);
+      show('<h2>' + L('Paused', '暫停') + '</h2>' + buildHtml(me) + controlsHtml() + '<div class="row"><button id="res">' + L('Resume', '繼續') + '</button>' + (touch.on ? '<button id="mute" class="ghost">' + muteLabel() + '</button><button id="quit" class="ghost">' + L('Quit run', '放棄本局') + '</button>' : '') + langBtnHtml() + fsRowHtml() + '</div>', true);
       $('res').onclick = () => { game.paused = false; hide(); };
       bindFs(() => { game.paused = true; onKey('p'); onKey('p'); });
       bindLang(() => { game.paused = true; onKey('p'); onKey('p'); });
@@ -3573,7 +4093,7 @@ function tick(ts) {
   if (game.state === 'play' && me) {
     if (net.mode === 'client') clientUpdate(dt);
     else if (game.over) updFx(dt);
-    else if (!(net.mode === 'solo' && (game.paused || me.choice))) update(dt);
+    else if (!(net.mode === 'solo' && (game.paused || me.choice || me.ctChoice))) update(dt);
     if (net.mode === 'host') { net.snapT -= dt; if (net.snapT <= 0) { net.snapT = NetT.snapIv ? NetT.snapIv(net.conns.length) : 0.05; sendSnaps(); } }
   }
   for (const k in pressed) delete pressed[k];

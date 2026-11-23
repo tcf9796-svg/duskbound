@@ -94,6 +94,11 @@
   .card.locked:hover{transform:none;border-color:#4a4370;box-shadow:none}
   .card.locked canvas{filter:grayscale(.7) brightness(.55)}
   .card .lock{font-style:italic;color:#a9a3c4}
+  /* chapter talent cards (up to five) and the build panel */
+  #choice .ctc{width:190px} #choice.coop .ctc{width:172px} .ctcards{max-width:1060px}
+  .ctc .lim,.build .lim{font-size:11.5px;color:#a9a3c4;font-style:italic}
+  .card:focus{outline:2px solid #f3d48a;outline-offset:2px}
+  .build{max-width:760px;line-height:1.55}
   .rar{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;border:1px solid;border-radius:4px;padding:0 5px;margin-left:8px;vertical-align:middle;white-space:nowrap;display:inline-block}
   .reward{color:#d8d2ee;font-size:15px;margin-top:8px}
   .reward.won{font-size:18px;color:#f3d48a}
@@ -115,6 +120,7 @@
     .plist{font-size:13px;line-height:1.45;margin-bottom:6px} .code{font-size:20px;letter-spacing:5px} .stats{font-size:13px;line-height:1.5}
   }
   @media (max-height:420px){ .card ul{display:none} .card{width:150px} h1{font-size:26px} #overlay .card{flex-basis:160px} }
+  @media (max-height:540px){ #choice .ctc{width:150px;padding:6px 8px} #choice .ctc p{font-size:10.5px;margin-top:3px} .ctsub{display:none} .build{font-size:12px;line-height:1.4} }
 </style>
 </head>
 <body>
@@ -126,14 +132,15 @@
 <div id="rotate"><div><span class="rt1">Turn your phone sideways</span><br><span class="rt2" style="color:#a9a3c4;font-size:15px;font-style:italic">Duskbound plays best in landscape.</span><br><button id="rotok" type="button" style="margin-top:16px">Play upright anyway</button></div></div>
 <script>document.getElementById('rotok').onclick = function () { document.body.classList.add('upright'); };</script>
 <script async src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="data.js?v=31"></script>
-<script src="i18n.js?v=31"></script>
-<script src="meta.js?v=31"></script>
-<script src="cloud.js?v=31"></script>
-<script src="art.js?v=31"></script>
-<script src="audio.js?v=31"></script>
-<script src="voice.js?v=31"></script>
-<script src="bosses.js?v=31"></script>
-<script src="game.js?v=31"></script>
+<script src="data.js?v=32"></script>
+<script src="i18n.js?v=32"></script>
+<script src="meta.js?v=32"></script>
+<script src="cloud.js?v=32"></script>
+<script src="art.js?v=32"></script>
+<script src="audio.js?v=32"></script>
+<script src="voice.js?v=32"></script>
+<script src="bosses.js?v=32"></script>
+<script src="talents.js?v=32"></script>
+<script src="game.js?v=32"></script>
 </body>
 </html>
