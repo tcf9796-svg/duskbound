@@ -136,8 +136,8 @@ ones already picked this run. Making them permanent would be a progression chang
 no longer rolls a reward (`CHAPTER_REWARDS.roll = false` in `meta.js`); instead every player earns one chapter talent
 pick (`CHAPTER_TALENT.policy = 'every'`). The claim (`run:chapter:profile`) is still recorded with no item, so a pick
 can't be earned twice and the campaign clear after the final chapter still unlocks the next difficulty. Never after
-the final chapter (the run ends there). Side effect: the unlockable heroes are only won through the roll, so they
-can't be won while rolls are off. Other settings: `policy: 'reward'` (a pick only when the roll lands on a `t:`
+the final chapter (the run ends there). The unlockable heroes come from campaign clears instead:
+Nightmare → Rowan, Hell → Mira, Inferno → Vespera (`CLEAR_HEROES` in `meta.js`). Other settings: `policy: 'reward'` (a pick only when the roll lands on a `t:`
 reward; needs rolls on) and `'off'`.
 
 **Picking.** At the start of the next chapter the player sees 3 cards (`CHAPTER_TALENT.cards`), drawn at random from

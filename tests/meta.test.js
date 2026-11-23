@@ -52,7 +52,15 @@ ok(M.recordCampaignClear(q, 'nightmare', 'r0') === null && q.unlocked.length ===
 ok(M.recordCampaignClear(q, 'normal', 'r1') === 'nightmare' && JSON.stringify(q.unlocked) === '["normal","nightmare"]', 'Normal clear unlocks Nightmare only');
 ok(M.recordCampaignClear(q, 'normal', 'r1') === null && q.cleared.normal === 1, 'same run cannot count twice');
 ok(M.recordCampaignClear(q, 'normal', 'r2') === null && q.unlocked.length === 2, 'Normal again unlocks nothing new');
-ok(M.recordCampaignClear(q, 'nightmare', 'r3') === 'hell' && M.recordCampaignClear(q, 'hell', 'r4') === 'inferno' && M.recordCampaignClear(q, 'inferno', 'r5') === null, 'chain Nightmare->Hell->Inferno, nothing after');
+const extra = pr => JSON.stringify(pr.characters.filter(c => !['bramble', 'wick', 'vesper'].includes(c)));
+ok(extra(q) === '[]', 'a Normal clear unlocks no hero');
+ok(M.recordCampaignClear(q, 'nightmare', 'r3') === 'hell' && extra(q) === '["rowan"]', 'Nightmare clear unlocks Rowan');
+ok(M.recordCampaignClear(q, 'hell', 'r4') === 'inferno' && extra(q) === '["rowan","mira"]', 'Hell clear unlocks Mira');
+ok(M.recordCampaignClear(q, 'inferno', 'r5') === null && extra(q) === '["rowan","mira","vespera"]', 'Inferno clear unlocks Vespera, nothing after');
+ok(M.recordCampaignClear(q, 'nightmare', 'r6') === null && extra(q).split(',').length === 3, 'clearing again adds no duplicate');
+{ const old = M.newProfile(); old.unlocked = ['normal', 'nightmare', 'hell']; old.cleared = { normal: 1, nightmare: 2 }; const st3 = store(); M.saveProfile(st3, old); const re = M.loadProfile(st3);
+  ok(extra(re) === '["rowan"]', 'a profile that cleared Nightmare before this change gets Rowan when loaded'); }
+ok(M.clearHeroOf('mira') === 'hell' && M.clearHeroOf('bramble') === null, 'each unlockable hero names its difficulty');
 const st2 = store(); M.saveProfile(st2, q); ok(JSON.stringify(M.loadProfile(st2).unlocked) === '["normal","nightmare","hell","inferno"]', 'unlocks survive restart');
 // --- tampered saves and loadouts are repaired / capped
 const bad = M.sanitizeProfile({ id: 'p_abcdefgh12', unlocked: ['inferno'], upgrades: { dmg: 9999, hp: -5, bogus: 3 }, weapons: ['nope', 'mothfang'], equipped: { bramble: 'mothfang' }, talents: { keen: 7, fake: 1 } });

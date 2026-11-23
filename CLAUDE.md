@@ -67,9 +67,10 @@ page by republishing `dist/artifact.html` to the URL above.
   apply difficulty and party scaling once and no chapter multiplier, keep every boss beatable solo with the starting
   heroes. Host runs the boss; guests apply pull/cage/slow locally. See DESIGN.md "Chapter bosses".
 - Chapters 4–5 biomes are placeholders (palettes only).
-- Six heroes: Bramble, Wick, Vesper (everyone has them) and the unlockable Rowan (Green), Mira (Blue), Vespera
-  (Purple). They are character rewards inside the one chapter roll (`c:<id>` in `REWARD_POOLS`), winnable from
-  Chapter 1 / 2 / 3; there is no separate character roll. Unlocks live in the profile (`PROFILE.characters`); the
+- Six heroes: Bramble, Wick, Vesper (everyone has them) and the unlockable Rowan, Mira and Vespera, unlocked for good
+  by a campaign clear (all five chapters): Nightmare → Rowan, Hell → Mira, Inferno → Vespera (`CLEAR_HEROES` in
+  `meta.js`, decided 2026-11-23; also granted on load to profiles that cleared earlier). The `c:<id>` items in
+  `REWARD_POOLS` only matter if chapter rolls are turned back on. Unlocks live in the profile (`PROFILE.characters`); the
   host only lets a guest play a hero their profile owns. Rowan and Vespera cast a second skill from the dash slot.
 - The boss is unsealed early by standing in the altar ring for `UNSEAL_TIME` (5 s, `data.js`), not by pressing F;
   any living player counts, the host keeps the time, progress drains when the ring is empty.
@@ -82,6 +83,4 @@ page by republishing `dist/artifact.html` to the URL above.
 - Chapter talents: five per hero (`HERO_TALENTS`), kept for the run only (like boons). Decided 2026-11-23: after
   every chapter except the last, each player picks one of 3 random cards from their hero's talents not yet picked
   (`CHAPTER_TALENT = { policy: 'every', cards: 3 }`). See DESIGN.md.
-- While rolls are off, Rowan, Mira and Vespera cannot be won (their only source is the chapter roll); heroes already
-  unlocked stay unlocked.
 - Every user-facing string needs a Traditional Chinese version.

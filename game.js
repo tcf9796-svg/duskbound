@@ -953,7 +953,12 @@ function receiveReward(m) {
   if (grantReward(PROFILE, m.claim, m.rarity, m.rarity ? m.item : null, { chapter: m.ch, diff: m.diff })) {
     if (m.rarity) banner(rarityName(m.rarity) + ' reward', itemLabel(m.item), 4, me && me.id);
   }
-  if (m.final) { const un = recordCampaignClear(PROFILE, m.diff, m.run); if (un) setTimeout(() => banner(DIFF(un).name + ' unlocked', 'Campaign cleared on ' + DIFF(m.diff).name, 5), 4200); }
+  if (m.final) {
+    const had = PROFILE.characters.slice(), un = recordCampaignClear(PROFILE, m.diff, m.run);
+    if (un) setTimeout(() => banner(DIFF(un).name + ' unlocked', 'Campaign cleared on ' + DIFF(m.diff).name, 5), 4200);
+    const hero = PROFILE.characters.find(h => !had.includes(h));
+    if (hero) setTimeout(() => banner('Character: ' + HEROES[hero].name, 'Campaign cleared on ' + DIFF(m.diff).name, 5), un ? 9400 : 4200);
+  }
   saveMe();
 }
 const rarityName = r => RARITY_NAMES[r] || '';
@@ -1724,7 +1729,7 @@ function heroCards(sel, compact) {
     const H2 = HEROES[id], R = H2.rarity && RARITY[H2.rarity], open = unlocked(id);
     const rar = R ? '<span class="rar" style="color:' + R.color + ';border-color:' + R.color + '">' + T(RARITY_NAMES[H2.rarity]) + '</span>' : '';
     const body = open ? (compact ? '' : '<p><i>' + T(H2.blurb) + '</i></p>') + '<ul>' + H2.kit.map(k => '<li>' + T(k) + '</li>').join('') + '</ul>'
-      : !CHAPTER_REWARDS.roll ? '<p class="lock">' + L('Locked. Chapter rewards are switched off, so this hero cannot be won right now.', '未解鎖。章節獎勵目前已關閉，暫時無法獲得此英雄。') + '</p>'
+      : clearHeroOf(id) ? '<p class="lock">' + L('Locked. Clear all five chapters on ' + DIFF(clearHeroOf(id)).name + ' to unlock.', '未解鎖。在' + T(DIFF(clearHeroOf(id)).name) + '難度通關全部五章即可解鎖。') + '</p>'
       : '<p class="lock">' + L('Locked. Can be won as a ' + RARITY_NAMES[H2.rarity] + ' chapter reward from Chapter ' + R.chapter + ' on.', '未解鎖。從第 ' + R.chapter + ' 章起，可在章節獎勵中以' + T(RARITY_NAMES[H2.rarity]) + '獎勵獲得。') + '</p>';
     h += '<div class="card' + (id === sel ? ' sel' : '') + (compact ? ' compact' : '') + (open ? '' : ' locked') + '" data-hero="' + id + '"><span class="key">' + (open ? i + 1 : '🔒') + '</span><canvas width="170" height="' + (compact ? 96 : 120) + '" data-p="' + id + '"></canvas><div class="tag" style="color:' + H2.color + '">' + T(H2.title) + '</div><h3>' + T(H2.name) + rar + '</h3>' + body + '</div>';
   });
