@@ -17,7 +17,8 @@ solo or co-op for up to 4 players. English and Traditional Chinese. Full design 
 `data.js` content · `i18n.js` translations (`T()` translates English strings at draw time, `L(en, zh)` for whole
 sentences; game logic and network messages stay English) · `meta.js` tunables + profiles, rewards, difficulties
 (pure functions, tested in Node) · `cloud.js` online profiles (Supabase; off when `CLOUD_CONFIG` is empty and on
-the claude.ai page; setup in DESIGN.md, schema in `server/supabase.sql`) · `art.js` · `audio.js` · `voice.js` · `game.js` simulation, networking, UI ·
+the claude.ai page; setup in DESIGN.md, schema in `server/supabase.sql`) · `art.js` · `audio.js` · `voice.js` · `bosses.js` · `talents.js` chapter talent effects ·
+`game.js` simulation, networking, UI ·
 `index.html` loads them in that order with a `?v=N` cache-busting number.
 
 ## Build, test, publish
@@ -28,6 +29,9 @@ awk '/^<script>$/{f=1;buf="";next} f&&/^<\/script>$/{f=0; if(buf ~ /chunkedMTU/)
 sh build.sh /tmp/peerjs.min.js          # writes dist/duskbound.html and dist/artifact.html
 
 node tests/meta.test.js                 # rules (odds, claims, unlocks, profiles)
+node tests/talents.test.js             # chapter talents, all 30 effects (Node, tests/sim-harness.js; no browser)
+node tests/talents-coop.test.js        # host + guest picking a talent
+node tests/talents-soak.test.js        # every hero with all five talents, long run
 node tests/e2e/progression.test.js      # Playwright; needs dist/ built
 node tests/e2e/voice.test.js
 node tests/e2e/peer.test.js
@@ -67,10 +71,13 @@ page by republishing `dist/artifact.html` to the URL above.
   host only lets a guest play a hero their profile owns. Rowan and Vespera cast a second skill from the dash slot.
 - The boss is unsealed early by standing in the altar ring for `UNSEAL_TIME` (5 s, `data.js`), not by pressing F;
   any living player counts, the host keeps the time, progress drains when the ring is empty.
-- Network messages changed: `PEER_PREFIX` is `duskbound-v5-`. Bump it whenever messages change.
+- Network messages changed: `PEER_PREFIX` is `duskbound-v6-`. Bump it whenever messages change.
 - Work happens on a branch, then a pull request into `main`. Pull before starting, so PC and phone sessions don't
   drift apart again.
 - Online profiles merge, never overwrite (`mergeProfiles`); sign-in is email + password with no email
   confirmation (works in the Home Screen app; reset by emailed link); the profile id never changes mid-run; only the
   publishable key may appear in the game. Supabase project `ojsjccqugdnuhhmewtqy` (free plan, pauses after a week idle).
+- Chapter talents: five per hero (`HERO_TALENTS`), one pick per earned choice, kept for the run only (like boons).
+  When a pick is earned is UNDECIDED: `CHAPTER_TALENT.policy` stays `reward` (only when the chapter's single roll
+  lands on a `t:` talent reward) until someone decides; `every` would add a guaranteed reward. See DESIGN.md.
 - Every user-facing string needs a Traditional Chinese version.

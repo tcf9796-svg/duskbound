@@ -121,6 +121,57 @@ changes these odds, and boss phases, summons and other kills never trigger a rol
   the single roll above, not a separate one. Unlocks are saved in the profile; an older per-device unlock save
   (`duskbound-unlocks`) is imported once. The host only lets a guest play a hero their profile owns.
 
+## Chapter talents
+
+Every hero has exactly five unique talents (`HERO_TALENTS` in `data.js`: name, abilities affected, description,
+limits, and a `v` block with every tunable number). Effects live in `talents.js`, called from `game.js`.
+
+**Lifecycle (follows the existing boons).** The code had two talent kinds: in-run boons (`TALENTS`, picked on level
+up, gone when the run ends) and permanent starting talents in the profile (`t:` reward items). Chapter talents use the
+boon lifecycle: a pick lasts for the rest of the run, is cleared when a new run starts and is never saved to the
+profile. So there is no "owned" state to keep apart from "selected": all five are available each run, minus the
+ones already picked this run. Making them permanent would be a progression change that needs its own decision.
+
+**Earning a pick: UNRESOLVED DESIGN DECISION.** Whether a pick is guaranteed after every chapter, or only earned, has
+not been decided. `CHAPTER_TALENT.policy` in `meta.js`:
+
+| policy | a pick is earned when | reward odds / limits |
+|---|---|---|
+| `reward` **(default)** | that chapter's single reward roll lands on a talent reward (`t:...`) | unchanged: the pick rides on that one reward; no extra roll |
+| `every` | every chapter (a guaranteed extra reward) | needs an explicit decision before switching on |
+| `off` | never | unchanged |
+
+Never after the final chapter (the run ends there). Earned once per claim (`run:chapter:profile`), so it can't be
+earned twice. With the current pools, about a quarter of rolls are talent rewards, falling as starting talents run
+out (owned ones are skipped and their rarity's fallback upgrade is given instead).
+
+**Picking.** At the start of the next chapter the player sees cards for their hero's remaining talents (name,
+abilities, description, limits) and chooses one: tap or click a card, press 1-5, or Tab to a card and press Enter.
+Solo pauses while the cards are open; co-op keeps running. A guest's choice goes to the host (`ctpick`); the host
+accepts it only if it answers the current offer (`ctSeq`) with one of that hero's offered talents, then applies it.
+The guest sees it as selected once the host's snapshot lists it (`tl`). **Build panel:** desktop HUD under the
+minimap, the pause screen (solo), the co-op menu (P / Esc / 🎙) and the chapter-complete screen.
+
+**Rules every talent follows.** Normal attacks (manual or AUTO) all go through `doAttack`; copied attacks, projectiles,
+damage over time and talent effects are flagged (`proc`, `dot`, `copy`) and never trigger venom, chain lightning,
+other talents or further Soul Tether spreading. Shields from talents are capped; Sunseed's barrier is capped at 30.
+Slows and roots on bosses last 40% as long (`ccScale`); immune or anchored arena objects ignore them. Talent zones are
+capped at 40, talent projectiles stop spawning at 200 projectiles, silk trails at 14 per player, sparks at 4 per
+attack. Ultimates cleared by going down or changing chapter never fire their "when it ends" effects.
+
+| Hero | Talents (initial balance in `HERO_TALENTS`) |
+|---|---|
+| Bramble | Splintering Impact · Briar Territory · Living Rampart · Unstoppable Growth · Sunseed Reserve |
+| Wick | Forked Cinders · Lantern Coven · Ember Passage · Falling Constellation · Borrowed Midnight |
+| Vesper | Returning Edge · Silken Crossfire · Wingbeat Riposte · Total Eclipse · Lunar Rhythm |
+| Rowan | Thorn Reprisal · Walking Grove · Spreading Roots · Heartwood Bond · Ancient Aftergrowth |
+| Mira | Echoing Step · Mirror Relay · Splintered Edge · Shared Opening · Final Curtain |
+| Lanternkeeper | Wandering Flame · Merciful Wisp · Soul Succession · Ember Communion · Returning Procession |
+
+Notes: Total Eclipse revisits a foe at 60% damage, while plain Eclipse repeats strikes at full damage, so the talent
+trades repeat damage for always landing 8 strikes and finding new targets. Splintering Impact counts the whole visible
+knockback (until it slows below 40 px/s).
+
 ## Reconnection
 
 A guest who drops keeps their slot for `PARTY_SCALE.graceSeconds`. Rejoining needs **both** the private rejoin

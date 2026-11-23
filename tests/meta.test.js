@@ -94,4 +94,11 @@ ok(M.sanitizeProfile({ ...hp }).characters.includes('rowan'), 'unlocked hero sur
   const old = M.newProfile(); old.upgrades.dmg = 10; // earned long ago, no longer in the 60-entry history
   ok(M.mergeProfiles(old, M.newProfile()).upgrades.dmg === 10, 'upgrades older than the reward history are not lost');
 }
+// --- chapter talents: when a pick is earned (policy is an unresolved design decision; default must not add a reward)
+ok(M.CHAPTER_TALENT.policy === 'reward', 'chapter talent policy defaults to "reward"');
+ok(M.earnsChapterTalent('t:keen', 1) && M.earnsChapterTalent('t:exec', 4), 'a roll landing on a talent reward earns a pick');
+ok(!M.earnsChapterTalent('u:hp:4', 1) && !M.earnsChapterTalent('w:thornmaul', 2) && !M.earnsChapterTalent('c:rowan', 1) && !M.earnsChapterTalent(null, 1), 'other rewards (or none) earn no pick');
+ok(!M.earnsChapterTalent('t:keen', M.CHAPTERS) && !M.earnsChapterTalent('t:keen', 0), 'never after the final chapter');
+ok(M.earnsChapterTalent('u:hp:4', 3, 'every') && !M.earnsChapterTalent('t:keen', 3, 'off'), 'the "every" and "off" settings');
+{ const inv = { weapons: [], talents: {}, upgrades: {}, characters: [], chapter: 2 }; let picks = 0, rolls = 0; for (let i = 0; i < 4000; i++) { const r = M.rollReward(inv); rolls++; if (M.earnsChapterTalent(r.item, 2)) picks++; } ok(rolls === 4000 && picks > 0 && picks < rolls, 'picks ride on the existing single roll (one reward per roll, ' + (100 * picks / rolls).toFixed(1) + '% of rolls)'); }
 console.log((fails ? 'FAILED ' + fails : 'all passed') + ' (' + n + ' checks)'); process.exit(fails ? 1 : 0);
