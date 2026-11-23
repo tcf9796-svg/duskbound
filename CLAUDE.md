@@ -40,6 +40,7 @@ node tests/e2e/downed.test.js
 node tests/e2e/touchmode.test.js
 node tests/e2e/bosses.test.js
 node tests/e2e/bosses-coop.test.js
+node tests/e2e/stats.test.js
 ```
 
 When changing any `.js` file: bump `?v=N` on every script tag in `index.html`, rebuild `dist/`, run the tests.
@@ -67,7 +68,7 @@ page by republishing `dist/artifact.html` to the URL above.
   host only lets a guest play a hero their profile owns. Rowan and Vespera cast a second skill from the dash slot.
 - The boss is unsealed early by standing in the altar ring for `UNSEAL_TIME` (5 s, `data.js`), not by pressing F;
   any living player counts, the host keeps the time, progress drains when the ring is empty.
-- Network messages changed: `PEER_PREFIX` is `duskbound-v5-`. Bump it whenever messages change.
+- Network messages changed: `PEER_PREFIX` is `duskbound-v6-`. Bump it whenever messages change.
 - Work happens on a branch, then a pull request into `main`. Pull before starting, so PC and phone sessions don't
   drift apart again.
 - Online profiles merge, never overwrite (`mergeProfiles`); sign-in is email + password with no email

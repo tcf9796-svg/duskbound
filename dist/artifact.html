@@ -432,7 +432,7 @@ const ZH = {
   'Wake the Gloam Stag early': '提早喚醒幽暮雄鹿', 'Unsealing': '解封中', 'Drink from the spring': '飲用泉水', 'Open cache': '開啟寶箱', 'Pray at the wayshrine': '在路旁神龕祈禱',
   // HUD
   'The Gloam Stag hunts you': '幽暮雄鹿正在獵殺你', 'LMB': '左鍵', 'RMB': '右鍵', 'SPACE': '空白鍵', 'DOWN': '倒地',
-  'SKILL': '技能', 'DOWN — an ally must reach you': '倒地 — 等待隊友前來救援', 'DOWN — stand close to revive': '倒地 — 靠近即可救起', 'AUTO': '自動', 'AUTO ✓': '自動 ✓', 'Auto attack': '自動攻擊', 'Auto attack on': '自動攻擊：開', 'Auto attack off': '自動攻擊：關', 'on': '開', 'off': '關', 'TALK': '說話', 'DASH': '衝刺', 'ULT': '絕招', 'USE': '使用', 'Lv 3': '3 級',
+  'SKILL': '技能', 'Hero stats': '角色屬性', 'Stats': '屬性', 'Attack speed': '攻擊速度', 'Critical damage': '暴擊傷害', 'Life leech': '生命吸取', 'Damage reduction': '傷害減免', 'Cooldowns': '冷卻速度', 'Dash charges': '衝刺次數', 'Night damage': '夜間傷害', 'Regen by day': '白天回復', 'Chain lightning': '連鎖閃電', 'Venom': '毒素', 'Execute': '斬殺', 'Experience': '經驗', 'Pickup radius': '拾取範圍', 'Embers': '餘燼', 'DOWN — an ally must reach you': '倒地 — 等待隊友前來救援', 'DOWN — stand close to revive': '倒地 — 靠近即可救起', 'AUTO': '自動', 'AUTO ✓': '自動 ✓', 'Auto attack': '自動攻擊', 'Auto attack on': '自動攻擊：開', 'Auto attack off': '自動攻擊：關', 'on': '開', 'off': '關', 'TALK': '說話', 'DASH': '衝刺', 'ULT': '絕招', 'USE': '使用', 'Lv 3': '3 級',
   // messages
   'Online co-op is not available on this page. Solo works here; for co-op, open the downloaded duskbound.html file or a copy on your own website.': '此頁面無法進行線上合作。可以單人遊玩；合作模式請開啟下載的 duskbound.html 檔案或架在你自己網站上的版本。',
   'Online play needs an internet connection (the networking library did not load).': '線上遊玩需要網路連線（連線函式庫未能載入）。',
@@ -1659,6 +1659,7 @@ let lastTouchT = -1e9;
 for (const ev of ['touchstart', 'touchmove', 'touchend', 'touchcancel']) document.addEventListener(ev, () => { lastTouchT = performance.now(); }, { capture: true, passive: true });
 const fakeMouse = e => performance.now() - lastTouchT < 1000 || !!(e.sourceCapabilities && e.sourceCapabilities.firesTouchEvents);
 cv.addEventListener('mousedown', e => { if (fakeMouse(e)) return; initAudio();
+  if (!touch.on && e.button === 0 && hudStats && e.clientX >= hudStats.x && e.clientX <= hudStats.x + hudStats.w && e.clientY >= hudStats.y && e.clientY <= hudStats.y + hudStats.h) { toggleStats(); return; }
   if (!touch.on && e.button === 0 && hudAuto && e.clientX >= hudAuto.x && e.clientX <= hudAuto.x + hudAuto.w && e.clientY >= hudAuto.y && e.clientY <= hudAuto.y + hudAuto.h) { toggleAuto(); return; } if (touch.on) { touch.on = false; touch.move = touch.aim = null; resize(); } if (e.button === 0) mouse.l = true; if (e.button === 2) { mouse.r = true; pressed.rmb = true; } });
 addEventListener('mouseup', e => { if (e.button === 0) mouse.l = false; if (e.button === 2) mouse.r = false; });
 addEventListener('contextmenu', e => e.preventDefault());
@@ -1673,6 +1674,34 @@ const hudScale = () => touch.on ? clamp(Math.min((W - SA.l - SA.r) / 900, (H - S
 const AUTO_RANGE = 460;
 let autoAtk = (() => { try { return localStorage.getItem('duskbound-auto') === '1'; } catch (e) { return false; } })();
 let hudAuto = null; // where the desktop AUTO box was drawn (screen pixels), for clicks
+// Stats panel (local player): the totals of every bonus on this hero (boons, weapon, upgrades, shrine blessings).
+// The host computes them (it owns every hero's stats) and sends each guest their own in the snapshot (st).
+let showStats = (() => { try { return localStorage.getItem('duskbound-stats') === '1'; } catch (e) { return false; } })();
+let hudStats = null; // where the desktop STATS box was drawn (screen pixels), for clicks
+function toggleStats() { showStats = !showStats; try { localStorage.setItem('duskbound-stats', showStats ? '1' : '0'); } catch (e) { } playSfx('pick'); }
+// [maxHp, damage x, attack speed x, move speed x, crit chance, crit damage x, life leech, damage reduction, cooldown x,
+//  pickup radius, xp x, dash charges, regen/s by day, night damage, spite, chain, venom, execute, embers]
+const statsOf = p => [p.maxHp, r3(p.dmgMul), r3(p.asMul), r3(p.spdMul), r3(p.crit + (p.hero === 'vesper' ? 0.15 * night : 0)), r3(p.critMul), r3(p.lifesteal), r3(p.armor), r3(p.cdr), Math.round(p.pickR), r3(p.xpMul),
+  p.dashMax, r2(p.dayRegen + (p.hero === 'bramble' ? 1.5 : 0)), r3(p.nightDmg), p.spite || 0, p.chain || 0, p.venom || 0, r3(p.exec || 0), p.embers];
+// Rows to show: [label, value]; the core ones always, the rest once the hero has them.
+function statRows(s) {
+  if (!s) return [];
+  const pct = v => (v >= 0 ? '+' : '') + Math.round(v * 100) + '%', rows = [
+    ['Damage', pct(s[1] - 1)], ['Attack speed', pct(s[2] - 1)], ['Critical chance', Math.round(s[4] * 100) + '%'], ['Critical damage', Math.round(s[5] * 100) + '%'],
+    ['Life leech', Math.round(s[6] * 100) + '%'], ['Damage reduction', Math.round(s[7] * 100) + '%'], ['Move speed', pct(s[3] - 1)], ['Cooldowns', pct(1 / s[8] - 1)],
+    ['Max health', '' + s[0]], ['Dash charges', '' + s[11]]];
+  if (s[13]) rows.push(['Night damage', pct(s[13])]);
+  if (s[12]) rows.push(['Regen by day', s[12] + '/s']);
+  if (s[14]) rows.push(['Spite', '×' + s[14]]);
+  if (s[15]) rows.push(['Chain lightning', Math.round(s[15] * 20) + '%']);
+  if (s[16]) rows.push(['Venom', s[16] * 5 + '/s']);
+  if (s[17]) rows.push(['Execute', pct(s[17])]);
+  if (s[10] !== 1) rows.push(['Experience', pct(s[10] - 1)]);
+  if (s[9] !== 90) rows.push(['Pickup radius', '' + s[9]]);
+  rows.push(['Embers', '' + s[18]]);
+  return rows;
+}
+const myStats = () => net.mode === 'client' ? me.st : statsOf(me);
 function toggleAuto() {
   autoAtk = !autoAtk; try { localStorage.setItem('duskbound-auto', autoAtk ? '1' : '0'); } catch (e) { }
   if (me) texts.push({ x: me.x, y: me.y - 46, s: autoAtk ? 'Auto attack on' : 'Auto attack off', color: '#f3d48a', size: 14, life: 1.2 }); // local only
@@ -1684,7 +1713,7 @@ function touchButtons() {
   const u = touchU(), R = W - SA.r, B = H - Math.max(SA.b - 8, 0), hs = hudScale();
   return [{ id: 'skill', key: 'e', x: R - 205 * u, y: B - 62 * u, r: 30 * u }, { id: 'dash', key: ' ', x: R - 190 * u, y: B - 140 * u, r: 30 * u },
   { id: 'ult', key: 'q', x: R - 118 * u, y: B - 196 * u, r: 30 * u }, { id: 'f', key: 'f', x: R - 42 * u, y: B - 210 * u, r: 26 * u },
-  { id: 'auto', key: '', x: R - 272 * u, y: B - 112 * u, r: 24 * u },
+  { id: 'auto', key: '', x: R - 272 * u, y: B - 112 * u, r: 24 * u }, { id: 'stats', key: '', x: R - 156 * hs, y: SA.t + 130 * hs, r: 18 * hs },
   // left of the minimap: pause in solo, mute in co-op
   { id: 'menu', key: '', x: R - 156 * hs, y: SA.t + 38 * hs, r: 18 * hs }].concat(fsAvailable() && !isFS() && (canFS() || barsShowing()) ? [{ id: 'fs', key: '', x: R - 156 * hs, y: SA.t + 84 * hs, r: 18 * hs }] : []).concat(Voice.micTrack && Voice.mode === 'ptt' && net.mode !== 'solo' ? [{ id: 'talk', key: '', x: SA.l + 44 * u, y: B - 205 * u, r: 28 * u }] : []);
 }
@@ -1700,7 +1729,7 @@ cv.addEventListener('touchstart', e => {
   e.preventDefault(); initAudio(); if (!touch.on) { touch.on = true; resize(); }
   for (const t of e.changedTouches) {
     const x = t.clientX, y = t.clientY, b = touchButtons().find(b => Math.hypot(x - b.x, y - b.y) < b.r * 1.25);
-    if (b) { if (b.id === 'menu') touchMenu(); else if (b.id === 'talk') { touch.talk = t.identifier; Voice.setTalking(true); } else if (b.id === 'fs') touch.fs = t.identifier; else if (b.id === 'auto') toggleAuto(); else pressed[b.key] = true; }
+    if (b) { if (b.id === 'menu') touchMenu(); else if (b.id === 'talk') { touch.talk = t.identifier; Voice.setTalking(true); } else if (b.id === 'fs') touch.fs = t.identifier; else if (b.id === 'auto') toggleAuto(); else if (b.id === 'stats') toggleStats(); else pressed[b.key] = true; }
     else if (x < W * 0.45) { if (!touch.move) touch.move = { id: t.identifier, x0: x, y0: y, x, y }; }
     else if (!touch.aim) touch.aim = { id: t.identifier, x0: x, y0: y, x, y };
   }
@@ -2510,7 +2539,7 @@ function expireAway() {
 }
 
 // ---------- netcode ----------
-const PEER_PREFIX = 'duskbound-v5-'; // bump whenever messages change, so mismatched versions never meet
+const PEER_PREFIX = 'duskbound-v6-'; // bump whenever messages change, so mismatched versions never meet
 const noNetMsg = () => window.DUSK_NO_NET ? 'Online co-op is not available on this page. Solo works here; for co-op, open the downloaded duskbound.html file or a copy on your own website.' : 'Online play needs an internet connection (the networking library did not load).';
 function wrapConn(c) {
   const w = { peerId: c.peer, send: d => { try { c.send(d); } catch (e) { } }, onData: null, onClose: null, close: () => { try { c.close(); } catch (e) { } } };
@@ -2816,7 +2845,7 @@ function sendSnaps() {
       Z: zones.filter(nr).map(z => [z.x | 0, z.y | 0, z.r | 0, z.kind, r2(Math.max(0, z.delay || 0)), r2(z.max), r2(z.life || 0), z.friendly ? 1 : 0, z.lantern ? 1 : 0, z.color, z.vx | 0, z.vy | 0]),
       K: pickups.filter(nr).map(k => [k.id, k.kind, k.x | 0, k.y | 0]),
       ev: evQ.filter(e => (!e.to || e.to === c.pid) && (e.x === undefined || Math.hypot(e.x - cp.x, e.y - cp.y) < 1200)).map(e => ({ k: e.k, a: e.a })),
-      c: cp.choice ? { q: cp.choiceSeq, ids: cp.choice.map(t => t.id), title: cp.choiceTitle } : 0, tal: cp.talents
+      c: cp.choice ? { q: cp.choiceSeq, ids: cp.choice.map(t => t.id), title: cp.choiceTitle } : 0, tal: cp.talents, st: statsOf(cp)
     });
   }
   evQ.length = 0;
@@ -2891,7 +2920,7 @@ function applySnap(s) {
   const oldK = new Map(pickups.map(k => [k.id, k]));
   pickups = s.K.map(a => { const k = oldK.get(a[0]) || { id: a[0], x: a[2], y: a[3], t: a[0] % 7 }; k.kind = a[1]; k.tx = a[2]; k.ty = a[3]; return k; });
   for (const e of s.ev) applyEv(e);
-  me.talents = s.tal || {};
+  me.talents = s.tal || {}; me.st = s.st || null;
   if (s.c && s.c.q !== net.pickedSeq) { me.choice = s.c.ids.map(id => TALENTS.find(t => t.id === id)).filter(Boolean); me.choiceSeq = s.c.q; me.choiceTitle = s.c.title; } else me.choice = null;
 }
 function clientUpdate(dt) {
@@ -3071,6 +3100,18 @@ function drawDownMarkers() {
     c.restore();
   }
 }
+function drawStatsPanel(c, W, TU) {
+  const rows = statRows(myStats()); if (!rows.length) return;
+  const H2 = HEROES[me.hero], cols = 2, per = Math.ceil(rows.length / cols), lh = 17, pw = Math.min(440, W - 40), colW = pw / cols;
+  const x0 = W / 2 - pw / 2, y0 = game.boss ? (TU && W < 700 ? 182 : 134) : 92, ph = per * lh + 30;
+  c.fillStyle = 'rgba(8,8,16,.82)'; rr(c, x0, y0, pw, ph, 8); c.fill(); c.strokeStyle = 'rgba(243,212,138,.35)'; c.lineWidth = 1; rr(c, x0, y0, pw, ph, 8); c.stroke();
+  c.textAlign = 'left'; c.font = 'bold 12px Georgia'; c.fillStyle = H2.color;
+  c.fillText(T(H2.name) + ' · ' + T('Hero stats') + (me.weapon ? ' · ' + T(WEAPONS[me.weapon].name) : ''), x0 + 10, y0 + 16);
+  c.font = '12px Georgia';
+  rows.forEach(([k, v], i) => { const cx = x0 + 10 + Math.floor(i / per) * colW, cy = y0 + 34 + (i % per) * lh;
+    c.textAlign = 'left'; c.fillStyle = '#b9b3d4'; c.fillText(T(k), cx, cy); c.textAlign = 'right'; c.fillStyle = '#fff'; c.fillText(v, cx + colW - 20, cy); });
+  c.textAlign = 'left';
+}
 function drawHUD() {
   const c = ctx, p = me, H2 = HEROES[p.hero], TU = touch.on;
   // On phones the HUD is scaled down, the health panel moves to the top-left and the key hints give way to touch buttons.
@@ -3109,7 +3150,13 @@ function drawHUD() {
     c.font = '11px Georgia'; c.fillText(autoAtk ? T('on') + ' · R' : T('off') + ' · R', x + s / 2, ay + s / 2 + 14);
     c.fillStyle = '#b9b3d4'; c.fillText(T('Auto attack'), x + s / 2, ay + s + 14);
     hudAuto = { x: SA.l + x * hs, y: SA.t + ay * hs, w: s * hs, h: s * hs };
-  }
+    const x2 = x + s + gap; c.fillStyle = showStats ? 'rgba(60,48,20,.85)' : 'rgba(8,8,16,.8)'; rr(c, x2, ay, s, s, 8); c.fill();
+    c.strokeStyle = showStats ? '#f3d48a' : '#4a4370'; c.lineWidth = 2; rr(c, x2, ay, s, s, 8); c.stroke();
+    c.font = '20px Georgia'; c.fillStyle = '#fff'; c.fillText('📊', x2 + s / 2, ay + s / 2 + 2); c.font = '11px Georgia'; c.fillStyle = showStats ? '#f3d48a' : '#8a84a8'; c.fillText('C', x2 + s / 2, ay + s / 2 + 18);
+    c.fillStyle = '#b9b3d4'; c.fillText(T('Stats'), x2 + s / 2, ay + s + 14);
+    hudStats = { x: SA.l + x2 * hs, y: SA.t + ay * hs, w: s * hs, h: s * hs };
+  } else hudStats = null;
+  if (showStats) drawStatsPanel(c, W, TU);
   const cw = Math.min(460, W - 380), cx = W / 2 - cw / 2, cy = 22;
   c.fillStyle = 'rgba(8,8,16,.75)'; rr(c, cx - 12, cy - 12, cw + 24, 58, 8); c.fill();
   for (let i = 0; i < DAYS; i++) { const x0 = cx + cw * (i * CYCLE) / TOTAL, wd = cw * DAY / TOTAL, wn = cw * NIGHT / TOTAL; c.fillStyle = '#e0b75a'; c.fillRect(x0, cy, wd - 1, 8); c.fillStyle = '#4a4aa8'; c.fillRect(x0 + wd, cy, wn - 1, 8); }
@@ -3169,7 +3216,7 @@ function drawTouchUI() {
   const np = !p.down && nearPoi(p), use = !!(np && np.kind !== 'altar' && poiPrompt(np));
   const b1 = slotBlock(p, 1), alt = HEROES[p.hero].alt, b2 = alt ? slotBlock(p, 2) : null;
   const info = { skill: [b1 || 'SKILL', p.tSkill, p.cds[1], !b1], dash: [b2 || (alt ? 'SKILL 2' : 'DASH') + (p.dashMax > 1 ? ' ' + p.dashes : ''), p.dashes > 0 ? 0 : p.dashRe, p.cds[2], !b2], ult: [p.level >= 3 ? 'ULT' : 'Lv 3', p.tUlt, p.cds[3], p.level >= 3], f: ['USE', 0, 0, use],
-    menu: [net.mode === 'solo' ? 'II' : '🎙', 0, 0, true], fs: ['⛶', 0, 0, true], auto: [autoAtk ? 'AUTO ✓' : 'AUTO', 0, 0, autoAtk], talk: [Voice.transmitting() ? '● ' + T('TALK') : T('TALK'), 0, 0, true] };
+    menu: [net.mode === 'solo' ? 'II' : '🎙', 0, 0, true], fs: ['⛶', 0, 0, true], auto: [autoAtk ? 'AUTO ✓' : 'AUTO', 0, 0, autoAtk], stats: ['📊', 0, 0, true], talk: [Voice.transmitting() ? '● ' + T('TALK') : T('TALK'), 0, 0, true] };
   c.textAlign = 'center'; c.textBaseline = 'middle';
   const warnUp = hazards.some(h => h.tel > 0);
   for (const b of touchButtons()) {
@@ -3185,11 +3232,11 @@ function drawTouchUI() {
 
 // ---------- screens ----------
 const controlsHtml = () => touch.on
-  ? L('<div class="controls"><b>Left thumb</b> move · <b>Right thumb</b> drag to aim and attack, or hold to auto-target · <b>Buttons</b> skill, dash (Rowan, Vespera: second skill), ultimate (Lv 3), use, <b>AUTO</b> automatic attacks, <b>II</b> pause',
-      '<div class="controls"><b>左手拇指</b> 移動 · <b>右手拇指</b> 拖曳瞄準並攻擊，或按住自動鎖定 · <b>按鈕</b> 技能、衝刺（羅文、薇斯佩拉：第二技能）、絕招（3 級）、使用、<b>自動</b> 自動攻擊、<b>II</b> 暫停') +
+  ? L('<div class="controls"><b>Left thumb</b> move · <b>Right thumb</b> drag to aim and attack, or hold to auto-target · <b>Buttons</b> skill, dash (Rowan, Vespera: second skill), ultimate (Lv 3), use, <b>AUTO</b> automatic attacks, <b>📊</b> stats, <b>II</b> pause',
+      '<div class="controls"><b>左手拇指</b> 移動 · <b>右手拇指</b> 拖曳瞄準並攻擊，或按住自動鎖定 · <b>按鈕</b> 技能、衝刺（羅文、薇斯佩拉：第二技能）、絕招（3 級）、使用、<b>自動</b> 自動攻擊、<b>📊</b> 屬性、<b>II</b> 暫停') +
     '</div>'
-  : L('<div class="controls"><b>WASD</b> move · <b>Mouse</b> aim · <b>LMB</b> attack · <b>RMB</b>/<b>E</b> skill · <b>Space</b> dash (Rowan, Vespera: second skill) · <b>Q</b> ultimate (Lv 3) · <b>F</b> interact · <b>R</b> auto attack · <b>1</b>-<b>3</b> pick boon · <b>M</b> mute</div>',
-      '<div class="controls"><b>WASD</b> 移動 · <b>滑鼠</b> 瞄準 · <b>左鍵</b> 攻擊 · <b>右鍵</b>/<b>E</b> 技能 · <b>空白鍵</b> 衝刺（羅文、薇斯佩拉：第二技能） · <b>Q</b> 絕招（3 級） · <b>F</b> 互動 · <b>R</b> 自動攻擊 · <b>1</b>-<b>3</b> 選擇祝福 · <b>M</b> 靜音</div>');
+  : L('<div class="controls"><b>WASD</b> move · <b>Mouse</b> aim · <b>LMB</b> attack · <b>RMB</b>/<b>E</b> skill · <b>Space</b> dash (Rowan, Vespera: second skill) · <b>Q</b> ultimate (Lv 3) · <b>F</b> interact · <b>R</b> auto attack · <b>C</b> stats · <b>1</b>-<b>3</b> pick boon · <b>M</b> mute</div>',
+      '<div class="controls"><b>WASD</b> 移動 · <b>滑鼠</b> 瞄準 · <b>左鍵</b> 攻擊 · <b>右鍵</b>/<b>E</b> 技能 · <b>空白鍵</b> 衝刺（羅文、薇斯佩拉：第二技能） · <b>Q</b> 絕招（3 級） · <b>F</b> 互動 · <b>R</b> 自動攻擊 · <b>C</b> 屬性 · <b>1</b>-<b>3</b> 選擇祝福 · <b>M</b> 靜音</div>');
 // Full screen: Android and iPad browsers can do it for a page; iPhone Safari only does it for video, so there the way
 // is to add the game to the Home Screen (manifest.webmanifest makes it open full screen, without browser bars).
 const DE = document.documentElement, IPHONE = /iPhone|iPod/.test(navigator.userAgent);
@@ -3497,6 +3544,7 @@ async function showVoice(back, soft) {
 const muteLabel = () => AU.muted ? L('Unmute', '取消靜音') : L('Mute', '靜音');
 function onKey(k) {
   if (k === 'r' && game.state === 'play' && me && !game.over) toggleAuto();
+  if (k === 'c' && game.state === 'play' && me && !game.over) toggleStats();
   if (k === 'm' && AU.ctx) { AU.muted = !AU.muted; AU.master.gain.value = AU.muted ? 0 : 0.55; }
   const n = '123456789'.indexOf(k);
   if (n >= 0 && (game.state === 'menu' || game.state === 'lobby')) selectHero(Object.keys(HEROES)[n]);
