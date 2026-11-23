@@ -41,6 +41,7 @@ node tests/e2e/touchmode.test.js
 node tests/e2e/bosses.test.js
 node tests/e2e/bosses-coop.test.js
 node tests/e2e/stats.test.js
+node tests/e2e/lang.test.js
 ```
 
 When changing any `.js` file: bump `?v=N` on every script tag in `index.html`, rebuild `dist/`, run the tests.

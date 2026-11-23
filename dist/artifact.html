@@ -3532,8 +3532,8 @@ async function showVoice(back, soft) {
     h += '<div class="stats prof">' + (others.length ? others.map(r => { const v = Voice.calls.get(r.id); return '<div class="vrow">' + esc(nameOf(r.id)) + ' <i>' + (v && v.stream ? L('connected', '已連線') : L('connecting…', '連線中…')) + '</i> ' +
       '<button class="ghost vmute" data-pid="' + r.id + '">' + (v && v.muted ? L('Unmute', '取消靜音') : L('Mute', '靜音')) + '</button> <input type="range" class="vvol" data-pid="' + r.id + '" min="0" max="2" step="0.05" value="' + (v ? v.vol : 1) + '"></div>'; }).join('') : '<i>' + L('No one else here yet.', '目前沒有其他人。') + '</i>') + '</div>';
   }
-  h += '<div class="row"><button id="vsfx" class="ghost">' + L('Game sound: ', '遊戲音效：') + (AU.muted ? L('off', '關') : L('on', '開')) + '</button>' + fsRowHtml() + '<button id="vback">' + L('Close', '關閉') + '</button></div>';
-  show(h, soft); bindFs(() => showVoice(back, soft));
+  h += '<div class="row"><button id="vsfx" class="ghost">' + L('Game sound: ', '遊戲音效：') + (AU.muted ? L('off', '關') : L('on', '開')) + '</button>' + langBtnHtml() + fsRowHtml() + '<button id="vback">' + L('Close', '關閉') + '</button></div>';
+  show(h, soft); bindFs(() => showVoice(back, soft)); bindLang(() => showVoice(back, soft));
   $('vback').onclick = () => back(); $('vsfx').onclick = () => { initAudio(); onKey('m'); showVoice(back, soft); };
   if ($('vmic')) $('vmic').onclick = async () => { if (Voice.micStream) await Voice.disableMic(); else await Voice.enableMic(Voice.micId); showVoice(back, soft); };
   if ($('vmode')) $('vmode').onchange = e => { Voice.setMode(e.target.value); showVoice(back, soft); };
@@ -3541,6 +3541,9 @@ async function showVoice(back, soft) {
   document.querySelectorAll('.vmute').forEach(b => b.onclick = () => { const pid = +b.dataset.pid, v = Voice.calls.get(pid); Voice.setMuted(pid, !(v && v.muted)); showVoice(back, soft); });
   document.querySelectorAll('.vvol').forEach(r => r.oninput = () => Voice.setVolume(+r.dataset.pid, +r.value));
 }
+// In-game language switch (pause screen, and the co-op Voice & sound screen): the HUD redraws in the new language at once.
+const langBtnHtml = () => '<button id="plang" class="ghost">' + (LANG === 'zh' ? '🌐 English' : '🌐 繁體中文') + '</button>';
+function bindLang(redraw) { if ($('plang')) $('plang').onclick = () => { setLang(LANG === 'zh' ? 'en' : 'zh'); redraw(); }; }
 const muteLabel = () => AU.muted ? L('Unmute', '取消靜音') : L('Mute', '靜音');
 function onKey(k) {
   if (k === 'r' && game.state === 'play' && me && !game.over) toggleAuto();
@@ -3553,9 +3556,10 @@ function onKey(k) {
   else if ((k === 'p' || k === 'escape') && game.state === 'play' && net.mode === 'solo' && !game.over && !(me && me.choice)) {
     game.paused = !game.paused;
     if (game.paused) {
-      show('<h2>' + L('Paused', '暫停') + '</h2>' + controlsHtml() + '<div class="row"><button id="res">' + L('Resume', '繼續') + '</button>' + (touch.on ? '<button id="mute" class="ghost">' + muteLabel() + '</button><button id="quit" class="ghost">' + L('Quit run', '放棄本局') + '</button>' : '') + fsRowHtml() + '</div>', true);
+      show('<h2>' + L('Paused', '暫停') + '</h2>' + controlsHtml() + '<div class="row"><button id="res">' + L('Resume', '繼續') + '</button>' + (touch.on ? '<button id="mute" class="ghost">' + muteLabel() + '</button><button id="quit" class="ghost">' + L('Quit run', '放棄本局') + '</button>' : '') + langBtnHtml() + fsRowHtml() + '</div>', true);
       $('res').onclick = () => { game.paused = false; hide(); };
       bindFs(() => { game.paused = true; onKey('p'); onKey('p'); });
+      bindLang(() => { game.paused = true; onKey('p'); onKey('p'); });
       if ($('mute')) $('mute').onclick = () => { initAudio(); onKey('m'); $('mute').textContent = muteLabel(); };
       if ($('quit')) $('quit').onclick = () => { game.paused = false; showMenu(); };
     } else hide();
