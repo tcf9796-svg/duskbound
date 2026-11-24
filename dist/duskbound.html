@@ -4134,6 +4134,27 @@ showMenu(); requestAnimationFrame(frame);
 // online profile: finish a password-reset link if we arrived from one, then sync
 if (Cloud.enabled()) Cloud.fromLink().then(t => { if (t === 'recovery') { cloudUI.mode = 'newpw'; showProfile(); } cloudSync(); });
 if (/[?&]a(=|&|$)/.test(location.search) && !STANDALONE && !window.DUSK_NO_NET) showInstall(() => showMenu());
+// Auto-update (GitHub Pages / Home Screen app): phones, Android Chrome especially, can keep showing an old cached
+// index.html for a while. On load and whenever the app comes back to the front, re-download index.html (cache:
+// 'reload' also refreshes the browser's copy) and, if it names a newer ?v=, reload — only on the main menu, never
+// during a run or in a lobby. The built single-file pages (claude.ai, dist/) have no ?v= and skip this.
+(function autoUpdate() {
+  const tag = document.querySelector('script[src*="game.js?v="]'); if (!tag || !/^https?:$/.test(location.protocol)) return;
+  const mine = +(tag.getAttribute('src').match(/v=(\d+)/) || [0, 0])[1];
+  let busy = false;
+  const check = async () => {
+    if (busy || document.hidden || game.state !== 'menu' || !$('solo') || net.mode !== 'solo') return; busy = true;
+    try {
+      const r = await fetch(location.pathname, { cache: 'reload' }); const v = +((await r.text()).match(/game\.js\?v=(\d+)/) || [0, 0])[1];
+      let tried = ''; try { tried = sessionStorage.getItem('duskbound-upd') || ''; } catch (e) { }
+      if (v > mine && tried !== String(v) && game.state === 'menu' && $('solo') && !(document.activeElement && document.activeElement.tagName === 'INPUT')) {
+        try { sessionStorage.setItem('duskbound-upd', String(v)); } catch (e) { } // one try per version, so a stale CDN can't loop
+        saveName(); location.reload();
+      }
+    } catch (e) { } busy = false;
+  };
+  setTimeout(check, 1500); document.addEventListener('visibilitychange', () => { if (!document.hidden) check(); });
+})();
 </script>
 </body>
 </html>
