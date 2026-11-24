@@ -46,6 +46,7 @@ node tests/e2e/bosses.test.js
 node tests/e2e/bosses-coop.test.js
 node tests/e2e/stats.test.js
 node tests/e2e/lang.test.js
+node tests/e2e/update.test.js          # auto-update of a cached index.html (no build needed)
 ```
 
 When changing any `.js` file: bump `?v=N` on every script tag in `index.html`, rebuild `dist/`, run the tests.
