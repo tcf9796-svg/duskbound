@@ -57,7 +57,7 @@ const ZH = {
   'Ghoststep': '鬼步', 'Dash damage doubled; kills refund a dash.': '衝刺傷害加倍；擊殺返還一次衝刺。',
   'Lunar Edge': '月刃', 'Cut reach +15%, +20% critical damage.': '斬擊範圍 +15%，暴擊傷害 +20%。',
   'Boon': '祝福', 'Choose': '選擇',
-  // unlockable heroes (Rowan, Mira, Vespera)
+  // unlockable heroes (Rowan, Mira, Lumen)
   "<b>Attack</b> — Briar Thrust: a long spear jab": "<b>攻擊</b> — 荊刺突：長矛突刺",
   "<b>Skill</b> — Root Snare: roots nearby foes in place": "<b>技能</b> — 根縛：將附近敵人定身",
   "<b>Space</b> — Shelterwood: a grove where allies take 35% less damage": "<b>空白鍵</b> — 庇護林：林中的隊友受到的傷害 -35%",
@@ -80,7 +80,7 @@ const ZH = {
   "The Thornwarden": "棘盾衛士",
   "Mira": "米拉",
   "The Mirrorblade": "鏡刃",
-  "Vespera": "薇斯佩拉",
+  "Lumen": "流明",
   "The Lanternkeeper": "守燈人",
   "Briar Thrust": "荊刺突",
   "Root Snare": "根縛",
@@ -226,7 +226,7 @@ const ZH = {
   'Wake the Gloam Stag early': '提早喚醒幽暮雄鹿', 'Unsealing': '解封中', 'Drink from the spring': '飲用泉水', 'Open cache': '開啟寶箱', 'Pray at the wayshrine': '在路旁神龕祈禱',
   // HUD
   'The Gloam Stag hunts you': '幽暮雄鹿正在獵殺你', 'LMB': '左鍵', 'RMB': '右鍵', 'SPACE': '空白鍵', 'DOWN': '倒地',
-  'SKILL': '技能', 'DOWN — an ally must reach you': '倒地 — 等待隊友前來救援', 'DOWN — stand close to revive': '倒地 — 靠近即可救起', 'AUTO': '自動', 'AUTO ✓': '自動 ✓', 'Auto attack': '自動攻擊', 'Auto attack on': '自動攻擊：開', 'Auto attack off': '自動攻擊：關', 'on': '開', 'off': '關', 'TALK': '說話', 'DASH': '衝刺', 'ULT': '絕招', 'USE': '使用', 'Lv 3': '3 級',
+  'SKILL': '技能', 'Hero stats': '角色屬性', 'Stats': '屬性', 'Attack speed': '攻擊速度', 'Critical damage': '暴擊傷害', 'Life leech': '生命吸取', 'Damage reduction': '傷害減免', 'Cooldowns': '冷卻速度', 'Dash charges': '衝刺次數', 'Night damage': '夜間傷害', 'Regen by day': '白天回復', 'Chain lightning': '連鎖閃電', 'Venom': '毒素', 'Execute': '斬殺', 'Experience': '經驗', 'Pickup radius': '拾取範圍', 'Embers': '餘燼', 'DOWN — an ally must reach you': '倒地 — 等待隊友前來救援', 'DOWN — stand close to revive': '倒地 — 靠近即可救起', 'AUTO': '自動', 'AUTO ✓': '自動 ✓', 'Auto attack': '自動攻擊', 'Auto attack on': '自動攻擊：開', 'Auto attack off': '自動攻擊：關', 'on': '開', 'off': '關', 'TALK': '說話', 'DASH': '衝刺', 'ULT': '絕招', 'USE': '使用', 'Lv 3': '3 級',
   // messages
   'Online co-op is not available on this page. Solo works here; for co-op, open the downloaded duskbound.html file or a copy on your own website.': '此頁面無法進行線上合作。可以單人遊玩；合作模式請開啟下載的 duskbound.html 檔案或架在你自己網站上的版本。',
   'Online play needs an internet connection (the networking library did not load).': '線上遊玩需要網路連線（連線函式庫未能載入）。',

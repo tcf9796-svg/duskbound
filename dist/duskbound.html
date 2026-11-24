@@ -156,7 +156,7 @@ const HEROES = {
     names: ['Twin Cuts', 'Blade Fan', 'Flit', 'Eclipse']
   },
   // Unlockable heroes. `rarity` names their character reward pool (see RARITY); `alt` heroes cast a second skill
-  // from the dash slot (Space / DASH button) instead of dashing; `dashCd` overrides that slot's recharge; `ultTime` (Vespera) is Midnight Procession's base duration in seconds.
+  // from the dash slot (Space / DASH button) instead of dashing; `dashCd` overrides that slot's recharge; `ultTime` (Lumen, id `lumen`) is Midnight Procession's base duration in seconds.
   rowan: {
     name: 'Rowan', title: 'The Thornwarden', color: '#a9c46c', hp: 170, spd: 205, dmg: 14, atkCd: 0.5, skillCd: 9, dashes: 1, dashCd: 14, alt: true, rarity: 'green',
     blurb: 'Bark armour, a moss-heavy cloak and a shield that is still growing. Where Rowan plants a foot, the line holds.',
@@ -169,8 +169,8 @@ const HEROES = {
     kit: ['<b>Attack</b> — Shattered Cuts: a fast three-strike dagger combo', '<b>Skill</b> — Mirror Exchange: swap places with your decoy, then shatter it', '<b>Dash</b> — Reflection Step: dash through foes, leaving a decoy that draws them', '<b>Ultimate</b> — Hall of Mirrors: three reflections repeat your cuts at 40% damage', '<b>Trait</b> — Blind Spot: +40% damage to foes distracted by an ally or decoy'],
     names: ['Shattered Cuts', 'Mirror Exchange', 'Reflection Step', 'Hall of Mirrors']
   },
-  vespera: {
-    name: 'Vespera', title: 'The Lanternkeeper', color: '#86f0cf', hp: 100, spd: 225, dmg: 12, atkCd: 0.38, skillCd: 10, dashes: 1, dashCd: 12, alt: true, rarity: 'purple', ultTime: 10,
+  lumen: {
+    name: 'Lumen', title: 'The Lanternkeeper', color: '#86f0cf', hp: 100, spd: 225, dmg: 12, atkCd: 0.38, skillCd: 10, dashes: 1, dashCd: 12, alt: true, rarity: 'purple', ultTime: 10,
     blurb: 'A cloaked traveller swinging a haunted lantern on a chain. The lost follow her light; so does everything else.',
     kit: ['<b>Attack</b> — Ghostlight: a spectral bolt', '<b>Skill</b> — Guiding Wisp: shield the ally nearest your aim (yourself when solo). 30 energy', '<b>Space</b> — Soul Tether: link up to 4 foes; 40% of direct damage to one spreads to the rest. 30 energy', '<b>Ultimate</b> — Midnight Procession: spirits set out toward your aim and hunt down the nearest foes, harming them and healing allies they pass', '<b>Trait</b> — Lingering Light: the fallen leave embers that restore lantern energy'],
     names: ['Ghostlight', 'Guiding Wisp', 'Soul Tether', 'Midnight Procession']
@@ -230,8 +230,8 @@ const TALENTS = [
   { id: 'taproot', hero: 'rowan', name: 'Taproot', desc: 'Root Snare roots 0.5s longer and deals +40% damage.', max: 2, f: p => p.h.taproot = (p.h.taproot || 0) + 1 },
   { id: 'facets', hero: 'mira', name: 'Many Facets', desc: 'Decoys last +2s; their shatter deals +40% damage.', max: 2, f: p => p.h.facets = (p.h.facets || 0) + 1 },
   { id: 'glint', hero: 'mira', name: 'Cold Glint', desc: 'Blind Spot bonus +20%.', max: 2, f: p => p.h.glint = (p.h.glint || 0) + 1 },
-  { id: 'deepwick', hero: 'vespera', name: 'Deep Wick', desc: '+25 maximum lantern energy, +1 energy per second.', max: 2, f: p => { p.h.deepwick = (p.h.deepwick || 0) + 1; p.lanMax += 25; } },
-  { id: 'kindred', hero: 'vespera', name: 'Kindred Flame', desc: 'Guiding Wisp shields are 50% stronger.', max: 2, f: p => p.h.kindred = (p.h.kindred || 0) + 1 }
+  { id: 'deepwick', hero: 'lumen', name: 'Deep Wick', desc: '+25 maximum lantern energy, +1 energy per second.', max: 2, f: p => { p.h.deepwick = (p.h.deepwick || 0) + 1; p.lanMax += 25; } },
+  { id: 'kindred', hero: 'lumen', name: 'Kindred Flame', desc: 'Guiding Wisp shields are 50% stronger.', max: 2, f: p => p.h.kindred = (p.h.kindred || 0) + 1 }
 ];
 const PAL = [
   { name: 'The Thornwood', base: '#2f4a33', spk: ['#3a5a3c', '#284029', '#466b45'], tree: ['#1c3522', '#2a4f31', '#3a6a40'], rock: '#6b7078' },
@@ -287,7 +287,7 @@ const HERO_TALENTS = {
     { id: 'opening', name: 'Shared Opening', ab: ['Mirror Exchange'], desc: 'Shattering a decoy marks nearby foes. A teammate’s next hit on a marked foe deals extra damage (your own, when playing solo).', limits: '+30% once per mark. Marks last 6 s.', v: { bonus: 0.3, time: 6 } },
     { id: 'curtain', name: 'Final Curtain', ab: ['Hall of Mirrors'], desc: 'When Hall of Mirrors ends, each reflection bursts into glass shards.', limits: 'Each reflection bursts once, only when the ultimate runs out.', v: { radius: 90, dmg: 2 } }
   ],
-  vespera: [
+  lumen: [
     { id: 'wandering', name: 'Wandering Flame', ab: ['Ghostlight'], desc: 'Ghostlight passes through its first target and hits one more foe at reduced damage.', limits: 'Never hits the same foe twice.', v: { dmg: 0.6 } },
     { id: 'merciful', name: 'Merciful Wisp', ab: ['Guiding Wisp'], desc: 'When a Guiding Wisp shield runs out, half of what’s left heals the protected player.', limits: 'Only when it expires on its own; a used-up shield heals nothing.', v: { pct: 0.5 } },
     { id: 'succession', name: 'Soul Succession', ab: ['Soul Tether'], desc: 'When a tethered foe dies, its link passes to another nearby foe for the time left.', limits: 'Once per Soul Tether. Shared damage still never spreads again.', v: { range: 260 } },
@@ -357,7 +357,7 @@ const ZH = {
   'Ghoststep': '鬼步', 'Dash damage doubled; kills refund a dash.': '衝刺傷害加倍；擊殺返還一次衝刺。',
   'Lunar Edge': '月刃', 'Cut reach +15%, +20% critical damage.': '斬擊範圍 +15%，暴擊傷害 +20%。',
   'Boon': '祝福', 'Choose': '選擇',
-  // unlockable heroes (Rowan, Mira, Vespera)
+  // unlockable heroes (Rowan, Mira, Lumen)
   "<b>Attack</b> — Briar Thrust: a long spear jab": "<b>攻擊</b> — 荊刺突：長矛突刺",
   "<b>Skill</b> — Root Snare: roots nearby foes in place": "<b>技能</b> — 根縛：將附近敵人定身",
   "<b>Space</b> — Shelterwood: a grove where allies take 35% less damage": "<b>空白鍵</b> — 庇護林：林中的隊友受到的傷害 -35%",
@@ -380,7 +380,7 @@ const ZH = {
   "The Thornwarden": "棘盾衛士",
   "Mira": "米拉",
   "The Mirrorblade": "鏡刃",
-  "Vespera": "薇斯佩拉",
+  "Lumen": "流明",
   "The Lanternkeeper": "守燈人",
   "Briar Thrust": "荊刺突",
   "Root Snare": "根縛",
@@ -526,7 +526,7 @@ const ZH = {
   'Wake the Gloam Stag early': '提早喚醒幽暮雄鹿', 'Unsealing': '解封中', 'Drink from the spring': '飲用泉水', 'Open cache': '開啟寶箱', 'Pray at the wayshrine': '在路旁神龕祈禱',
   // HUD
   'The Gloam Stag hunts you': '幽暮雄鹿正在獵殺你', 'LMB': '左鍵', 'RMB': '右鍵', 'SPACE': '空白鍵', 'DOWN': '倒地',
-  'SKILL': '技能', 'DOWN — an ally must reach you': '倒地 — 等待隊友前來救援', 'DOWN — stand close to revive': '倒地 — 靠近即可救起', 'AUTO': '自動', 'AUTO ✓': '自動 ✓', 'Auto attack': '自動攻擊', 'Auto attack on': '自動攻擊：開', 'Auto attack off': '自動攻擊：關', 'on': '開', 'off': '關', 'TALK': '說話', 'DASH': '衝刺', 'ULT': '絕招', 'USE': '使用', 'Lv 3': '3 級',
+  'SKILL': '技能', 'Hero stats': '角色屬性', 'Stats': '屬性', 'Attack speed': '攻擊速度', 'Critical damage': '暴擊傷害', 'Life leech': '生命吸取', 'Damage reduction': '傷害減免', 'Cooldowns': '冷卻速度', 'Dash charges': '衝刺次數', 'Night damage': '夜間傷害', 'Regen by day': '白天回復', 'Chain lightning': '連鎖閃電', 'Venom': '毒素', 'Execute': '斬殺', 'Experience': '經驗', 'Pickup radius': '拾取範圍', 'Embers': '餘燼', 'DOWN — an ally must reach you': '倒地 — 等待隊友前來救援', 'DOWN — stand close to revive': '倒地 — 靠近即可救起', 'AUTO': '自動', 'AUTO ✓': '自動 ✓', 'Auto attack': '自動攻擊', 'Auto attack on': '自動攻擊：開', 'Auto attack off': '自動攻擊：關', 'on': '開', 'off': '關', 'TALK': '說話', 'DASH': '衝刺', 'ULT': '絕招', 'USE': '使用', 'Lv 3': '3 級',
   // messages
   'Online co-op is not available on this page. Solo works here; for co-op, open the downloaded duskbound.html file or a copy on your own website.': '此頁面無法進行線上合作。可以單人遊玩；合作模式請開啟下載的 duskbound.html 檔案或架在你自己網站上的版本。',
   'Online play needs an internet connection (the networking library did not load).': '線上遊玩需要網路連線（連線函式庫未能載入）。',
@@ -655,7 +655,7 @@ const START_TALENT_CAP = 1;
 const REWARD_POOLS = {
   green: ['u:hp:4', 'u:dmg:2', 'u:spd:2', 'u:gold:10', 'c:rowan'],
   blue: ['u:hp:8', 'u:dmg:4', 'u:crit:2', 't:keen', 't:quick', 't:fleet', 't:hearty', 'c:mira'],
-  purple: ['w:thornmaul', 'w:cinderglass', 'w:mothfang', 't:eye', 't:leech', 't:tinker', 't:chain', 't:ember', 'c:vespera'],
+  purple: ['w:thornmaul', 'w:cinderglass', 'w:mothfang', 't:eye', 't:leech', 't:tinker', 't:chain', 't:ember', 'c:lumen'],
   yellow: ['w:elderbough', 'w:sunlantern', 'w:duskneedles', 't:step', 't:exec'],
   red: ['w:gloamantler', 'w:starwick', 'w:eclipseedge', 'u:dmg:10', 'u:hp:20']
 };
@@ -699,6 +699,10 @@ function rollReward(inv, rng = Math.random) {
 // ---------- profiles ----------
 const PROFILE_KEY = 'duskbound-profile', PROFILE_VERSION = 1;
 const randId = n => { let s = ''; const A = 'abcdefghijklmnopqrstuvwxyz0123456789'; const c = typeof crypto !== 'undefined' && crypto.getRandomValues ? crypto.getRandomValues(new Uint8Array(n)) : null; for (let i = 0; i < n; i++) s += A[(c ? c[i] : Math.floor(Math.random() * 256)) % 36]; return s; };
+// Heroes whose id changed: old saves (this device, online copies, old unlock lists) are moved to the new id.
+const RENAMED_HEROES = { vespera: 'lumen' };
+const heroId = h => RENAMED_HEROES[h] || h;
+const itemId = it => typeof it === 'string' && it.startsWith('c:') ? 'c:' + heroId(it.slice(2)) : it;
 function newProfile() {
   return { v: PROFILE_VERSION, id: 'p_' + randId(20), created: Date.now(), unlocked: ['normal'], cleared: {}, characters: ['bramble', 'wick', 'vesper'],
     weapons: [], equipped: {}, upgrades: {}, talents: {}, rewards: [], claims: {} };
@@ -711,12 +715,12 @@ function sanitizeProfile(p) {
   const ids = DIFFICULTIES.map(x => x.id);
   out.unlocked = ids.filter((id, i) => i === 0 || (Array.isArray(p.unlocked) && p.unlocked.includes(id)));
   for (const id of ids) if (p.cleared && Number.isInteger(p.cleared[id])) out.cleared[id] = Math.max(0, Math.min(99999, p.cleared[id]));
-  out.characters = [...new Set(d.characters.concat(Array.isArray(p.characters) ? p.characters.filter(c => typeof HEROES === 'undefined' || HEROES[c]) : []))];
+  out.characters = [...new Set(d.characters.concat(Array.isArray(p.characters) ? p.characters.map(heroId).filter(c => typeof HEROES === 'undefined' || HEROES[c]) : []))];
   out.weapons = [...new Set((Array.isArray(p.weapons) ? p.weapons : []).filter(w => WEAPONS[w]))];
-  for (const [h, w] of Object.entries(p.equipped || {})) if (WEAPONS[w] && WEAPONS[w].hero === h && out.weapons.includes(w)) out.equipped[h] = w;
+  for (const [h0, w] of Object.entries(p.equipped || {})) { const h = heroId(h0); if (WEAPONS[w] && WEAPONS[w].hero === h && out.weapons.includes(w)) out.equipped[h] = w; }
   for (const [k, v] of Object.entries(p.upgrades || {})) if (UPGRADES[k]) out.upgrades[k] = Math.max(0, Math.min(UPGRADES[k].cap, Number(v) || 0));
   for (const [k, v] of Object.entries(p.talents || {})) if (typeof TALENTS === 'undefined' || TALENTS.some(t => t.id === k)) out.talents[k] = Math.max(0, Math.min(START_TALENT_CAP, v | 0));
-  out.rewards = (Array.isArray(p.rewards) ? p.rewards : []).slice(-60);
+  out.rewards = (Array.isArray(p.rewards) ? p.rewards : []).slice(-60).map(r => r && r.item && RENAMED_HEROES[String(r.item).slice(2)] ? { ...r, item: itemId(r.item) } : r);
   if (p.claims && typeof p.claims === 'object') for (const k of Object.keys(p.claims).slice(-500)) out.claims[k] = 1;
   clearHeroes(out);
   return out;
@@ -769,7 +773,7 @@ function grantReward(prof, claim, rarity, item, meta = {}) {
 // Records a full five-chapter clear on a difficulty. Unlocks only the next difficulty. Idempotent per run id.
 // Unlockable heroes come from campaign clears: finishing all five chapters on a difficulty unlocks its hero for good.
 // Also applied whenever a profile is read, so profiles that cleared a difficulty earlier get the hero too.
-const CLEAR_HEROES = { nightmare: 'rowan', hell: 'mira', inferno: 'vespera' };
+const CLEAR_HEROES = { nightmare: 'rowan', hell: 'mira', inferno: 'lumen' };
 const clearHeroOf = hero => Object.keys(CLEAR_HEROES).find(d => CLEAR_HEROES[d] === hero) || null;
 function clearHeroes(prof) {
   const got = [];
@@ -933,7 +937,7 @@ function drawHero(c, id, x, y, face, t, o = {}) {
     c.fillStyle = '#1d2a30'; c.fillRect(fl * 1.5 - 4, -13 + bob, 3, 1.6); c.fillRect(fl * 1.5 + 1.5, -13 + bob, 3, 1.6);
     for (let i = 0; i < 3; i++) { const q = t * 1.3 + i * 2.1, x = Math.cos(q) * 18, y = Math.sin(q) * 8 - 8 + bob; c.fillStyle = 'rgba(200,245,255,' + (0.5 + Math.sin(t * 4 + i) * 0.3) + ')'; c.beginPath(); c.moveTo(x, y - 4); c.lineTo(x + 3, y + 1); c.lineTo(x - 2, y + 3); c.fill(); }
     for (const sd of [-1, 1]) { c.save(); c.rotate(face + sd * 0.4 + swOff * sd); c.strokeStyle = 'rgba(210,250,255,.9)'; c.lineWidth = 3.2; c.lineCap = 'round'; c.beginPath(); c.moveTo(11, 0); c.lineTo(25, 0); c.stroke(); c.strokeStyle = '#ffffff'; c.lineWidth = 1; c.beginPath(); c.moveTo(13, -0.8); c.lineTo(23, -0.8); c.stroke(); c.strokeStyle = '#3d5a63'; c.lineWidth = 3; c.beginPath(); c.moveTo(8, 0); c.lineTo(11, 0); c.stroke(); c.restore(); }
-  } else if (id === 'vespera') {
+  } else if (id === 'lumen') {
     // The Lanternkeeper: a hooded traveller, spectral flame in a lantern on a chain, and a few wandering spirits.
     c.fillStyle = '#2b3346'; c.beginPath(); c.moveTo(-14, 13); c.quadraticCurveTo(-12, -10 + bob, 0, -24 + bob); c.quadraticCurveTo(12, -10 + bob, 14, 13); c.closePath(); c.fill();
     c.fillStyle = '#3b4660'; c.beginPath(); c.moveTo(-5, 13); c.lineTo(0, -6 + bob); c.lineTo(5, 13); c.fill();
@@ -2112,6 +2116,7 @@ let lastTouchT = -1e9;
 for (const ev of ['touchstart', 'touchmove', 'touchend', 'touchcancel']) document.addEventListener(ev, () => { lastTouchT = performance.now(); }, { capture: true, passive: true });
 const fakeMouse = e => performance.now() - lastTouchT < 1000 || !!(e.sourceCapabilities && e.sourceCapabilities.firesTouchEvents);
 cv.addEventListener('mousedown', e => { if (fakeMouse(e)) return; initAudio();
+  if (!touch.on && e.button === 0 && hudStats && e.clientX >= hudStats.x && e.clientX <= hudStats.x + hudStats.w && e.clientY >= hudStats.y && e.clientY <= hudStats.y + hudStats.h) { toggleStats(); return; }
   if (!touch.on && e.button === 0 && hudAuto && e.clientX >= hudAuto.x && e.clientX <= hudAuto.x + hudAuto.w && e.clientY >= hudAuto.y && e.clientY <= hudAuto.y + hudAuto.h) { toggleAuto(); return; } if (touch.on) { touch.on = false; touch.move = touch.aim = null; resize(); } if (e.button === 0) mouse.l = true; if (e.button === 2) { mouse.r = true; pressed.rmb = true; } });
 addEventListener('mouseup', e => { if (e.button === 0) mouse.l = false; if (e.button === 2) mouse.r = false; });
 addEventListener('contextmenu', e => e.preventDefault());
@@ -2126,6 +2131,34 @@ const hudScale = () => touch.on ? clamp(Math.min((W - SA.l - SA.r) / 900, (H - S
 const AUTO_RANGE = 460;
 let autoAtk = (() => { try { return localStorage.getItem('duskbound-auto') === '1'; } catch (e) { return false; } })();
 let hudAuto = null; // where the desktop AUTO box was drawn (screen pixels), for clicks
+// Stats panel (local player): the totals of every bonus on this hero (boons, weapon, upgrades, shrine blessings).
+// The host computes them (it owns every hero's stats) and sends each guest their own in the snapshot (st).
+let showStats = (() => { try { return localStorage.getItem('duskbound-stats') === '1'; } catch (e) { return false; } })();
+let hudStats = null; // where the desktop STATS box was drawn (screen pixels), for clicks
+function toggleStats() { showStats = !showStats; try { localStorage.setItem('duskbound-stats', showStats ? '1' : '0'); } catch (e) { } playSfx('pick'); }
+// [maxHp, damage x, attack speed x, move speed x, crit chance, crit damage x, life leech, damage reduction, cooldown x,
+//  pickup radius, xp x, dash charges, regen/s by day, night damage, spite, chain, venom, execute, embers]
+const statsOf = p => [p.maxHp, r3(p.dmgMul), r3(p.asMul), r3(p.spdMul), r3(p.crit + (p.hero === 'vesper' ? 0.15 * night : 0)), r3(p.critMul), r3(p.lifesteal), r3(p.armor), r3(p.cdr), Math.round(p.pickR), r3(p.xpMul),
+  p.dashMax, r2(p.dayRegen + (p.hero === 'bramble' ? 1.5 : 0)), r3(p.nightDmg), p.spite || 0, p.chain || 0, p.venom || 0, r3(p.exec || 0), p.embers];
+// Rows to show: [label, value]; the core ones always, the rest once the hero has them.
+function statRows(s) {
+  if (!s) return [];
+  const pct = v => (v >= 0 ? '+' : '') + Math.round(v * 100) + '%', rows = [
+    ['Damage', pct(s[1] - 1)], ['Attack speed', pct(s[2] - 1)], ['Critical chance', Math.round(s[4] * 100) + '%'], ['Critical damage', Math.round(s[5] * 100) + '%'],
+    ['Life leech', Math.round(s[6] * 100) + '%'], ['Damage reduction', Math.round(s[7] * 100) + '%'], ['Move speed', pct(s[3] - 1)], ['Cooldowns', pct(1 / s[8] - 1)],
+    ['Max health', '' + s[0]], ['Dash charges', '' + s[11]]];
+  if (s[13]) rows.push(['Night damage', pct(s[13])]);
+  if (s[12]) rows.push(['Regen by day', s[12] + '/s']);
+  if (s[14]) rows.push(['Spite', '×' + s[14]]);
+  if (s[15]) rows.push(['Chain lightning', Math.round(s[15] * 20) + '%']);
+  if (s[16]) rows.push(['Venom', s[16] * 5 + '/s']);
+  if (s[17]) rows.push(['Execute', pct(s[17])]);
+  if (s[10] !== 1) rows.push(['Experience', pct(s[10] - 1)]);
+  if (s[9] !== 90) rows.push(['Pickup radius', '' + s[9]]);
+  rows.push(['Embers', '' + s[18]]);
+  return rows;
+}
+const myStats = () => net.mode === 'client' ? me.st : statsOf(me);
 function toggleAuto() {
   autoAtk = !autoAtk; try { localStorage.setItem('duskbound-auto', autoAtk ? '1' : '0'); } catch (e) { }
   if (me) texts.push({ x: me.x, y: me.y - 46, s: autoAtk ? 'Auto attack on' : 'Auto attack off', color: '#f3d48a', size: 14, life: 1.2 }); // local only
@@ -2137,7 +2170,7 @@ function touchButtons() {
   const u = touchU(), R = W - SA.r, B = H - Math.max(SA.b - 8, 0), hs = hudScale();
   return [{ id: 'skill', key: 'e', x: R - 205 * u, y: B - 62 * u, r: 30 * u }, { id: 'dash', key: ' ', x: R - 190 * u, y: B - 140 * u, r: 30 * u },
   { id: 'ult', key: 'q', x: R - 118 * u, y: B - 196 * u, r: 30 * u }, { id: 'f', key: 'f', x: R - 42 * u, y: B - 210 * u, r: 26 * u },
-  { id: 'auto', key: '', x: R - 272 * u, y: B - 112 * u, r: 24 * u },
+  { id: 'auto', key: '', x: R - 272 * u, y: B - 112 * u, r: 24 * u }, { id: 'stats', key: '', x: R - 156 * hs, y: SA.t + 130 * hs, r: 18 * hs },
   // left of the minimap: pause in solo, mute in co-op
   { id: 'menu', key: '', x: R - 156 * hs, y: SA.t + 38 * hs, r: 18 * hs }].concat(fsAvailable() && !isFS() && (canFS() || barsShowing()) ? [{ id: 'fs', key: '', x: R - 156 * hs, y: SA.t + 84 * hs, r: 18 * hs }] : []).concat(Voice.micTrack && Voice.mode === 'ptt' && net.mode !== 'solo' ? [{ id: 'talk', key: '', x: SA.l + 44 * u, y: B - 205 * u, r: 28 * u }] : []);
 }
@@ -2153,7 +2186,7 @@ cv.addEventListener('touchstart', e => {
   e.preventDefault(); initAudio(); if (!touch.on) { touch.on = true; resize(); }
   for (const t of e.changedTouches) {
     const x = t.clientX, y = t.clientY, b = touchButtons().find(b => Math.hypot(x - b.x, y - b.y) < b.r * 1.25);
-    if (b) { if (b.id === 'menu') touchMenu(); else if (b.id === 'talk') { touch.talk = t.identifier; Voice.setTalking(true); } else if (b.id === 'fs') touch.fs = t.identifier; else if (b.id === 'auto') toggleAuto(); else pressed[b.key] = true; }
+    if (b) { if (b.id === 'menu') touchMenu(); else if (b.id === 'talk') { touch.talk = t.identifier; Voice.setTalking(true); } else if (b.id === 'fs') touch.fs = t.identifier; else if (b.id === 'auto') toggleAuto(); else if (b.id === 'stats') toggleStats(); else pressed[b.key] = true; }
     else if (x < W * 0.45) { if (!touch.move) touch.move = { id: t.identifier, x0: x, y0: y, x, y }; }
     else if (!touch.aim) touch.aim = { id: t.identifier, x0: x, y0: y, x, y };
   }
@@ -2250,7 +2283,7 @@ const ROOTS_MAX = 5;
 // Why an ability slot (1 = skill, 2 = dash slot) cannot be used right now, as a short HUD label; null when it can.
 function slotBlock(p, slot) {
   if (slot === 1 && p.hero === 'mira' && !p.decoyOn) return 'NO DECOY';
-  if (p.hero === 'vespera' && p.lan < LANTERN_COST) return 'LOW';
+  if (p.hero === 'lumen' && p.lan < LANTERN_COST) return 'LOW';
   return null;
 }
 const xpNeed = l => 25 + l * 20 + l * l * 2;
@@ -2407,7 +2440,7 @@ function killEnemy(e, p) {
   if (p) p.kills++;
   talentKill(e);
   // Lingering Light: while a Lanternkeeper is in the party, the fallen leave embers for her lantern.
-  if (players.some(q => q.hero === 'vespera')) pickups.push({ id: nextId++, kind: 'lume', x: e.x, y: e.y, val: e.elite || e.type === 'boss' ? 20 : 6, vx: 0, vy: 0, t: rand(TAU), life: 8 });
+  if (players.some(q => q.hero === 'lumen')) pickups.push({ id: nextId++, kind: 'lume', x: e.x, y: e.y, val: e.elite || e.type === 'boss' ? 20 : 6, vx: 0, vy: 0, t: rand(TAU), life: 8 });
   burst(e.x, e.y, e.type === 'wisp' ? '#8fd0ff' : '#b79bd6', e.elite || e.type === 'boss' ? 40 : 12, 240, 4); sfx('die', e);
   if (e.type === 'boss') { banner(T(e.cfg ? e.cfg.name : 'boss') + ' ' + L('is defeated', '已被擊敗'), e.cfg ? e.cfg.title : '', 2.4); hazards = []; game.arena = null; game.boss = null; game.winT = 2.2; shake(20); sfx('boom'); projs = projs.filter(q => q.friendly); zones = zones.filter(z => z.friendly); for (const q of enemies) if (!q.dead) { q.dead = true; burst(q.x, q.y, '#b79bd6', 8); } }
   const n = e.type === 'boss' ? 30 : e.elite ? 8 : 1 + (e.xp > 6 ? 1 : 0);
@@ -2484,7 +2517,7 @@ function doAttack(p) {
     const fin = ++p.combo % 3 === 0, col = fin ? '#ffffff' : '#bff6ff';
     meleeArc(p, fin ? 84 : 72, fin ? 2.2 : 1.4, p.dmg * (fin ? 1.8 : 1), { kb: fin ? 120 : 30, color: col }); sfx('blade', p);
     if (p.ultT > 0) for (const s of mirrorSpots(p)) meleeArc(p, fin ? 84 : 72, fin ? 2.2 : 1.4, p.dmg * (fin ? 1.8 : 1) * 0.4, { from: s, quiet: true, proc: true, color: '#9ee7f2' });
-  } else if (H === 'vespera') {
+  } else if (H === 'lumen') {
     const wf = hasT(p, 'wandering') ? tv(p, 'wandering').dmg : 0; // Wandering Flame: one more target, weaker
     shoot(p.x + Math.cos(p.face) * 18, p.y + Math.sin(p.face) * 18, p.face, 600, { owner: p, dmg: p.dmg, life: 0.9, r: 7, color: '#86f0cf', kind: 'ghost', pierce: wf ? 1 : 0, falloff: wf }); sfx('bolt', p);
   } else {
@@ -2504,7 +2537,7 @@ function wispTarget(p) {
 function doSkill(p) {
   const H = p.hero, m = p.aim;
   if (slotBlock(p, 1)) return;
-  if (H === 'vespera') {
+  if (H === 'lumen') {
     const t = wispTarget(p); if (!t) { floatText(p.x, p.y - 34, 'No ally to guide', '#aaa', 13); p.tSkill = 0.6; return; }
     p.lan -= LANTERN_COST; p.tSkill = HEROES[H].skillCd * p.cdr; sfx('shield', p);
     const amt = (30 + 3 * p.level) * (1 + 0.5 * (p.h.kindred || 0)); t.shield = Math.max(t.shield, amt); t.shieldT = 6; wispGiven(p, t, amt);
@@ -2584,7 +2617,7 @@ function doAlt(p) {
     const z = { kind: 'shelter', friendly: true, owner: p, oid: p.id, x: p.x, y: p.y, r: 150 * (1 + 0.25 * k), delay: 0, life: T, max: T, color: '#a9c46c' };
     if (hasT(p, 'grove')) { z.follow = true; z.r *= tv(p, 'grove').radius; } // Walking Grove
     zones.push(z); ring(p.x, p.y, z.r, '#a9c46c'); burst(p.x, p.y, '#cfe89a', 20, 260, 4);
-  } else if (p.hero === 'vespera') {
+  } else if (p.hero === 'lumen') {
     // Soul Tether: link the foes nearest the aim point.
     const a = angTo(p, m), d = Math.min(500, dist(p, m)), c = { x: p.x + Math.cos(a) * d, y: p.y + Math.sin(a) * d };
     const list = enemies.filter(e => !e.dead && e.near && dist(e, c) < 220 + e.r).sort((x, y) => dist(x, c) - dist(y, c)).slice(0, 4);
@@ -2600,10 +2633,10 @@ function doUlt(p) {
   if (H === 'bramble') { p.ultT = 8; p.pulse = 0; p.ultExt = 0; ring(p.x, p.y, 180, '#7bc96f'); }
   else if (H === 'rowan') { p.ultT = 8; p.pulse = 0; ring(p.x, p.y, 220, '#a9c46c'); burst(p.x, p.y, '#cfe89a', 30, 300, 5); banner('Ancient Sentinel', 'The wood rallies to you.', 2, p.id); }
   else if (H === 'mira') { p.ultT = 7; ring(p.x, p.y, 90, '#9ee7f2'); for (const s of mirrorSpots(p)) burst(s.x, s.y, '#e8fbff', 12, 180); sfx('shatter', p); }
-  else if (H === 'vespera') {
+  else if (H === 'lumen') {
     // Midnight Procession: a march of spirits, launched toward the aim point, that then hunts the nearest foes.
     const a = angTo(p, m), sp = 260;
-    zones.push({ kind: 'proc', friendly: true, owner: p, x: p.x, y: p.y, r: 80, delay: 0, life: HEROES.vespera.ultTime, max: HEROES.vespera.ultTime, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, tickT: 0, color: '#86f0cf' });
+    zones.push({ kind: 'proc', friendly: true, owner: p, x: p.x, y: p.y, r: 80, delay: 0, life: HEROES.lumen.ultTime, max: HEROES.lumen.ultTime, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, tickT: 0, color: '#86f0cf' });
   }
   else if (H === 'wick') {
     for (let i = 0; i < 12; i++) { const a = rand(TAU), d = i === 0 ? 0 : rand(40, 210); zones.push({ kind: 'blast', friendly: true, owner: p, x: m.x + Math.cos(a) * d, y: m.y + Math.sin(a) * d, r: 88, delay: 0.5 + i * 0.2, max: 0.5 + i * 0.2, dmg: p.dmg * 4.2, color: '#ff7a2f', final: i === 11, cx: m.x, cy: m.y }); }
@@ -2642,7 +2675,7 @@ function updPlayer(p, inp, dt) {
   p.cds = [p.atkCd / p.asMul, HEROES[p.hero].skillCd * p.cdr, dashCdOf(p), ULT_CD * p.cdr];
   if (p.shieldT > 0) { p.shieldT -= dt; if (p.shieldT <= 0) { shieldExpired(p); p.shield = 0; } }
   talentPlayerTick(p, dt);
-  if (p.hero === 'vespera') p.lan = Math.min(p.lanMax, p.lan + (4 + (p.h.deepwick || 0)) * dt);
+  if (p.hero === 'lumen') p.lan = Math.min(p.lanMax, p.lan + (4 + (p.h.deepwick || 0)) * dt);
   if (p.decoy && p.decoy.life <= 0) p.decoy = null;
   p.decoyOn = !!p.decoy;
   if (p.down) {
@@ -2805,7 +2838,7 @@ function update(dt) {
     k.t += dt; k.x += k.vx * dt; k.y += k.vy * dt; k.vx *= Math.pow(0.02, dt); k.vy *= Math.pow(0.02, dt);
     if (k.kind === 'lume' && (k.life -= dt) <= 0) { k.dead = true; continue; }
     // Lantern embers only answer a Lanternkeeper; everything else goes to whoever is nearest.
-    const p = k.kind === 'lume' ? nearestPlayer(k, q => q.hero === 'vespera') : nearestPlayer(k); if (!p) continue; const d = dist(k, p);
+    const p = k.kind === 'lume' ? nearestPlayer(k, q => q.hero === 'lumen') : nearestPlayer(k); if (!p) continue; const d = dist(k, p);
     if (k.kind === 'lume' && p.lan >= p.lanMax) continue;
     if (k.kind === 'heart' && p.hp >= p.maxHp) continue;
     if (d < p.pickR) { const a = angTo(k, p), v = 520 * (1 - d / (p.pickR * 1.4)) + 120; k.x += Math.cos(a) * v * dt; k.y += Math.sin(a) * v * dt; }
@@ -2948,7 +2981,7 @@ function rollChoice(p) {
 // and saved in the profile. Unlocks from the earlier per-device save ('duskbound-unlocks') are carried over once.
 try {
   const old = JSON.parse(localStorage.getItem('duskbound-unlocks') || 'null');
-  if (old && Array.isArray(old.heroes)) { for (const h of old.heroes) if (HEROES[h] && HEROES[h].rarity && !PROFILE.characters.includes(h)) PROFILE.characters.push(h); saveMe(); localStorage.removeItem('duskbound-unlocks'); }
+  if (old && Array.isArray(old.heroes)) { for (const h of old.heroes.map(heroId)) if (HEROES[h] && HEROES[h].rarity && !PROFILE.characters.includes(h)) PROFILE.characters.push(h); saveMe(); localStorage.removeItem('duskbound-unlocks'); }
 } catch (e) { }
 const unlocked = id => !!HEROES[id] && (!HEROES[id].rarity || PROFILE.characters.includes(id));
 const ownsHero = (lo, id) => !!HEROES[id] && (!HEROES[id].rarity || !!(lo && lo.characters && lo.characters.includes(id)));
@@ -3013,7 +3046,7 @@ function expireAway() {
 }
 
 // ---------- netcode ----------
-const PEER_PREFIX = 'duskbound-v8-'; // bump whenever messages change, so mismatched versions never meet
+const PEER_PREFIX = 'duskbound-v9-'; // bump whenever messages change, so mismatched versions never meet
 const noNetMsg = () => window.DUSK_NO_NET ? 'Online co-op is not available on this page. Solo works here; for co-op, open the downloaded duskbound.html file or a copy on your own website.' : 'Online play needs an internet connection (the networking library did not load).';
 function wrapConn(c) {
   const w = { peerId: c.peer, send: d => { try { c.send(d); } catch (e) { } }, onData: null, onClose: null, close: () => { try { c.close(); } catch (e) { } } };
@@ -3320,7 +3353,7 @@ function sendSnaps() {
       Z: zones.filter(nr).map(z => [z.x | 0, z.y | 0, z.r | 0, z.kind, r2(Math.max(0, z.delay || 0)), r2(z.max), r2(z.life || 0), z.friendly ? 1 : 0, z.lantern ? 1 : 0, z.color, z.vx | 0, z.vy | 0, z.x2 | 0, z.y2 | 0, z.oid || 0, z.coven ? 1 : 0]),
       K: pickups.filter(nr).map(k => [k.id, k.kind, k.x | 0, k.y | 0]),
       ev: evQ.filter(e => (!e.to || e.to === c.pid) && (e.x === undefined || Math.hypot(e.x - cp.x, e.y - cp.y) < 1200)).map(e => ({ k: e.k, a: e.a })),
-      c: cp.choice ? { q: cp.choiceSeq, ids: cp.choice.map(t => t.id), title: cp.choiceTitle } : 0, tal: cp.talents,
+      c: cp.choice ? { q: cp.choiceSeq, ids: cp.choice.map(t => t.id), title: cp.choiceTitle } : 0, tal: cp.talents, st: statsOf(cp),
       ct: cp.ctChoice ? { q: cp.ctSeq, ids: cp.ctChoice } : 0
     });
   }
@@ -3397,7 +3430,7 @@ function applySnap(s) {
   const oldK = new Map(pickups.map(k => [k.id, k]));
   pickups = s.K.map(a => { const k = oldK.get(a[0]) || { id: a[0], x: a[2], y: a[3], t: a[0] % 7 }; k.kind = a[1]; k.tx = a[2]; k.ty = a[3]; return k; });
   for (const e of s.ev) applyEv(e);
-  me.talents = s.tal || {};
+  me.talents = s.tal || {}; me.st = s.st || null;
   // chapter talent offer: shown until the player picks; the pick only takes effect once the host accepts it (tl)
   if (s.ct && s.ct.q !== net.ctPicked && Array.isArray(s.ct.ids)) { me.ctChoice = s.ct.ids.filter(id => heroTalent(me.hero, id)); me.ctSeq = s.ct.q; } else me.ctChoice = null;
   if (s.c && s.c.q !== net.pickedSeq) { me.choice = s.c.ids.map(id => TALENTS.find(t => t.id === id)).filter(Boolean); me.choiceSeq = s.c.q; me.choiceTitle = s.c.title; } else me.choice = null;
@@ -3581,6 +3614,18 @@ function drawDownMarkers() {
     c.restore();
   }
 }
+function drawStatsPanel(c, W, TU) {
+  const rows = statRows(myStats()); if (!rows.length) return;
+  const H2 = HEROES[me.hero], cols = 2, per = Math.ceil(rows.length / cols), lh = 17, pw = Math.min(440, W - 40), colW = pw / cols;
+  const x0 = W / 2 - pw / 2, y0 = game.boss ? (TU && W < 700 ? 182 : 134) : 92, ph = per * lh + 30;
+  c.fillStyle = 'rgba(8,8,16,.82)'; rr(c, x0, y0, pw, ph, 8); c.fill(); c.strokeStyle = 'rgba(243,212,138,.35)'; c.lineWidth = 1; rr(c, x0, y0, pw, ph, 8); c.stroke();
+  c.textAlign = 'left'; c.font = 'bold 12px Georgia'; c.fillStyle = H2.color;
+  c.fillText(T(H2.name) + ' · ' + T('Hero stats') + (me.weapon ? ' · ' + T(WEAPONS[me.weapon].name) : ''), x0 + 10, y0 + 16);
+  c.font = '12px Georgia';
+  rows.forEach(([k, v], i) => { const cx = x0 + 10 + Math.floor(i / per) * colW, cy = y0 + 34 + (i % per) * lh;
+    c.textAlign = 'left'; c.fillStyle = '#b9b3d4'; c.fillText(T(k), cx, cy); c.textAlign = 'right'; c.fillStyle = '#fff'; c.fillText(v, cx + colW - 20, cy); });
+  c.textAlign = 'left';
+}
 function drawHUD() {
   const c = ctx, p = me, H2 = HEROES[p.hero], TU = touch.on;
   // On phones the HUD is scaled down, the health panel moves to the top-left and the key hints give way to touch buttons.
@@ -3597,7 +3642,7 @@ function drawHUD() {
   // Hero resources, under the experience bar.
   c.textAlign = 'left'; c.font = '12px Georgia';
   if (p.hero === 'rowan') { c.fillStyle = '#d8c08a'; c.fillText(T('Deep Roots') + ' ' + '●'.repeat(p.roots) + '○'.repeat(Math.max(0, ROOTS_MAX - p.roots)), bx, by + 52); }
-  else if (p.hero === 'vespera') { c.fillStyle = '#86f0cf'; c.fillText(T('Lantern'), bx, by + 52); c.fillStyle = '#16302a'; rr(c, bx + 52, by + 44, bw - 52, 8, 3); c.fill(); c.fillStyle = '#86f0cf'; rr(c, bx + 52, by + 44, Math.max(4, (bw - 52) * clamp(p.lan / p.lanMax, 0, 1)), 8, 3); c.fill(); }
+  else if (p.hero === 'lumen') { c.fillStyle = '#86f0cf'; c.fillText(T('Lantern'), bx, by + 52); c.fillStyle = '#16302a'; rr(c, bx + 52, by + 44, bw - 52, 8, 3); c.fill(); c.fillStyle = '#86f0cf'; rr(c, bx + 52, by + 44, Math.max(4, (bw - 52) * clamp(p.lan / p.lanMax, 0, 1)), 8, 3); c.fill(); }
   else if (p.hero === 'mira') { c.fillStyle = p.decoyOn ? '#bff6ff' : '#6d7f86'; c.fillText(T(p.decoyOn ? 'Decoy standing' : 'No decoy — dash to leave one'), bx, by + 52); }
   if (p.shield + (p.barrier || 0) > 0) { c.fillStyle = '#86f0cf'; c.textAlign = 'right'; c.fillText(T('Shield') + ' ' + Math.ceil(p.shield + (p.barrier || 0)), bx + bw, by + 52); c.textAlign = 'left'; }
   const b1 = slotBlock(p, 1), b2 = H2.alt ? slotBlock(p, 2) : null;
@@ -3619,7 +3664,13 @@ function drawHUD() {
     c.font = '11px Georgia'; c.fillText(autoAtk ? T('on') + ' · R' : T('off') + ' · R', x + s / 2, ay + s / 2 + 14);
     c.fillStyle = '#b9b3d4'; c.fillText(T('Auto attack'), x + s / 2, ay + s + 14);
     hudAuto = { x: SA.l + x * hs, y: SA.t + ay * hs, w: s * hs, h: s * hs };
-  }
+    const x2 = x + s + gap; c.fillStyle = showStats ? 'rgba(60,48,20,.85)' : 'rgba(8,8,16,.8)'; rr(c, x2, ay, s, s, 8); c.fill();
+    c.strokeStyle = showStats ? '#f3d48a' : '#4a4370'; c.lineWidth = 2; rr(c, x2, ay, s, s, 8); c.stroke();
+    c.font = '20px Georgia'; c.fillStyle = '#fff'; c.fillText('📊', x2 + s / 2, ay + s / 2 + 2); c.font = '11px Georgia'; c.fillStyle = showStats ? '#f3d48a' : '#8a84a8'; c.fillText('C', x2 + s / 2, ay + s / 2 + 18);
+    c.fillStyle = '#b9b3d4'; c.fillText(T('Stats'), x2 + s / 2, ay + s + 14);
+    hudStats = { x: SA.l + x2 * hs, y: SA.t + ay * hs, w: s * hs, h: s * hs };
+  } else hudStats = null;
+  if (showStats) drawStatsPanel(c, W, TU);
   const cw = Math.min(460, W - 380), cx = W / 2 - cw / 2, cy = 22;
   c.fillStyle = 'rgba(8,8,16,.75)'; rr(c, cx - 12, cy - 12, cw + 24, 58, 8); c.fill();
   for (let i = 0; i < DAYS; i++) { const x0 = cx + cw * (i * CYCLE) / TOTAL, wd = cw * DAY / TOTAL, wn = cw * NIGHT / TOTAL; c.fillStyle = '#e0b75a'; c.fillRect(x0, cy, wd - 1, 8); c.fillStyle = '#4a4aa8'; c.fillRect(x0 + wd, cy, wn - 1, 8); }
@@ -3684,7 +3735,7 @@ function drawTouchUI() {
   const np = !p.down && nearPoi(p), use = !!(np && np.kind !== 'altar' && poiPrompt(np));
   const b1 = slotBlock(p, 1), alt = HEROES[p.hero].alt, b2 = alt ? slotBlock(p, 2) : null;
   const info = { skill: [b1 || 'SKILL', p.tSkill, p.cds[1], !b1], dash: [b2 || (alt ? 'SKILL 2' : 'DASH') + (p.dashMax > 1 ? ' ' + p.dashes : ''), p.dashes > 0 ? 0 : p.dashRe, p.cds[2], !b2], ult: [p.level >= 3 ? 'ULT' : 'Lv 3', p.tUlt, p.cds[3], p.level >= 3], f: ['USE', 0, 0, use],
-    menu: [net.mode === 'solo' ? 'II' : '🎙', 0, 0, true], fs: ['⛶', 0, 0, true], auto: [autoAtk ? 'AUTO ✓' : 'AUTO', 0, 0, autoAtk], talk: [Voice.transmitting() ? '● ' + T('TALK') : T('TALK'), 0, 0, true] };
+    menu: [net.mode === 'solo' ? 'II' : '🎙', 0, 0, true], fs: ['⛶', 0, 0, true], auto: [autoAtk ? 'AUTO ✓' : 'AUTO', 0, 0, autoAtk], stats: ['📊', 0, 0, true], talk: [Voice.transmitting() ? '● ' + T('TALK') : T('TALK'), 0, 0, true] };
   c.textAlign = 'center'; c.textBaseline = 'middle';
   const warnUp = hazards.some(h => h.tel > 0);
   for (const b of touchButtons()) {
@@ -3700,11 +3751,11 @@ function drawTouchUI() {
 
 // ---------- screens ----------
 const controlsHtml = () => touch.on
-  ? L('<div class="controls"><b>Left thumb</b> move · <b>Right thumb</b> drag to aim and attack, or hold to auto-target · <b>Buttons</b> skill, dash (Rowan, Vespera: second skill), ultimate (Lv 3), use, <b>AUTO</b> automatic attacks, <b>II</b> pause',
-      '<div class="controls"><b>左手拇指</b> 移動 · <b>右手拇指</b> 拖曳瞄準並攻擊，或按住自動鎖定 · <b>按鈕</b> 技能、衝刺（羅文、薇斯佩拉：第二技能）、絕招（3 級）、使用、<b>自動</b> 自動攻擊、<b>II</b> 暫停') +
+  ? L('<div class="controls"><b>Left thumb</b> move · <b>Right thumb</b> drag to aim and attack, or hold to auto-target · <b>Buttons</b> skill, dash (Rowan, Lumen: second skill), ultimate (Lv 3), use, <b>AUTO</b> automatic attacks, <b>📊</b> stats, <b>II</b> pause',
+      '<div class="controls"><b>左手拇指</b> 移動 · <b>右手拇指</b> 拖曳瞄準並攻擊，或按住自動鎖定 · <b>按鈕</b> 技能、衝刺（羅文、流明：第二技能）、絕招（3 級）、使用、<b>自動</b> 自動攻擊、<b>📊</b> 屬性、<b>II</b> 暫停') +
     '</div>'
-  : L('<div class="controls"><b>WASD</b> move · <b>Mouse</b> aim · <b>LMB</b> attack · <b>RMB</b>/<b>E</b> skill · <b>Space</b> dash (Rowan, Vespera: second skill) · <b>Q</b> ultimate (Lv 3) · <b>F</b> interact · <b>R</b> auto attack · <b>1</b>-<b>3</b> pick boon · <b>M</b> mute</div>',
-      '<div class="controls"><b>WASD</b> 移動 · <b>滑鼠</b> 瞄準 · <b>左鍵</b> 攻擊 · <b>右鍵</b>/<b>E</b> 技能 · <b>空白鍵</b> 衝刺（羅文、薇斯佩拉：第二技能） · <b>Q</b> 絕招（3 級） · <b>F</b> 互動 · <b>R</b> 自動攻擊 · <b>1</b>-<b>3</b> 選擇祝福 · <b>M</b> 靜音</div>');
+  : L('<div class="controls"><b>WASD</b> move · <b>Mouse</b> aim · <b>LMB</b> attack · <b>RMB</b>/<b>E</b> skill · <b>Space</b> dash (Rowan, Lumen: second skill) · <b>Q</b> ultimate (Lv 3) · <b>F</b> interact · <b>R</b> auto attack · <b>C</b> stats · <b>1</b>-<b>3</b> pick boon · <b>M</b> mute</div>',
+      '<div class="controls"><b>WASD</b> 移動 · <b>滑鼠</b> 瞄準 · <b>左鍵</b> 攻擊 · <b>右鍵</b>/<b>E</b> 技能 · <b>空白鍵</b> 衝刺（羅文、流明：第二技能） · <b>Q</b> 絕招（3 級） · <b>F</b> 互動 · <b>R</b> 自動攻擊 · <b>C</b> 屬性 · <b>1</b>-<b>3</b> 選擇祝福 · <b>M</b> 靜音</div>');
 // Full screen: Android and iPad browsers can do it for a page; iPhone Safari only does it for video, so there the way
 // is to add the game to the Home Screen (manifest.webmanifest makes it open full screen, without browser bars).
 const DE = document.documentElement, IPHONE = /iPhone|iPod/.test(navigator.userAgent);
@@ -3790,10 +3841,10 @@ function selectHero(id) {
 function saveName() { const el = $('nm'); if (el) { net.name = el.value.trim().slice(0, 14); try { localStorage.setItem('duskbound-name', net.name); } catch (e) { } } }
 function showMenu(msg) {
   game.state = 'menu'; game.over = null; me = null; players = [];
-  show('<h1>DUSKBOUND</h1><div class="sub">' + L('Three days. Three nights. Then the guardian of each land wakes.<br>Roam the wood alone or with up to three friends, and be ready when it comes for you.', '三個白晝，三個黑夜，然後每片土地的守護者將會甦醒。<br>獨自或與最多三位朋友一同漫遊森林，在它找上你之前做好準備。') + '</div>' + heroCards(net.hero) +
+  show('<h1>DUSKBOUND</h1>' + heroCards(net.hero) +
     '<div class="row"><input id="nm" maxlength="14" placeholder="' + L('Your name', '你的名字') + '" value="' + esc(net.name) + '"><button id="solo">' + L('Play solo', '單人遊玩') + '</button><button id="hostb">' + L('Host co-op', '開設合作房') + '</button><span class="sep"></span><input id="code" maxlength="5" placeholder="' + L('CODE', '代碼') + '" autocomplete="off" value="' + esc(lastRoom()) + '"><button id="joinb">' + L('Join', '加入') + '</button></div>' +
     '<div class="row">' + diffSelect('diffsel', d => PROFILE.unlocked.includes(d)) + '<button id="profb" class="ghost">' + L('Profile', '個人檔案') + '</button></div>' +
-    '<div id="msg">' + esc(T(msg) || '') + '</div>' + controlsHtml() + '<button id="lang" class="ghost langbtn">' + (LANG === 'zh' ? '🌐 English' : '🌐 繁體中文') + '</button>' + fsButtonHtml());
+    '<div id="msg">' + esc(T(msg) || '') + '</div>' + '<button id="lang" class="ghost langbtn">' + (LANG === 'zh' ? '🌐 English' : '🌐 繁體中文') + '</button>' + fsButtonHtml());
   bindFs(() => showMenu(msg));
   $('lang').onclick = () => { saveName(); setLang(LANG === 'zh' ? 'en' : 'zh'); showMenu(msg); };
   $('swipehint').textContent = L('⇡ Swipe up to hide Safari’s bars', '⇡ 向上滑動即可隱藏 Safari 工具列');
@@ -4030,8 +4081,8 @@ async function showVoice(back, soft) {
     h += '<div class="stats prof">' + (others.length ? others.map(r => { const v = Voice.calls.get(r.id); return '<div class="vrow">' + esc(nameOf(r.id)) + ' <i>' + (v && v.stream ? L('connected', '已連線') : L('connecting…', '連線中…')) + '</i> ' +
       '<button class="ghost vmute" data-pid="' + r.id + '">' + (v && v.muted ? L('Unmute', '取消靜音') : L('Mute', '靜音')) + '</button> <input type="range" class="vvol" data-pid="' + r.id + '" min="0" max="2" step="0.05" value="' + (v ? v.vol : 1) + '"></div>'; }).join('') : '<i>' + L('No one else here yet.', '目前沒有其他人。') + '</i>') + '</div>';
   }
-  h += '<div class="row"><button id="vsfx" class="ghost">' + L('Game sound: ', '遊戲音效：') + (AU.muted ? L('off', '關') : L('on', '開')) + '</button>' + fsRowHtml() + '<button id="vback">' + L('Close', '關閉') + '</button></div>';
-  show(h, soft); bindFs(() => showVoice(back, soft));
+  h += '<div class="row"><button id="vsfx" class="ghost">' + L('Game sound: ', '遊戲音效：') + (AU.muted ? L('off', '關') : L('on', '開')) + '</button>' + langBtnHtml() + fsRowHtml() + '<button id="vback">' + L('Close', '關閉') + '</button></div>';
+  show(h, soft); bindFs(() => showVoice(back, soft)); bindLang(() => showVoice(back, soft));
   $('vback').onclick = () => back(); $('vsfx').onclick = () => { initAudio(); onKey('m'); showVoice(back, soft); };
   if ($('vmic')) $('vmic').onclick = async () => { if (Voice.micStream) await Voice.disableMic(); else await Voice.enableMic(Voice.micId); showVoice(back, soft); };
   if ($('vmode')) $('vmode').onchange = e => { Voice.setMode(e.target.value); showVoice(back, soft); };
@@ -4039,9 +4090,13 @@ async function showVoice(back, soft) {
   document.querySelectorAll('.vmute').forEach(b => b.onclick = () => { const pid = +b.dataset.pid, v = Voice.calls.get(pid); Voice.setMuted(pid, !(v && v.muted)); showVoice(back, soft); });
   document.querySelectorAll('.vvol').forEach(r => r.oninput = () => Voice.setVolume(+r.dataset.pid, +r.value));
 }
+// In-game language switch (pause screen, and the co-op Voice & sound screen): the HUD redraws in the new language at once.
+const langBtnHtml = () => '<button id="plang" class="ghost">' + (LANG === 'zh' ? '🌐 English' : '🌐 繁體中文') + '</button>';
+function bindLang(redraw) { if ($('plang')) $('plang').onclick = () => { setLang(LANG === 'zh' ? 'en' : 'zh'); redraw(); }; }
 const muteLabel = () => AU.muted ? L('Unmute', '取消靜音') : L('Mute', '靜音');
 function onKey(k) {
   if (k === 'r' && game.state === 'play' && me && !game.over) toggleAuto();
+  if (k === 'c' && game.state === 'play' && me && !game.over) toggleStats();
   if (k === 'm' && AU.ctx) { AU.muted = !AU.muted; AU.master.gain.value = AU.muted ? 0 : 0.55; }
   const n = '123456789'.indexOf(k);
   if (n >= 0 && (game.state === 'menu' || game.state === 'lobby')) selectHero(Object.keys(HEROES)[n]);
@@ -4051,9 +4106,10 @@ function onKey(k) {
   else if ((k === 'p' || k === 'escape') && game.state === 'play' && net.mode === 'solo' && !game.over && !(me && (me.choice || me.ctChoice))) {
     game.paused = !game.paused;
     if (game.paused) {
-      show('<h2>' + L('Paused', '暫停') + '</h2>' + buildHtml(me) + controlsHtml() + '<div class="row"><button id="res">' + L('Resume', '繼續') + '</button>' + (touch.on ? '<button id="mute" class="ghost">' + muteLabel() + '</button><button id="quit" class="ghost">' + L('Quit run', '放棄本局') + '</button>' : '') + fsRowHtml() + '</div>', true);
+      show('<h2>' + L('Paused', '暫停') + '</h2>' + buildHtml(me) + controlsHtml() + '<div class="row"><button id="res">' + L('Resume', '繼續') + '</button>' + (touch.on ? '<button id="mute" class="ghost">' + muteLabel() + '</button><button id="quit" class="ghost">' + L('Quit run', '放棄本局') + '</button>' : '') + langBtnHtml() + fsRowHtml() + '</div>', true);
       $('res').onclick = () => { game.paused = false; hide(); };
       bindFs(() => { game.paused = true; onKey('p'); onKey('p'); });
+      bindLang(() => { game.paused = true; onKey('p'); onKey('p'); });
       if ($('mute')) $('mute').onclick = () => { initAudio(); onKey('m'); $('mute').textContent = muteLabel(); };
       if ($('quit')) $('quit').onclick = () => { game.paused = false; showMenu(); };
     } else hide();

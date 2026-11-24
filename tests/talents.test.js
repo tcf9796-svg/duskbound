@@ -2,7 +2,7 @@
 const vm = require('vm'); const { makeWorld } = require('./sim-harness.js');
 let fails = 0; const ok = (c, m) => { console.log((c ? 'ok   ' : 'FAIL ') + m); if (!c) fails++; };
 const PRE = `
-  initAudio = () => {}; PROFILE.characters.push('rowan', 'mira', 'vespera');
+  initAudio = () => {}; PROFILE.characters.push('rowan', 'mira', 'lumen');
   function setup(hero, ids, n = 1) {
     players = []; for (let i = 1; i <= n; i++) players.push(newPlayer(i, i === 1 ? hero : 'bramble', 'P' + i));
     me = players[0]; beginRun('normal'); clearEntities(); game.time = 1; night = 0; world.pois[0].used = true; world.obs = world.obs.filter(o => Math.hypot(o.x - 1800, o.y - 1700) > 600); // no altar boss, no random trees in the test area
@@ -245,16 +245,16 @@ ok(r.wall, 'Splintering Impact: a foe swept into a wall explodes, hurting a foe 
 {
   const r = run(`(() => {
     const out = {};
-    setup('vespera', ['wandering']); me.face = 0; const a = foe(1800, 1700), b = foe(1880, 1700), c = foe(1960, 1700); doAttack(me); step(40);
+    setup('lumen', ['wandering']); me.face = 0; const a = foe(1800, 1700), b = foe(1880, 1700), c = foe(1960, 1700); doAttack(me); step(40);
     out.wf = [lost(a), lost(b), lost(c)];
-    setup('vespera', ['merciful']); me.hp = 40; me.tSkill = 0; me.aim = { x: me.x, y: me.y }; doSkill(me); const sh = me.shield; step(60 * 6.2); out.merc = [sh, me.hp];
-    setup('vespera', ['merciful']); me.hp = 40; me.tSkill = 0; doSkill(me); me.iT = 0; hurtPlayer(me, 999 > me.shield ? me.shield : 0); step(60 * 6.2); out.mercUsed = me.hp;
-    setup('vespera', ['succession']); const t = [foe(1900, 1700), foe(1930, 1700), foe(1960, 1700)], extra = foe(1900, 1950), extra2 = foe(1900, 1450);
+    setup('lumen', ['merciful']); me.hp = 40; me.tSkill = 0; me.aim = { x: me.x, y: me.y }; doSkill(me); const sh = me.shield; step(60 * 6.2); out.merc = [sh, me.hp];
+    setup('lumen', ['merciful']); me.hp = 40; me.tSkill = 0; doSkill(me); me.iT = 0; hurtPlayer(me, 999 > me.shield ? me.shield : 0); step(60 * 6.2); out.mercUsed = me.hp;
+    setup('lumen', ['succession']); const t = [foe(1900, 1700), foe(1930, 1700), foe(1960, 1700)], extra = foe(1900, 1950), extra2 = foe(1900, 1450);
     me.aim = { x: 1930, y: 1700 }; me.dashes = 1; doDash(me, 0); killEnemy(t[0], me); out.moved = extra.tid > 0 || extra2.tid > 0;
     const left = [extra, extra2].find(e => !e.tid); killEnemy(t[1], me); out.once = !left.tid;
-    setup('vespera', ['communion'], 2); const q = players[1]; q.hp = 20; me.hp = 20; me.lan = 10;
+    setup('lumen', ['communion'], 2); const q = players[1]; q.hp = 20; me.hp = 20; me.lan = 10;
     pickups.push({ id: 999, kind: 'lume', x: me.x, y: me.y, val: 6, vx: 0, vy: 0, t: 0, life: 8 }); step(1); out.comm = [me.lan > 10, me.hp > 20, q.hp > 20];
-    setup('vespera', ['rprocession']); const f1 = foe(2100, 1700, { hp: 1e7 }); me.aim = { x: 2400, y: 1700 }; me.tUlt = 0; doUlt(me); step(60 * 10.2);
+    setup('lumen', ['rprocession']); const f1 = foe(2100, 1700, { hp: 1e7 }); me.aim = { x: 2400, y: 1700 }; me.tUlt = 0; doUlt(me); step(60 * 10.2);
     const back = zones.find(z => z.kind === 'proc' && z.back); out.back = !!back && back.str === 0.5; step(60 * 12); out.done = !zones.some(z => z.kind === 'proc');
     out.hitCap = back ? Math.max(0, ...back.hits.values()) : -1;
     return out;

@@ -73,7 +73,7 @@ const START_TALENT_CAP = 1;
 const REWARD_POOLS = {
   green: ['u:hp:4', 'u:dmg:2', 'u:spd:2', 'u:gold:10', 'c:rowan'],
   blue: ['u:hp:8', 'u:dmg:4', 'u:crit:2', 't:keen', 't:quick', 't:fleet', 't:hearty', 'c:mira'],
-  purple: ['w:thornmaul', 'w:cinderglass', 'w:mothfang', 't:eye', 't:leech', 't:tinker', 't:chain', 't:ember', 'c:vespera'],
+  purple: ['w:thornmaul', 'w:cinderglass', 'w:mothfang', 't:eye', 't:leech', 't:tinker', 't:chain', 't:ember', 'c:lumen'],
   yellow: ['w:elderbough', 'w:sunlantern', 'w:duskneedles', 't:step', 't:exec'],
   red: ['w:gloamantler', 'w:starwick', 'w:eclipseedge', 'u:dmg:10', 'u:hp:20']
 };
@@ -117,6 +117,10 @@ function rollReward(inv, rng = Math.random) {
 // ---------- profiles ----------
 const PROFILE_KEY = 'duskbound-profile', PROFILE_VERSION = 1;
 const randId = n => { let s = ''; const A = 'abcdefghijklmnopqrstuvwxyz0123456789'; const c = typeof crypto !== 'undefined' && crypto.getRandomValues ? crypto.getRandomValues(new Uint8Array(n)) : null; for (let i = 0; i < n; i++) s += A[(c ? c[i] : Math.floor(Math.random() * 256)) % 36]; return s; };
+// Heroes whose id changed: old saves (this device, online copies, old unlock lists) are moved to the new id.
+const RENAMED_HEROES = { vespera: 'lumen' };
+const heroId = h => RENAMED_HEROES[h] || h;
+const itemId = it => typeof it === 'string' && it.startsWith('c:') ? 'c:' + heroId(it.slice(2)) : it;
 function newProfile() {
   return { v: PROFILE_VERSION, id: 'p_' + randId(20), created: Date.now(), unlocked: ['normal'], cleared: {}, characters: ['bramble', 'wick', 'vesper'],
     weapons: [], equipped: {}, upgrades: {}, talents: {}, rewards: [], claims: {} };
@@ -129,12 +133,12 @@ function sanitizeProfile(p) {
   const ids = DIFFICULTIES.map(x => x.id);
   out.unlocked = ids.filter((id, i) => i === 0 || (Array.isArray(p.unlocked) && p.unlocked.includes(id)));
   for (const id of ids) if (p.cleared && Number.isInteger(p.cleared[id])) out.cleared[id] = Math.max(0, Math.min(99999, p.cleared[id]));
-  out.characters = [...new Set(d.characters.concat(Array.isArray(p.characters) ? p.characters.filter(c => typeof HEROES === 'undefined' || HEROES[c]) : []))];
+  out.characters = [...new Set(d.characters.concat(Array.isArray(p.characters) ? p.characters.map(heroId).filter(c => typeof HEROES === 'undefined' || HEROES[c]) : []))];
   out.weapons = [...new Set((Array.isArray(p.weapons) ? p.weapons : []).filter(w => WEAPONS[w]))];
-  for (const [h, w] of Object.entries(p.equipped || {})) if (WEAPONS[w] && WEAPONS[w].hero === h && out.weapons.includes(w)) out.equipped[h] = w;
+  for (const [h0, w] of Object.entries(p.equipped || {})) { const h = heroId(h0); if (WEAPONS[w] && WEAPONS[w].hero === h && out.weapons.includes(w)) out.equipped[h] = w; }
   for (const [k, v] of Object.entries(p.upgrades || {})) if (UPGRADES[k]) out.upgrades[k] = Math.max(0, Math.min(UPGRADES[k].cap, Number(v) || 0));
   for (const [k, v] of Object.entries(p.talents || {})) if (typeof TALENTS === 'undefined' || TALENTS.some(t => t.id === k)) out.talents[k] = Math.max(0, Math.min(START_TALENT_CAP, v | 0));
-  out.rewards = (Array.isArray(p.rewards) ? p.rewards : []).slice(-60);
+  out.rewards = (Array.isArray(p.rewards) ? p.rewards : []).slice(-60).map(r => r && r.item && RENAMED_HEROES[String(r.item).slice(2)] ? { ...r, item: itemId(r.item) } : r);
   if (p.claims && typeof p.claims === 'object') for (const k of Object.keys(p.claims).slice(-500)) out.claims[k] = 1;
   clearHeroes(out);
   return out;
@@ -187,7 +191,7 @@ function grantReward(prof, claim, rarity, item, meta = {}) {
 // Records a full five-chapter clear on a difficulty. Unlocks only the next difficulty. Idempotent per run id.
 // Unlockable heroes come from campaign clears: finishing all five chapters on a difficulty unlocks its hero for good.
 // Also applied whenever a profile is read, so profiles that cleared a difficulty earlier get the hero too.
-const CLEAR_HEROES = { nightmare: 'rowan', hell: 'mira', inferno: 'vespera' };
+const CLEAR_HEROES = { nightmare: 'rowan', hell: 'mira', inferno: 'lumen' };
 const clearHeroOf = hero => Object.keys(CLEAR_HEROES).find(d => CLEAR_HEROES[d] === hero) || null;
 function clearHeroes(prof) {
   const got = [];

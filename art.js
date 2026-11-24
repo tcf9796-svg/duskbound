@@ -30,7 +30,7 @@ function drawHero(c, id, x, y, face, t, o = {}) {
     c.fillStyle = '#1d2a30'; c.fillRect(fl * 1.5 - 4, -13 + bob, 3, 1.6); c.fillRect(fl * 1.5 + 1.5, -13 + bob, 3, 1.6);
     for (let i = 0; i < 3; i++) { const q = t * 1.3 + i * 2.1, x = Math.cos(q) * 18, y = Math.sin(q) * 8 - 8 + bob; c.fillStyle = 'rgba(200,245,255,' + (0.5 + Math.sin(t * 4 + i) * 0.3) + ')'; c.beginPath(); c.moveTo(x, y - 4); c.lineTo(x + 3, y + 1); c.lineTo(x - 2, y + 3); c.fill(); }
     for (const sd of [-1, 1]) { c.save(); c.rotate(face + sd * 0.4 + swOff * sd); c.strokeStyle = 'rgba(210,250,255,.9)'; c.lineWidth = 3.2; c.lineCap = 'round'; c.beginPath(); c.moveTo(11, 0); c.lineTo(25, 0); c.stroke(); c.strokeStyle = '#ffffff'; c.lineWidth = 1; c.beginPath(); c.moveTo(13, -0.8); c.lineTo(23, -0.8); c.stroke(); c.strokeStyle = '#3d5a63'; c.lineWidth = 3; c.beginPath(); c.moveTo(8, 0); c.lineTo(11, 0); c.stroke(); c.restore(); }
-  } else if (id === 'vespera') {
+  } else if (id === 'lumen') {
     // The Lanternkeeper: a hooded traveller, spectral flame in a lantern on a chain, and a few wandering spirits.
     c.fillStyle = '#2b3346'; c.beginPath(); c.moveTo(-14, 13); c.quadraticCurveTo(-12, -10 + bob, 0, -24 + bob); c.quadraticCurveTo(12, -10 + bob, 14, 13); c.closePath(); c.fill();
     c.fillStyle = '#3b4660'; c.beginPath(); c.moveTo(-5, 13); c.lineTo(0, -6 + bob); c.lineTo(5, 13); c.fill();

@@ -37,7 +37,7 @@ const { launch, checker } = require('./harness');
   let ra = await rewardsOf(A), rb = await rewardsOf(B);
   ok(ra.length === 1 && rb.length === 1, 'chapter 1: one reward result per player (' + ra.length + ', ' + rb.length + ')');
   ok(ra[0].endsWith(':1:' + aid) && rb[0].endsWith(':1:' + bid), 'claims are run:chapter:profile');
-  ok(await B.evaluate(() => game.rewards && game.rewards.length === 2) && await B.evaluate(() => /Chapter reward/.test(overlay.textContent)), 'end screen shows both players’ results');
+  ok(await B.evaluate(() => game.rewards && game.rewards.length === 2) && await B.evaluate(() => /Chapter (reward|talent)/.test(overlay.textContent)), 'end screen shows both players’ results');
   // duplicate completion events
   await A.evaluate(() => { chapterComplete(); chapterComplete(); net.rolled.clear(); chapterComplete(); }); await wait(700);
   ok((await rewardsOf(A)).length === 1 && (await rewardsOf(B)).length === 1 && await A.evaluate(() => net.claims.size) === 2, 'duplicate completion events: no extra rolls');

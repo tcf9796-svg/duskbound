@@ -1,10 +1,10 @@
 // Run: node tests/talents-soak.test.js   (no dependencies; uses tests/sim-harness.js)
 const vm = require('vm'); const { makeWorld } = require('./sim-harness.js');
 let fails = 0; const ok = (c, m) => { console.log((c ? 'ok   ' : 'FAIL ') + m); if (!c) fails++; };
-for (const hero of ['bramble', 'wick', 'vesper', 'rowan', 'mira', 'vespera']) {
+for (const hero of ['bramble', 'wick', 'vesper', 'rowan', 'mira', 'lumen']) {
   const w = makeWorld({});
   const r = vm.runInContext(`(() => {
-    initAudio = () => {}; PROFILE.characters.push('rowan', 'mira', 'vespera');
+    initAudio = () => {}; PROFILE.characters.push('rowan', 'mira', 'lumen');
     const mk = () => { players = [newPlayer(1, '${hero}', 'T')]; me = players[0]; beginRun('normal'); me.level = 6; me.embers = 99; me.ct = HERO_TALENTS['${hero}'].map(t => t.id); if (me.ct.includes('coven')) me.lanCh = 2; };
     mk(); const errs = []; let frames = 0, maxP = 0, maxZ = 0;
     for (let i = 0; i < 7000; i++) {
