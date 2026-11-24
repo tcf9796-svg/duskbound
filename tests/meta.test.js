@@ -56,7 +56,7 @@ const extra = pr => JSON.stringify(pr.characters.filter(c => !['bramble', 'wick'
 ok(extra(q) === '[]', 'a Normal clear unlocks no hero');
 ok(M.recordCampaignClear(q, 'nightmare', 'r3') === 'hell' && extra(q) === '["rowan"]', 'Nightmare clear unlocks Rowan');
 ok(M.recordCampaignClear(q, 'hell', 'r4') === 'inferno' && extra(q) === '["rowan","mira"]', 'Hell clear unlocks Mira');
-ok(M.recordCampaignClear(q, 'inferno', 'r5') === null && extra(q) === '["rowan","mira","vespera"]', 'Inferno clear unlocks Vespera, nothing after');
+ok(M.recordCampaignClear(q, 'inferno', 'r5') === null && extra(q) === '["rowan","mira","vespera"]', 'Inferno clear unlocks Lumen, nothing after');
 ok(M.recordCampaignClear(q, 'nightmare', 'r6') === null && extra(q).split(',').length === 3, 'clearing again adds no duplicate');
 { const old = M.newProfile(); old.unlocked = ['normal', 'nightmare', 'hell']; old.cleared = { normal: 1, nightmare: 2 }; const st3 = store(); M.saveProfile(st3, old); const re = M.loadProfile(st3);
   ok(extra(re) === '["rowan"]', 'a profile that cleared Nightmare before this change gets Rowan when loaded'); }
@@ -75,7 +75,7 @@ ok(M.importProfile('garbage') === null, 'bad backup code rejected');
 // --- unlockable heroes are character rewards inside the single roll, gated by their first chapter
 ok(M.REWARD_POOLS.green.includes('c:rowan') && M.REWARD_POOLS.blue.includes('c:mira') && M.REWARD_POOLS.purple.includes('c:vespera'), 'heroes sit in the Green/Blue/Purple pools');
 const ci = ch => ({ weapons: [], talents: {}, upgrades: {}, characters: [], chapter: ch });
-ok(M.itemAvailable('c:rowan', ci(1)) && !M.itemAvailable('c:mira', ci(1)) && M.itemAvailable('c:mira', ci(2)) && !M.itemAvailable('c:vespera', ci(2)) && M.itemAvailable('c:vespera', ci(3)), 'each hero only from its first chapter (Rowan 1, Mira 2, Vespera 3)');
+ok(M.itemAvailable('c:rowan', ci(1)) && !M.itemAvailable('c:mira', ci(1)) && M.itemAvailable('c:mira', ci(2)) && !M.itemAvailable('c:vespera', ci(2)) && M.itemAvailable('c:vespera', ci(3)), 'each hero only from its first chapter (Rowan 1, Mira 2, Lumen 3)');
 ok(!M.itemAvailable('c:rowan', { ...ci(5), characters: ['rowan'] }) && !M.itemAvailable('c:nobody', ci(5)), 'owned or unknown heroes are never offered');
 { let got = null; for (let i = 0; i < 400 && got !== 'c:rowan'; i++) got = M.rollReward(ci(1), (() => { const s = [0.1, Math.random()]; return () => s.shift(); })()).item; ok(got === 'c:rowan', 'a Green roll can award Rowan'); }
 const hp = M.newProfile(); M.grantReward(hp, 'r:1:' + hp.id, 'green', 'c:rowan', { chapter: 1 });

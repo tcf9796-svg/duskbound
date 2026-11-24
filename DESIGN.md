@@ -116,7 +116,7 @@ changes these odds, and boss phases, summons and other kills never trigger a rol
   the claim ids it has applied. So duplicate completion events, reconnects and resends never roll or grant twice.
 - **Categories:** upgrades (stackable stats, capped), starting talents (begin each run with one rank of a boon),
   weapons (one per hero, equipped in Profile) and characters.
-- **Characters:** the unlockable heroes Rowan (Green), Mira (Blue) and Vespera (Purple) are `c:<id>` items in their
+- **Characters:** the unlockable heroes Rowan (Green), Mira (Blue) and Lumen (Purple; id `vespera`, renamed from Vespera) are `c:<id>` items in their
   tier's pool, winnable from Chapter 1, 2 and 3 respectively (`RARITY[...].chapter` in `data.js`). They are part of
   the single roll above, not a separate one. Unlocks are saved in the profile; an older per-device unlock save
   (`duskbound-unlocks`) is imported once. The host only lets a guest play a hero their profile owns.
@@ -137,7 +137,7 @@ no longer rolls a reward (`CHAPTER_REWARDS.roll = false` in `meta.js`); instead 
 pick (`CHAPTER_TALENT.policy = 'every'`). The claim (`run:chapter:profile`) is still recorded with no item, so a pick
 can't be earned twice and the campaign clear after the final chapter still unlocks the next difficulty. Never after
 the final chapter (the run ends there). The unlockable heroes come from campaign clears instead:
-Nightmare → Rowan, Hell → Mira, Inferno → Vespera (`CLEAR_HEROES` in `meta.js`). Other settings: `policy: 'reward'` (a pick only when the roll lands on a `t:`
+Nightmare → Rowan, Hell → Mira, Inferno → Lumen (`CLEAR_HEROES` in `meta.js`). Other settings: `policy: 'reward'` (a pick only when the roll lands on a `t:`
 reward; needs rolls on) and `'off'`.
 
 **Picking.** At the start of the next chapter the player sees 3 cards (`CHAPTER_TALENT.cards`), drawn at random from
