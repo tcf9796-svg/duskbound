@@ -20,7 +20,7 @@ const HEROES = {
     names: ['Twin Cuts', 'Blade Fan', 'Flit', 'Eclipse']
   },
   // Unlockable heroes. `rarity` names their character reward pool (see RARITY); `alt` heroes cast a second skill
-  // from the dash slot (Space / DASH button) instead of dashing; `dashCd` overrides that slot's recharge; `ultTime` (Lumen, id `vespera`) is Midnight Procession's base duration in seconds.
+  // from the dash slot (Space / DASH button) instead of dashing; `dashCd` overrides that slot's recharge; `ultTime` (Lumen, id `lumen`) is Midnight Procession's base duration in seconds.
   rowan: {
     name: 'Rowan', title: 'The Thornwarden', color: '#a9c46c', hp: 170, spd: 205, dmg: 14, atkCd: 0.5, skillCd: 9, dashes: 1, dashCd: 14, alt: true, rarity: 'green',
     blurb: 'Bark armour, a moss-heavy cloak and a shield that is still growing. Where Rowan plants a foot, the line holds.',
@@ -33,7 +33,7 @@ const HEROES = {
     kit: ['<b>Attack</b> — Shattered Cuts: a fast three-strike dagger combo', '<b>Skill</b> — Mirror Exchange: swap places with your decoy, then shatter it', '<b>Dash</b> — Reflection Step: dash through foes, leaving a decoy that draws them', '<b>Ultimate</b> — Hall of Mirrors: three reflections repeat your cuts at 40% damage', '<b>Trait</b> — Blind Spot: +40% damage to foes distracted by an ally or decoy'],
     names: ['Shattered Cuts', 'Mirror Exchange', 'Reflection Step', 'Hall of Mirrors']
   },
-  vespera: {
+  lumen: {
     name: 'Lumen', title: 'The Lanternkeeper', color: '#86f0cf', hp: 100, spd: 225, dmg: 12, atkCd: 0.38, skillCd: 10, dashes: 1, dashCd: 12, alt: true, rarity: 'purple', ultTime: 10,
     blurb: 'A cloaked traveller swinging a haunted lantern on a chain. The lost follow her light; so does everything else.',
     kit: ['<b>Attack</b> — Ghostlight: a spectral bolt', '<b>Skill</b> — Guiding Wisp: shield the ally nearest your aim (yourself when solo). 30 energy', '<b>Space</b> — Soul Tether: link up to 4 foes; 40% of direct damage to one spreads to the rest. 30 energy', '<b>Ultimate</b> — Midnight Procession: spirits set out toward your aim and hunt down the nearest foes, harming them and healing allies they pass', '<b>Trait</b> — Lingering Light: the fallen leave embers that restore lantern energy'],
@@ -94,8 +94,8 @@ const TALENTS = [
   { id: 'taproot', hero: 'rowan', name: 'Taproot', desc: 'Root Snare roots 0.5s longer and deals +40% damage.', max: 2, f: p => p.h.taproot = (p.h.taproot || 0) + 1 },
   { id: 'facets', hero: 'mira', name: 'Many Facets', desc: 'Decoys last +2s; their shatter deals +40% damage.', max: 2, f: p => p.h.facets = (p.h.facets || 0) + 1 },
   { id: 'glint', hero: 'mira', name: 'Cold Glint', desc: 'Blind Spot bonus +20%.', max: 2, f: p => p.h.glint = (p.h.glint || 0) + 1 },
-  { id: 'deepwick', hero: 'vespera', name: 'Deep Wick', desc: '+25 maximum lantern energy, +1 energy per second.', max: 2, f: p => { p.h.deepwick = (p.h.deepwick || 0) + 1; p.lanMax += 25; } },
-  { id: 'kindred', hero: 'vespera', name: 'Kindred Flame', desc: 'Guiding Wisp shields are 50% stronger.', max: 2, f: p => p.h.kindred = (p.h.kindred || 0) + 1 }
+  { id: 'deepwick', hero: 'lumen', name: 'Deep Wick', desc: '+25 maximum lantern energy, +1 energy per second.', max: 2, f: p => { p.h.deepwick = (p.h.deepwick || 0) + 1; p.lanMax += 25; } },
+  { id: 'kindred', hero: 'lumen', name: 'Kindred Flame', desc: 'Guiding Wisp shields are 50% stronger.', max: 2, f: p => p.h.kindred = (p.h.kindred || 0) + 1 }
 ];
 const PAL = [
   { name: 'The Thornwood', base: '#2f4a33', spk: ['#3a5a3c', '#284029', '#466b45'], tree: ['#1c3522', '#2a4f31', '#3a6a40'], rock: '#6b7078' },
@@ -151,7 +151,7 @@ const HERO_TALENTS = {
     { id: 'opening', name: 'Shared Opening', ab: ['Mirror Exchange'], desc: 'Shattering a decoy marks nearby foes. A teammate’s next hit on a marked foe deals extra damage (your own, when playing solo).', limits: '+30% once per mark. Marks last 6 s.', v: { bonus: 0.3, time: 6 } },
     { id: 'curtain', name: 'Final Curtain', ab: ['Hall of Mirrors'], desc: 'When Hall of Mirrors ends, each reflection bursts into glass shards.', limits: 'Each reflection bursts once, only when the ultimate runs out.', v: { radius: 90, dmg: 2 } }
   ],
-  vespera: [
+  lumen: [
     { id: 'wandering', name: 'Wandering Flame', ab: ['Ghostlight'], desc: 'Ghostlight passes through its first target and hits one more foe at reduced damage.', limits: 'Never hits the same foe twice.', v: { dmg: 0.6 } },
     { id: 'merciful', name: 'Merciful Wisp', ab: ['Guiding Wisp'], desc: 'When a Guiding Wisp shield runs out, half of what’s left heals the protected player.', limits: 'Only when it expires on its own; a used-up shield heals nothing.', v: { pct: 0.5 } },
     { id: 'succession', name: 'Soul Succession', ab: ['Soul Tether'], desc: 'When a tethered foe dies, its link passes to another nearby foe for the time left.', limits: 'Once per Soul Tether. Shared damage still never spreads again.', v: { range: 260 } },

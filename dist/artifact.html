@@ -151,7 +151,7 @@ const HEROES = {
     names: ['Twin Cuts', 'Blade Fan', 'Flit', 'Eclipse']
   },
   // Unlockable heroes. `rarity` names their character reward pool (see RARITY); `alt` heroes cast a second skill
-  // from the dash slot (Space / DASH button) instead of dashing; `dashCd` overrides that slot's recharge; `ultTime` (Lumen, id `vespera`) is Midnight Procession's base duration in seconds.
+  // from the dash slot (Space / DASH button) instead of dashing; `dashCd` overrides that slot's recharge; `ultTime` (Lumen, id `lumen`) is Midnight Procession's base duration in seconds.
   rowan: {
     name: 'Rowan', title: 'The Thornwarden', color: '#a9c46c', hp: 170, spd: 205, dmg: 14, atkCd: 0.5, skillCd: 9, dashes: 1, dashCd: 14, alt: true, rarity: 'green',
     blurb: 'Bark armour, a moss-heavy cloak and a shield that is still growing. Where Rowan plants a foot, the line holds.',
@@ -164,7 +164,7 @@ const HEROES = {
     kit: ['<b>Attack</b> — Shattered Cuts: a fast three-strike dagger combo', '<b>Skill</b> — Mirror Exchange: swap places with your decoy, then shatter it', '<b>Dash</b> — Reflection Step: dash through foes, leaving a decoy that draws them', '<b>Ultimate</b> — Hall of Mirrors: three reflections repeat your cuts at 40% damage', '<b>Trait</b> — Blind Spot: +40% damage to foes distracted by an ally or decoy'],
     names: ['Shattered Cuts', 'Mirror Exchange', 'Reflection Step', 'Hall of Mirrors']
   },
-  vespera: {
+  lumen: {
     name: 'Lumen', title: 'The Lanternkeeper', color: '#86f0cf', hp: 100, spd: 225, dmg: 12, atkCd: 0.38, skillCd: 10, dashes: 1, dashCd: 12, alt: true, rarity: 'purple', ultTime: 10,
     blurb: 'A cloaked traveller swinging a haunted lantern on a chain. The lost follow her light; so does everything else.',
     kit: ['<b>Attack</b> — Ghostlight: a spectral bolt', '<b>Skill</b> — Guiding Wisp: shield the ally nearest your aim (yourself when solo). 30 energy', '<b>Space</b> — Soul Tether: link up to 4 foes; 40% of direct damage to one spreads to the rest. 30 energy', '<b>Ultimate</b> — Midnight Procession: spirits set out toward your aim and hunt down the nearest foes, harming them and healing allies they pass', '<b>Trait</b> — Lingering Light: the fallen leave embers that restore lantern energy'],
@@ -225,8 +225,8 @@ const TALENTS = [
   { id: 'taproot', hero: 'rowan', name: 'Taproot', desc: 'Root Snare roots 0.5s longer and deals +40% damage.', max: 2, f: p => p.h.taproot = (p.h.taproot || 0) + 1 },
   { id: 'facets', hero: 'mira', name: 'Many Facets', desc: 'Decoys last +2s; their shatter deals +40% damage.', max: 2, f: p => p.h.facets = (p.h.facets || 0) + 1 },
   { id: 'glint', hero: 'mira', name: 'Cold Glint', desc: 'Blind Spot bonus +20%.', max: 2, f: p => p.h.glint = (p.h.glint || 0) + 1 },
-  { id: 'deepwick', hero: 'vespera', name: 'Deep Wick', desc: '+25 maximum lantern energy, +1 energy per second.', max: 2, f: p => { p.h.deepwick = (p.h.deepwick || 0) + 1; p.lanMax += 25; } },
-  { id: 'kindred', hero: 'vespera', name: 'Kindred Flame', desc: 'Guiding Wisp shields are 50% stronger.', max: 2, f: p => p.h.kindred = (p.h.kindred || 0) + 1 }
+  { id: 'deepwick', hero: 'lumen', name: 'Deep Wick', desc: '+25 maximum lantern energy, +1 energy per second.', max: 2, f: p => { p.h.deepwick = (p.h.deepwick || 0) + 1; p.lanMax += 25; } },
+  { id: 'kindred', hero: 'lumen', name: 'Kindred Flame', desc: 'Guiding Wisp shields are 50% stronger.', max: 2, f: p => p.h.kindred = (p.h.kindred || 0) + 1 }
 ];
 const PAL = [
   { name: 'The Thornwood', base: '#2f4a33', spk: ['#3a5a3c', '#284029', '#466b45'], tree: ['#1c3522', '#2a4f31', '#3a6a40'], rock: '#6b7078' },
@@ -282,7 +282,7 @@ const HERO_TALENTS = {
     { id: 'opening', name: 'Shared Opening', ab: ['Mirror Exchange'], desc: 'Shattering a decoy marks nearby foes. A teammate’s next hit on a marked foe deals extra damage (your own, when playing solo).', limits: '+30% once per mark. Marks last 6 s.', v: { bonus: 0.3, time: 6 } },
     { id: 'curtain', name: 'Final Curtain', ab: ['Hall of Mirrors'], desc: 'When Hall of Mirrors ends, each reflection bursts into glass shards.', limits: 'Each reflection bursts once, only when the ultimate runs out.', v: { radius: 90, dmg: 2 } }
   ],
-  vespera: [
+  lumen: [
     { id: 'wandering', name: 'Wandering Flame', ab: ['Ghostlight'], desc: 'Ghostlight passes through its first target and hits one more foe at reduced damage.', limits: 'Never hits the same foe twice.', v: { dmg: 0.6 } },
     { id: 'merciful', name: 'Merciful Wisp', ab: ['Guiding Wisp'], desc: 'When a Guiding Wisp shield runs out, half of what’s left heals the protected player.', limits: 'Only when it expires on its own; a used-up shield heals nothing.', v: { pct: 0.5 } },
     { id: 'succession', name: 'Soul Succession', ab: ['Soul Tether'], desc: 'When a tethered foe dies, its link passes to another nearby foe for the time left.', limits: 'Once per Soul Tether. Shared damage still never spreads again.', v: { range: 260 } },
@@ -650,7 +650,7 @@ const START_TALENT_CAP = 1;
 const REWARD_POOLS = {
   green: ['u:hp:4', 'u:dmg:2', 'u:spd:2', 'u:gold:10', 'c:rowan'],
   blue: ['u:hp:8', 'u:dmg:4', 'u:crit:2', 't:keen', 't:quick', 't:fleet', 't:hearty', 'c:mira'],
-  purple: ['w:thornmaul', 'w:cinderglass', 'w:mothfang', 't:eye', 't:leech', 't:tinker', 't:chain', 't:ember', 'c:vespera'],
+  purple: ['w:thornmaul', 'w:cinderglass', 'w:mothfang', 't:eye', 't:leech', 't:tinker', 't:chain', 't:ember', 'c:lumen'],
   yellow: ['w:elderbough', 'w:sunlantern', 'w:duskneedles', 't:step', 't:exec'],
   red: ['w:gloamantler', 'w:starwick', 'w:eclipseedge', 'u:dmg:10', 'u:hp:20']
 };
@@ -694,6 +694,10 @@ function rollReward(inv, rng = Math.random) {
 // ---------- profiles ----------
 const PROFILE_KEY = 'duskbound-profile', PROFILE_VERSION = 1;
 const randId = n => { let s = ''; const A = 'abcdefghijklmnopqrstuvwxyz0123456789'; const c = typeof crypto !== 'undefined' && crypto.getRandomValues ? crypto.getRandomValues(new Uint8Array(n)) : null; for (let i = 0; i < n; i++) s += A[(c ? c[i] : Math.floor(Math.random() * 256)) % 36]; return s; };
+// Heroes whose id changed: old saves (this device, online copies, old unlock lists) are moved to the new id.
+const RENAMED_HEROES = { vespera: 'lumen' };
+const heroId = h => RENAMED_HEROES[h] || h;
+const itemId = it => typeof it === 'string' && it.startsWith('c:') ? 'c:' + heroId(it.slice(2)) : it;
 function newProfile() {
   return { v: PROFILE_VERSION, id: 'p_' + randId(20), created: Date.now(), unlocked: ['normal'], cleared: {}, characters: ['bramble', 'wick', 'vesper'],
     weapons: [], equipped: {}, upgrades: {}, talents: {}, rewards: [], claims: {} };
@@ -706,12 +710,12 @@ function sanitizeProfile(p) {
   const ids = DIFFICULTIES.map(x => x.id);
   out.unlocked = ids.filter((id, i) => i === 0 || (Array.isArray(p.unlocked) && p.unlocked.includes(id)));
   for (const id of ids) if (p.cleared && Number.isInteger(p.cleared[id])) out.cleared[id] = Math.max(0, Math.min(99999, p.cleared[id]));
-  out.characters = [...new Set(d.characters.concat(Array.isArray(p.characters) ? p.characters.filter(c => typeof HEROES === 'undefined' || HEROES[c]) : []))];
+  out.characters = [...new Set(d.characters.concat(Array.isArray(p.characters) ? p.characters.map(heroId).filter(c => typeof HEROES === 'undefined' || HEROES[c]) : []))];
   out.weapons = [...new Set((Array.isArray(p.weapons) ? p.weapons : []).filter(w => WEAPONS[w]))];
-  for (const [h, w] of Object.entries(p.equipped || {})) if (WEAPONS[w] && WEAPONS[w].hero === h && out.weapons.includes(w)) out.equipped[h] = w;
+  for (const [h0, w] of Object.entries(p.equipped || {})) { const h = heroId(h0); if (WEAPONS[w] && WEAPONS[w].hero === h && out.weapons.includes(w)) out.equipped[h] = w; }
   for (const [k, v] of Object.entries(p.upgrades || {})) if (UPGRADES[k]) out.upgrades[k] = Math.max(0, Math.min(UPGRADES[k].cap, Number(v) || 0));
   for (const [k, v] of Object.entries(p.talents || {})) if (typeof TALENTS === 'undefined' || TALENTS.some(t => t.id === k)) out.talents[k] = Math.max(0, Math.min(START_TALENT_CAP, v | 0));
-  out.rewards = (Array.isArray(p.rewards) ? p.rewards : []).slice(-60);
+  out.rewards = (Array.isArray(p.rewards) ? p.rewards : []).slice(-60).map(r => r && r.item && RENAMED_HEROES[String(r.item).slice(2)] ? { ...r, item: itemId(r.item) } : r);
   if (p.claims && typeof p.claims === 'object') for (const k of Object.keys(p.claims).slice(-500)) out.claims[k] = 1;
   clearHeroes(out);
   return out;
@@ -764,7 +768,7 @@ function grantReward(prof, claim, rarity, item, meta = {}) {
 // Records a full five-chapter clear on a difficulty. Unlocks only the next difficulty. Idempotent per run id.
 // Unlockable heroes come from campaign clears: finishing all five chapters on a difficulty unlocks its hero for good.
 // Also applied whenever a profile is read, so profiles that cleared a difficulty earlier get the hero too.
-const CLEAR_HEROES = { nightmare: 'rowan', hell: 'mira', inferno: 'vespera' };
+const CLEAR_HEROES = { nightmare: 'rowan', hell: 'mira', inferno: 'lumen' };
 const clearHeroOf = hero => Object.keys(CLEAR_HEROES).find(d => CLEAR_HEROES[d] === hero) || null;
 function clearHeroes(prof) {
   const got = [];
@@ -928,7 +932,7 @@ function drawHero(c, id, x, y, face, t, o = {}) {
     c.fillStyle = '#1d2a30'; c.fillRect(fl * 1.5 - 4, -13 + bob, 3, 1.6); c.fillRect(fl * 1.5 + 1.5, -13 + bob, 3, 1.6);
     for (let i = 0; i < 3; i++) { const q = t * 1.3 + i * 2.1, x = Math.cos(q) * 18, y = Math.sin(q) * 8 - 8 + bob; c.fillStyle = 'rgba(200,245,255,' + (0.5 + Math.sin(t * 4 + i) * 0.3) + ')'; c.beginPath(); c.moveTo(x, y - 4); c.lineTo(x + 3, y + 1); c.lineTo(x - 2, y + 3); c.fill(); }
     for (const sd of [-1, 1]) { c.save(); c.rotate(face + sd * 0.4 + swOff * sd); c.strokeStyle = 'rgba(210,250,255,.9)'; c.lineWidth = 3.2; c.lineCap = 'round'; c.beginPath(); c.moveTo(11, 0); c.lineTo(25, 0); c.stroke(); c.strokeStyle = '#ffffff'; c.lineWidth = 1; c.beginPath(); c.moveTo(13, -0.8); c.lineTo(23, -0.8); c.stroke(); c.strokeStyle = '#3d5a63'; c.lineWidth = 3; c.beginPath(); c.moveTo(8, 0); c.lineTo(11, 0); c.stroke(); c.restore(); }
-  } else if (id === 'vespera') {
+  } else if (id === 'lumen') {
     // The Lanternkeeper: a hooded traveller, spectral flame in a lantern on a chain, and a few wandering spirits.
     c.fillStyle = '#2b3346'; c.beginPath(); c.moveTo(-14, 13); c.quadraticCurveTo(-12, -10 + bob, 0, -24 + bob); c.quadraticCurveTo(12, -10 + bob, 14, 13); c.closePath(); c.fill();
     c.fillStyle = '#3b4660'; c.beginPath(); c.moveTo(-5, 13); c.lineTo(0, -6 + bob); c.lineTo(5, 13); c.fill();
@@ -2274,7 +2278,7 @@ const ROOTS_MAX = 5;
 // Why an ability slot (1 = skill, 2 = dash slot) cannot be used right now, as a short HUD label; null when it can.
 function slotBlock(p, slot) {
   if (slot === 1 && p.hero === 'mira' && !p.decoyOn) return 'NO DECOY';
-  if (p.hero === 'vespera' && p.lan < LANTERN_COST) return 'LOW';
+  if (p.hero === 'lumen' && p.lan < LANTERN_COST) return 'LOW';
   return null;
 }
 const xpNeed = l => 25 + l * 20 + l * l * 2;
@@ -2431,7 +2435,7 @@ function killEnemy(e, p) {
   if (p) p.kills++;
   talentKill(e);
   // Lingering Light: while a Lanternkeeper is in the party, the fallen leave embers for her lantern.
-  if (players.some(q => q.hero === 'vespera')) pickups.push({ id: nextId++, kind: 'lume', x: e.x, y: e.y, val: e.elite || e.type === 'boss' ? 20 : 6, vx: 0, vy: 0, t: rand(TAU), life: 8 });
+  if (players.some(q => q.hero === 'lumen')) pickups.push({ id: nextId++, kind: 'lume', x: e.x, y: e.y, val: e.elite || e.type === 'boss' ? 20 : 6, vx: 0, vy: 0, t: rand(TAU), life: 8 });
   burst(e.x, e.y, e.type === 'wisp' ? '#8fd0ff' : '#b79bd6', e.elite || e.type === 'boss' ? 40 : 12, 240, 4); sfx('die', e);
   if (e.type === 'boss') { banner(T(e.cfg ? e.cfg.name : 'boss') + ' ' + L('is defeated', '已被擊敗'), e.cfg ? e.cfg.title : '', 2.4); hazards = []; game.arena = null; game.boss = null; game.winT = 2.2; shake(20); sfx('boom'); projs = projs.filter(q => q.friendly); zones = zones.filter(z => z.friendly); for (const q of enemies) if (!q.dead) { q.dead = true; burst(q.x, q.y, '#b79bd6', 8); } }
   const n = e.type === 'boss' ? 30 : e.elite ? 8 : 1 + (e.xp > 6 ? 1 : 0);
@@ -2508,7 +2512,7 @@ function doAttack(p) {
     const fin = ++p.combo % 3 === 0, col = fin ? '#ffffff' : '#bff6ff';
     meleeArc(p, fin ? 84 : 72, fin ? 2.2 : 1.4, p.dmg * (fin ? 1.8 : 1), { kb: fin ? 120 : 30, color: col }); sfx('blade', p);
     if (p.ultT > 0) for (const s of mirrorSpots(p)) meleeArc(p, fin ? 84 : 72, fin ? 2.2 : 1.4, p.dmg * (fin ? 1.8 : 1) * 0.4, { from: s, quiet: true, proc: true, color: '#9ee7f2' });
-  } else if (H === 'vespera') {
+  } else if (H === 'lumen') {
     const wf = hasT(p, 'wandering') ? tv(p, 'wandering').dmg : 0; // Wandering Flame: one more target, weaker
     shoot(p.x + Math.cos(p.face) * 18, p.y + Math.sin(p.face) * 18, p.face, 600, { owner: p, dmg: p.dmg, life: 0.9, r: 7, color: '#86f0cf', kind: 'ghost', pierce: wf ? 1 : 0, falloff: wf }); sfx('bolt', p);
   } else {
@@ -2528,7 +2532,7 @@ function wispTarget(p) {
 function doSkill(p) {
   const H = p.hero, m = p.aim;
   if (slotBlock(p, 1)) return;
-  if (H === 'vespera') {
+  if (H === 'lumen') {
     const t = wispTarget(p); if (!t) { floatText(p.x, p.y - 34, 'No ally to guide', '#aaa', 13); p.tSkill = 0.6; return; }
     p.lan -= LANTERN_COST; p.tSkill = HEROES[H].skillCd * p.cdr; sfx('shield', p);
     const amt = (30 + 3 * p.level) * (1 + 0.5 * (p.h.kindred || 0)); t.shield = Math.max(t.shield, amt); t.shieldT = 6; wispGiven(p, t, amt);
@@ -2608,7 +2612,7 @@ function doAlt(p) {
     const z = { kind: 'shelter', friendly: true, owner: p, oid: p.id, x: p.x, y: p.y, r: 150 * (1 + 0.25 * k), delay: 0, life: T, max: T, color: '#a9c46c' };
     if (hasT(p, 'grove')) { z.follow = true; z.r *= tv(p, 'grove').radius; } // Walking Grove
     zones.push(z); ring(p.x, p.y, z.r, '#a9c46c'); burst(p.x, p.y, '#cfe89a', 20, 260, 4);
-  } else if (p.hero === 'vespera') {
+  } else if (p.hero === 'lumen') {
     // Soul Tether: link the foes nearest the aim point.
     const a = angTo(p, m), d = Math.min(500, dist(p, m)), c = { x: p.x + Math.cos(a) * d, y: p.y + Math.sin(a) * d };
     const list = enemies.filter(e => !e.dead && e.near && dist(e, c) < 220 + e.r).sort((x, y) => dist(x, c) - dist(y, c)).slice(0, 4);
@@ -2624,10 +2628,10 @@ function doUlt(p) {
   if (H === 'bramble') { p.ultT = 8; p.pulse = 0; p.ultExt = 0; ring(p.x, p.y, 180, '#7bc96f'); }
   else if (H === 'rowan') { p.ultT = 8; p.pulse = 0; ring(p.x, p.y, 220, '#a9c46c'); burst(p.x, p.y, '#cfe89a', 30, 300, 5); banner('Ancient Sentinel', 'The wood rallies to you.', 2, p.id); }
   else if (H === 'mira') { p.ultT = 7; ring(p.x, p.y, 90, '#9ee7f2'); for (const s of mirrorSpots(p)) burst(s.x, s.y, '#e8fbff', 12, 180); sfx('shatter', p); }
-  else if (H === 'vespera') {
+  else if (H === 'lumen') {
     // Midnight Procession: a march of spirits, launched toward the aim point, that then hunts the nearest foes.
     const a = angTo(p, m), sp = 260;
-    zones.push({ kind: 'proc', friendly: true, owner: p, x: p.x, y: p.y, r: 80, delay: 0, life: HEROES.vespera.ultTime, max: HEROES.vespera.ultTime, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, tickT: 0, color: '#86f0cf' });
+    zones.push({ kind: 'proc', friendly: true, owner: p, x: p.x, y: p.y, r: 80, delay: 0, life: HEROES.lumen.ultTime, max: HEROES.lumen.ultTime, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, tickT: 0, color: '#86f0cf' });
   }
   else if (H === 'wick') {
     for (let i = 0; i < 12; i++) { const a = rand(TAU), d = i === 0 ? 0 : rand(40, 210); zones.push({ kind: 'blast', friendly: true, owner: p, x: m.x + Math.cos(a) * d, y: m.y + Math.sin(a) * d, r: 88, delay: 0.5 + i * 0.2, max: 0.5 + i * 0.2, dmg: p.dmg * 4.2, color: '#ff7a2f', final: i === 11, cx: m.x, cy: m.y }); }
@@ -2666,7 +2670,7 @@ function updPlayer(p, inp, dt) {
   p.cds = [p.atkCd / p.asMul, HEROES[p.hero].skillCd * p.cdr, dashCdOf(p), ULT_CD * p.cdr];
   if (p.shieldT > 0) { p.shieldT -= dt; if (p.shieldT <= 0) { shieldExpired(p); p.shield = 0; } }
   talentPlayerTick(p, dt);
-  if (p.hero === 'vespera') p.lan = Math.min(p.lanMax, p.lan + (4 + (p.h.deepwick || 0)) * dt);
+  if (p.hero === 'lumen') p.lan = Math.min(p.lanMax, p.lan + (4 + (p.h.deepwick || 0)) * dt);
   if (p.decoy && p.decoy.life <= 0) p.decoy = null;
   p.decoyOn = !!p.decoy;
   if (p.down) {
@@ -2829,7 +2833,7 @@ function update(dt) {
     k.t += dt; k.x += k.vx * dt; k.y += k.vy * dt; k.vx *= Math.pow(0.02, dt); k.vy *= Math.pow(0.02, dt);
     if (k.kind === 'lume' && (k.life -= dt) <= 0) { k.dead = true; continue; }
     // Lantern embers only answer a Lanternkeeper; everything else goes to whoever is nearest.
-    const p = k.kind === 'lume' ? nearestPlayer(k, q => q.hero === 'vespera') : nearestPlayer(k); if (!p) continue; const d = dist(k, p);
+    const p = k.kind === 'lume' ? nearestPlayer(k, q => q.hero === 'lumen') : nearestPlayer(k); if (!p) continue; const d = dist(k, p);
     if (k.kind === 'lume' && p.lan >= p.lanMax) continue;
     if (k.kind === 'heart' && p.hp >= p.maxHp) continue;
     if (d < p.pickR) { const a = angTo(k, p), v = 520 * (1 - d / (p.pickR * 1.4)) + 120; k.x += Math.cos(a) * v * dt; k.y += Math.sin(a) * v * dt; }
@@ -2972,7 +2976,7 @@ function rollChoice(p) {
 // and saved in the profile. Unlocks from the earlier per-device save ('duskbound-unlocks') are carried over once.
 try {
   const old = JSON.parse(localStorage.getItem('duskbound-unlocks') || 'null');
-  if (old && Array.isArray(old.heroes)) { for (const h of old.heroes) if (HEROES[h] && HEROES[h].rarity && !PROFILE.characters.includes(h)) PROFILE.characters.push(h); saveMe(); localStorage.removeItem('duskbound-unlocks'); }
+  if (old && Array.isArray(old.heroes)) { for (const h of old.heroes.map(heroId)) if (HEROES[h] && HEROES[h].rarity && !PROFILE.characters.includes(h)) PROFILE.characters.push(h); saveMe(); localStorage.removeItem('duskbound-unlocks'); }
 } catch (e) { }
 const unlocked = id => !!HEROES[id] && (!HEROES[id].rarity || PROFILE.characters.includes(id));
 const ownsHero = (lo, id) => !!HEROES[id] && (!HEROES[id].rarity || !!(lo && lo.characters && lo.characters.includes(id)));
@@ -3037,7 +3041,7 @@ function expireAway() {
 }
 
 // ---------- netcode ----------
-const PEER_PREFIX = 'duskbound-v8-'; // bump whenever messages change, so mismatched versions never meet
+const PEER_PREFIX = 'duskbound-v9-'; // bump whenever messages change, so mismatched versions never meet
 const noNetMsg = () => window.DUSK_NO_NET ? 'Online co-op is not available on this page. Solo works here; for co-op, open the downloaded duskbound.html file or a copy on your own website.' : 'Online play needs an internet connection (the networking library did not load).';
 function wrapConn(c) {
   const w = { peerId: c.peer, send: d => { try { c.send(d); } catch (e) { } }, onData: null, onClose: null, close: () => { try { c.close(); } catch (e) { } } };
@@ -3633,7 +3637,7 @@ function drawHUD() {
   // Hero resources, under the experience bar.
   c.textAlign = 'left'; c.font = '12px Georgia';
   if (p.hero === 'rowan') { c.fillStyle = '#d8c08a'; c.fillText(T('Deep Roots') + ' ' + '●'.repeat(p.roots) + '○'.repeat(Math.max(0, ROOTS_MAX - p.roots)), bx, by + 52); }
-  else if (p.hero === 'vespera') { c.fillStyle = '#86f0cf'; c.fillText(T('Lantern'), bx, by + 52); c.fillStyle = '#16302a'; rr(c, bx + 52, by + 44, bw - 52, 8, 3); c.fill(); c.fillStyle = '#86f0cf'; rr(c, bx + 52, by + 44, Math.max(4, (bw - 52) * clamp(p.lan / p.lanMax, 0, 1)), 8, 3); c.fill(); }
+  else if (p.hero === 'lumen') { c.fillStyle = '#86f0cf'; c.fillText(T('Lantern'), bx, by + 52); c.fillStyle = '#16302a'; rr(c, bx + 52, by + 44, bw - 52, 8, 3); c.fill(); c.fillStyle = '#86f0cf'; rr(c, bx + 52, by + 44, Math.max(4, (bw - 52) * clamp(p.lan / p.lanMax, 0, 1)), 8, 3); c.fill(); }
   else if (p.hero === 'mira') { c.fillStyle = p.decoyOn ? '#bff6ff' : '#6d7f86'; c.fillText(T(p.decoyOn ? 'Decoy standing' : 'No decoy — dash to leave one'), bx, by + 52); }
   if (p.shield + (p.barrier || 0) > 0) { c.fillStyle = '#86f0cf'; c.textAlign = 'right'; c.fillText(T('Shield') + ' ' + Math.ceil(p.shield + (p.barrier || 0)), bx + bw, by + 52); c.textAlign = 'left'; }
   const b1 = slotBlock(p, 1), b2 = H2.alt ? slotBlock(p, 2) : null;

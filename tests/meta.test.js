@@ -56,7 +56,7 @@ const extra = pr => JSON.stringify(pr.characters.filter(c => !['bramble', 'wick'
 ok(extra(q) === '[]', 'a Normal clear unlocks no hero');
 ok(M.recordCampaignClear(q, 'nightmare', 'r3') === 'hell' && extra(q) === '["rowan"]', 'Nightmare clear unlocks Rowan');
 ok(M.recordCampaignClear(q, 'hell', 'r4') === 'inferno' && extra(q) === '["rowan","mira"]', 'Hell clear unlocks Mira');
-ok(M.recordCampaignClear(q, 'inferno', 'r5') === null && extra(q) === '["rowan","mira","vespera"]', 'Inferno clear unlocks Lumen, nothing after');
+ok(M.recordCampaignClear(q, 'inferno', 'r5') === null && extra(q) === '["rowan","mira","lumen"]', 'Inferno clear unlocks Lumen, nothing after');
 ok(M.recordCampaignClear(q, 'nightmare', 'r6') === null && extra(q).split(',').length === 3, 'clearing again adds no duplicate');
 { const old = M.newProfile(); old.unlocked = ['normal', 'nightmare', 'hell']; old.cleared = { normal: 1, nightmare: 2 }; const st3 = store(); M.saveProfile(st3, old); const re = M.loadProfile(st3);
   ok(extra(re) === '["rowan"]', 'a profile that cleared Nightmare before this change gets Rowan when loaded'); }
@@ -73,9 +73,9 @@ const code = M.exportProfile(p3), back = M.importProfile(code);
 ok(back && back.id === p3.id && back.weapons[0] === 'thornmaul', 'backup code round trip');
 ok(M.importProfile('garbage') === null, 'bad backup code rejected');
 // --- unlockable heroes are character rewards inside the single roll, gated by their first chapter
-ok(M.REWARD_POOLS.green.includes('c:rowan') && M.REWARD_POOLS.blue.includes('c:mira') && M.REWARD_POOLS.purple.includes('c:vespera'), 'heroes sit in the Green/Blue/Purple pools');
+ok(M.REWARD_POOLS.green.includes('c:rowan') && M.REWARD_POOLS.blue.includes('c:mira') && M.REWARD_POOLS.purple.includes('c:lumen'), 'heroes sit in the Green/Blue/Purple pools');
 const ci = ch => ({ weapons: [], talents: {}, upgrades: {}, characters: [], chapter: ch });
-ok(M.itemAvailable('c:rowan', ci(1)) && !M.itemAvailable('c:mira', ci(1)) && M.itemAvailable('c:mira', ci(2)) && !M.itemAvailable('c:vespera', ci(2)) && M.itemAvailable('c:vespera', ci(3)), 'each hero only from its first chapter (Rowan 1, Mira 2, Lumen 3)');
+ok(M.itemAvailable('c:rowan', ci(1)) && !M.itemAvailable('c:mira', ci(1)) && M.itemAvailable('c:mira', ci(2)) && !M.itemAvailable('c:lumen', ci(2)) && M.itemAvailable('c:lumen', ci(3)), 'each hero only from its first chapter (Rowan 1, Mira 2, Lumen 3)');
 ok(!M.itemAvailable('c:rowan', { ...ci(5), characters: ['rowan'] }) && !M.itemAvailable('c:nobody', ci(5)), 'owned or unknown heroes are never offered');
 { let got = null; for (let i = 0; i < 400 && got !== 'c:rowan'; i++) got = M.rollReward(ci(1), (() => { const s = [0.1, Math.random()]; return () => s.shift(); })()).item; ok(got === 'c:rowan', 'a Green roll can award Rowan'); }
 const hp = M.newProfile(); M.grantReward(hp, 'r:1:' + hp.id, 'green', 'c:rowan', { chapter: 1 });
@@ -110,4 +110,10 @@ ok(!M.earnsChapterTalent('u:hp:4', 1, 'reward') && !M.earnsChapterTalent('w:thor
 ok(!M.earnsChapterTalent('t:keen', M.CHAPTERS) && !M.earnsChapterTalent('t:keen', 0), 'never after the final chapter');
 ok(M.earnsChapterTalent('u:hp:4', 3, 'every') && !M.earnsChapterTalent('t:keen', 3, 'off'), 'the "every" and "off" settings');
 { const inv = { weapons: [], talents: {}, upgrades: {}, characters: [], chapter: 2 }; let picks = 0, rolls = 0; for (let i = 0; i < 4000; i++) { const r = M.rollReward(inv); rolls++; if (M.earnsChapterTalent(r.item, 2, 'reward')) picks++; } ok(rolls === 4000 && picks > 0 && picks < rolls, 'picks ride on the existing single roll (one reward per roll, ' + (100 * picks / rolls).toFixed(1) + '% of rolls)'); }
+// --- hero renamed vespera -> lumen: old saves (local, online, merged) keep the hero
+{ const old = { id: 'p_abcdefgh12', characters: ['bramble', 'vespera'], rewards: [{ claim: 'r1:3:p_abcdefgh12', rarity: 'purple', item: 'c:vespera', chapter: 3, t: 1 }], claims: { 'r1:3:p_abcdefgh12': 1 } };
+  const s = M.sanitizeProfile(old); ok(s.characters.includes('lumen') && !s.characters.includes('vespera'), 'old save: Vespera becomes Lumen');
+  ok(s.rewards[0].item === 'c:lumen', 'old reward history points at Lumen');
+  const m = M.mergeProfiles(M.newProfile(), old); ok(m.characters.includes('lumen') && !m.characters.includes('vespera'), 'online copy with the old id merges into Lumen');
+  const m2 = M.mergeProfiles(old, { ...M.newProfile(), id: 'p_zzzzzzzz99' }); ok(m2.characters.includes('lumen'), 'device save with the old id merges into Lumen'); }
 console.log((fails ? 'FAILED ' + fails : 'all passed') + ' (' + n + ' checks)'); process.exit(fails ? 1 : 0);
